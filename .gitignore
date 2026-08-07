@@ -1,0 +1,46 @@
+# Node modules
+node_modules/
+
+_build
+*/build-assets
+*/build-chunks
+.rsdoctor
+
+# meteor
+*/.meteor
+
+# Expo local state and caches
+# runtime state (Metro bundler, dev-client data, tunnels)
+.expo/
+# shared project settings (app.json edits, etc.)
+.expo-shared/
+
+# Metro bundler caches/logs
+# generic Expo temp files
+*.expo
+# Expo DevTools tunnels
+*.tunnel
+# Metro cache folder
+*.cache
+# temp files created during bundling
+*.tmp
+# build or Metro logs
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# protect api keys in setting json
+settings-production.json
+settings.json
+
+# protect your mup.json settings
+mup.json
+mup.js
