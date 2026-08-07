@@ -41,7 +41,6 @@ type TabKey = (typeof tabs)[number]['key'];
 
 export default function App() {
   // Navigation State
-  // Navigation State
   const [activeTab, setActiveTab] = useState<TabKey>('home');
 
   // Auth State
@@ -50,10 +49,12 @@ export default function App() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -64,10 +65,23 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  const isFormValid = useMemo(
-    () => email.trim().length > 0 && password.trim().length > 0,
-    [email, password]
-  );
+  const isFormValid = useMemo(() => {
+    if (!email.trim() || !password.trim()) {
+      return false;
+    }
+
+    if (mode === 'signup') {
+      return (
+        name.trim().length > 0 &&
+        dob.trim().length > 0 &&
+        phoneNumber.trim().length > 0 &&
+        confirmPassword.length > 0 &&
+        password === confirmPassword
+      );
+    }
+
+    return true;
+  }, [confirmPassword, dob, email, mode, name, password, phoneNumber]);
 
   const handleLogin = async () => {
     if (!isFormValid || submitting) return;
@@ -119,13 +133,15 @@ export default function App() {
     setError(null);
     try {
       await firebaseSignOut(auth);
+      setName('');
+      setDob('');
+      setPhoneNumber('');
       setEmail('');
       setPassword('');
       setConfirmPassword('');
       setActiveTab('home');
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Unable to sign out right now.';
+      const message = err instanceof Error ? err.message : 'Unable to sign out right now.';
       setError(message);
     }
   };
@@ -293,7 +309,6 @@ export default function App() {
         {renderPage()}
       </View>
 
-      {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
         {tabs.map((tab) => {
           const isActive = tab.key === activeTab;
