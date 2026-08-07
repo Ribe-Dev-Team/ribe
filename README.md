@@ -5,6 +5,14 @@ FIT3162 Project
 - Meteor backend in the backend folder
 - Expo Go-friendly development flow for mobile testing
 
+## First time only
+
+0. navigation to the `backend` and `mobile` folders and run `npm install`
+   - cd backend
+   - npm install
+   - cd ../mobile
+   - npm install
+
 ## Run locally
 
 1. Start the Meteor backend
