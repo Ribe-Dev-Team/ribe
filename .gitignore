@@ -1,0 +1,74 @@
+# Root dependencies
+node_modules/
+backend/node_modules/
+mobile/node_modules/
+
+# Mobile / Expo
+mobile/.expo/
+mobile/.expo-shared/
+mobile/dist/
+mobile/web-build/
+mobile/expo-env.d.ts
+mobile/.metro-health-check*
+mobile/.DS_Store
+mobile/.kotlin/
+mobile/*.orig.*
+mobile/*.jks
+mobile/*.p8
+mobile/*.p12
+mobile/*.key
+mobile/*.mobileprovision
+mobile/ios/
+mobile/android/
+
+# Build outputs
+_build
+*/build-assets
+*/build-chunks
+.rsdoctor
+
+# meteor
+*/.meteor
+
+# Expo local state and caches
+# runtime state (Metro bundler, dev-client data, tunnels)
+.expo/
+# shared project settings (app.json edits, etc.)
+.expo-shared/
+
+# Metro bundler caches/logs
+# generic Expo temp files
+*.expo
+# Expo DevTools tunnels
+*.tunnel
+# Metro cache folder
+*.cache
+# temp files created during bundling
+*.tmp
+# build or Metro logs
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local OS / editor
+.DS_Store
+*.pem
+
+# protect api keys in setting json
+settings-production.json
+settings.json
+
+# protect your mup.json settings
+mup.json
+mup.js
+
+# TypeScript build info
+*.tsbuildinfo
