@@ -4,11 +4,11 @@
   "main": "index.ts",
   "dependencies": {
     "expo": "54.0.36",
-    "react": "19.2.3",
+    "react": "19.1.0",
     "react-native": "0.81.4"
   },
   "devDependencies": {
-    "@types/react": "~19.2.2",
+    "@types/react": "~19.1.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
