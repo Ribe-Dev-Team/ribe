@@ -1,15 +1,16 @@
+// react imports
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+
+// navigation imports
+import HomePage from './pages/HomePage';
+import CalendarPage from './pages/CalendarPage';
+import RidesPage from './pages/RidesPage';
+import DrivesPage from './pages/DrivesPage';
+import ProfilePage from './pages/ProfilePage';
+import styles from './styles';
+
+// firebase imports
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -19,10 +20,38 @@ import {
   type User,
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
-
 import { auth, db } from './firebaseConfig';
 
+const API_URL = 'http://127.0.0.1:3000';
+
+const tabs = [
+  { key: 'home', label: 'Home' },
+  { key: 'calendar', label: 'Calendar' },
+  { key: 'rides', label: 'Rides' },
+  { key: 'drives', label: 'Drives' },
+  { key: 'profile', label: 'Profile' },
+] as const;
+
+type TabKey = (typeof tabs)[number]['key'];
+
 export default function App() {
+  const [activeTab, setActiveTab] = useState<TabKey>('home');
+
+  const renderPage = () => {
+    switch (activeTab) {
+      case 'calendar':
+        return <CalendarPage />;
+      case 'rides':
+        return <RidesPage />;
+      case 'drives':
+        return <DrivesPage />;
+      case 'profile':
+        return <ProfilePage />;
+      default:
+        return <HomePage />;
+    }
+  };
+
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -139,7 +168,7 @@ export default function App() {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator color="#2563eb" size="large" />
-        <Text style={styles.loadingText}>Connecting to Firebase…</Text>
+        <Text style={styles.loadingText}>Connecting to Firebase...</Text>
       </View>
     );
   }
@@ -147,15 +176,15 @@ export default function App() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.screen}
+      style={styles.pageScreen}
     >
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.card}>
+      <View style={styles.pageCard}>
         {user ? (
           <View style={styles.successContainer}>
-            <Text style={styles.title}>Welcome back</Text>
-            <Text style={styles.subtitle}>You’re signed in as {user.email || 'a member'}.</Text>
+            <Text style={styles.pageTitle}>Welcome back</Text>
+            <Text style={styles.pageSubtitle}>You're signed in as {user.email || 'a member'}.</Text>
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
             <Pressable style={styles.primaryButton} onPress={handleLogout}>
               <Text style={styles.primaryButtonText}>Sign out</Text>
@@ -163,8 +192,8 @@ export default function App() {
           </View>
         ) : (
           <>
-            <Text style={styles.title}>Ribe</Text>
-            <Text style={styles.subtitle}>{mode === 'login' ? 'Sign in to continue' : 'Create your account'}</Text>
+            <Text style={styles.pageTitle}>Ribe</Text>
+            <Text style={styles.pageSubtitle}>{mode === 'login' ? 'Sign in to continue' : 'Create your account'}</Text>
 
             {mode === 'signup' ? (
               <>
@@ -280,96 +309,31 @@ export default function App() {
           </>
         )}
       </View>
+
+      <View style={styles.bottomNav}>
+        {tabs.map((tab) => {
+          const isActive = tab.key === activeTab;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[
+                styles.navButton,
+                isActive ? styles.navButtonActive : styles.navButtonInactive,
+              ]}
+              onPress={() => setActiveTab(tab.key)}
+            >
+              <Text
+                style={[
+                  styles.navButtonText,
+                  isActive ? styles.navButtonTextActive : null,
+                ]}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  loadingScreen: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    color: '#475569',
-    fontSize: 15,
-    marginTop: 12,
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#475569',
-    marginBottom: 20,
-  },
-  input: {
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: '#2563eb',
-    borderRadius: 12,
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  primaryButtonDisabled: {
-    backgroundColor: '#93c5fd',
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  helperText: {
-    color: '#64748b',
-    fontSize: 13,
-    marginTop: 12,
-    textAlign: 'center',
-  },
-  linkButton: {
-    marginTop: 10,
-  },
-  linkText: {
-    color: '#2563eb',
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  errorText: {
-    color: '#b91c1c',
-    fontSize: 13,
-    marginBottom: 8,
-  },
-  successContainer: {
-    alignItems: 'center',
-  },
-});
