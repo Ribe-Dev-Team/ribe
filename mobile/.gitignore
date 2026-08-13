@@ -38,3 +38,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# firebase 
+/mobile/firebase-debug.log

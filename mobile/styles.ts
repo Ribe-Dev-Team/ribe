@@ -1,6 +1,15 @@
 import { StyleSheet } from 'react-native';
 
 export default StyleSheet.create({
+  // App-specific
+  screen: { flex: 1, backgroundColor: '#f8fafc', justifyContent: 'center', padding: 24 },
+  card: { backgroundColor: '#ffffff', borderRadius: 24, padding: 24, shadowColor: '#0f172a', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4 },
+  title: { fontSize: 32, fontWeight: '700', color: '#0f172a', marginBottom: 8 },
+  subtitle: { fontSize: 16, color: '#475569', marginBottom: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  headerText: { fontSize: 14, color: '#475569', fontWeight: '500' },
+  logoutText: { color: '#2563eb', fontSize: 14, fontWeight: '600' },
+  contentContainer: { flex: 1 },
   appContainer: {
     flex: 1,
     backgroundColor: '#fff5eb',
