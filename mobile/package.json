@@ -4,16 +4,15 @@
   "main": "index.ts",
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "54.0.36",
+    "expo": "~54.0.37",
     "firebase": "^12.17.1",
     "react": "19.1.0",
-    "firebase": "^12.17.1",
-    "react": "19.1.0",
-    "react-native": "0.81.4"
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0"
   },
   "devDependencies": {
-    "@types/react": "~19.1.0",
-    "typescript": "~6.0.3"
+    "@types/react": "~19.1.10",
+    "typescript": "~5.9.2"
   },
   "scripts": {
     "start": "expo start",
