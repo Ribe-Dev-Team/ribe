@@ -2,11 +2,15 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView, 
+  Platform,             
   Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
+  TouchableWithoutFeedback,
+  Keyboard, // <-- Added Keyboard here
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -34,11 +38,11 @@ export default function ProfilePage() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'], // Recommended Expo enum
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
-        base64: true, // <-- Add this line so Firebase gets the image data
+        quality: 0.3, 
+        base64: true,
       });
 
       if (!result.canceled && result.assets?.[0]) {
@@ -52,7 +56,7 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
-    console.log('--- SAVE BUTTON CLICKED ---'); // <-- Added print statement
+    console.log('--- SAVE BUTTON CLICKED ---'); 
 
     if (submitting) {
       console.log('Save aborted: already submitting');
@@ -85,88 +89,101 @@ export default function ProfilePage() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.profileScrollView}>
-      <View style={styles.profileCard}>
-        {!isEditing ? (
-          <Pressable onPress={() => setIsEditing(true)} style={styles.editButton}>
-            <Text style={styles.editButtonText}>Edit</Text>
-          </Pressable>
-        ) : null}
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0} 
+    >
+      <ScrollView 
+        contentContainerStyle={styles.profileScrollView}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag" // <-- Added this so dragging down also closes the keyboard
+      >
+        {/* Wrapped the main card in TouchableWithoutFeedback */}
+        <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+          <View style={styles.profileCard}>
+            {!isEditing ? (
+              <Pressable onPress={() => setIsEditing(true)} style={styles.editButton}>
+                <Text style={styles.editButtonText}>Edit</Text>
+              </Pressable>
+            ) : null}
 
-        {profilePhotoUri ? (
-          <Image source={{ uri: profilePhotoUri }} style={styles.profilePhoto} />
-        ) : (
-          <View style={styles.profilePhotoPlaceholder}>
-            <Text style={styles.profilePhotoPlaceholderText}>No photo</Text>
+            {profilePhotoUri ? (
+              <Image source={{ uri: profilePhotoUri }} style={styles.profilePhoto} />
+            ) : (
+              <View style={styles.profilePhotoPlaceholder}>
+                <Text style={styles.profilePhotoPlaceholderText}>No photo</Text>
+              </View>
+            )}
+
+            <Text style={styles.profileName}>{profileName}</Text>
+            <Text style={styles.profileEmail}>{profileEmail}</Text>
+
+            <View style={styles.profileInfoBlock}>
+              <Text style={styles.profileLabel}>Date of birth</Text>
+              <Text style={styles.profileValue}>{profileDob}</Text>
+            </View>
+
+            {isEditing ? (
+              <>
+                <Pressable onPress={openImagePicker} style={styles.avatarUploadButton}>
+                  <Text style={styles.avatarUploadText}>Change photo</Text>
+                </Pressable>
+
+                <View style={styles.profileInfoBlock}>
+                  <Text style={styles.profileLabel}>Degree</Text>
+                  <TextInput
+                    autoCapitalize="words"
+                    onChangeText={setDegree}
+                    placeholder="Bachelor of Science in Computer Science"
+                    style={styles.editInput}
+                    value={degree}
+                  />
+                </View>
+
+                <View style={styles.profileInfoBlock}>
+                  <Text style={styles.profileLabel}>Bio</Text>
+                  <TextInput
+                    multiline
+                    numberOfLines={4}
+                    onChangeText={setBio}
+                    placeholder="Write a short bio about yourself..."
+                    style={styles.editBioInput}
+                    textAlignVertical="top"
+                    value={bio}
+                  />
+                </View>
+
+                <View style={styles.editActionsRow}>
+                  <Pressable onPress={handleCancel} style={[styles.secondaryButton]}>
+                    <Text style={styles.secondaryButtonText}>Cancel</Text>
+                  </Pressable>
+
+                  <Pressable onPress={handleSave} style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]}>
+                    {submitting ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>Save</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.profileInfoBlock}>
+                  <Text style={styles.profileLabel}>Degree</Text>
+                  <Text style={styles.profileValue}>{profileData?.degree || 'Not added'}</Text>
+                </View>
+
+                <View style={styles.profileInfoBlock}>
+                  <Text style={styles.profileLabel}>Bio</Text>
+                  <Text style={styles.profileValue}>{profileData?.bio || 'No bio yet'}</Text>
+                </View>
+              </>
+            )}
           </View>
-        )}
-
-        <Text style={styles.profileName}>{profileName}</Text>
-        <Text style={styles.profileEmail}>{profileEmail}</Text>
-
-        <View style={styles.profileInfoBlock}>
-          <Text style={styles.profileLabel}>Date of birth</Text>
-          <Text style={styles.profileValue}>{profileDob}</Text>
-        </View>
-
-        {isEditing ? (
-          <>
-            <Pressable onPress={openImagePicker} style={styles.avatarUploadButton}>
-              <Text style={styles.avatarUploadText}>Change photo</Text>
-            </Pressable>
-
-            <View style={styles.profileInfoBlock}>
-              <Text style={styles.profileLabel}>Degree</Text>
-              <TextInput
-                autoCapitalize="words"
-                onChangeText={setDegree}
-                placeholder="Bachelor of Science in Computer Science"
-                style={styles.editInput}
-                value={degree}
-              />
-            </View>
-
-            <View style={styles.profileInfoBlock}>
-              <Text style={styles.profileLabel}>Bio</Text>
-              <TextInput
-                multiline
-                numberOfLines={4}
-                onChangeText={setBio}
-                placeholder="Write a short bio about yourself..."
-                style={styles.editBioInput}
-                textAlignVertical="top"
-                value={bio}
-              />
-            </View>
-
-            <View style={styles.editActionsRow}>
-              <Pressable onPress={handleCancel} style={[styles.secondaryButton]}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </Pressable>
-
-              <Pressable onPress={handleSave} style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]}>
-                {submitting ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <Text style={styles.primaryButtonText}>Save</Text>
-                )}
-              </Pressable>
-            </View>
-          </>
-        ) : (
-          <>
-            <View style={styles.profileInfoBlock}>
-              <Text style={styles.profileLabel}>Degree</Text>
-              <Text style={styles.profileValue}>{profileData?.degree || 'Not added'}</Text>
-            </View>
-
-            <View style={styles.profileInfoBlock}>
-              <Text style={styles.profileLabel}>Bio</Text>
-              <Text style={styles.profileValue}>{profileData?.bio || 'No bio yet'}</Text>
-            </View>
-          </>
-        )}
-      </View>
-    </ScrollView>
+        </TouchableWithoutFeedback>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

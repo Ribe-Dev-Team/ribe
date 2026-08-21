@@ -2,11 +2,15 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView, 
+  Platform,             
   Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
+  TouchableWithoutFeedback,
+  Keyboard, // <-- Added Keyboard here
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -47,7 +51,7 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
         mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
+        quality: 0.3, // <-- Lowered to 0.3 for Firestore size limits
         base64: true,
       });
 
@@ -82,57 +86,69 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.onboardingScrollView}>
-      <View style={styles.onboardingCard}>
-        <Text style={styles.onboardingTitle}>Set up your profile</Text>
-        <Text style={styles.onboardingSubtitle}>
-          Add a few details to personalize your account. Everything here is optional.
-        </Text>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      style={{ flex: 1 }}
+    >
+      <ScrollView 
+        contentContainerStyle={styles.onboardingScrollView}
+        keyboardShouldPersistTaps="handled" 
+        keyboardDismissMode="on-drag" // <-- Added this as a bonus so scrolling also dismisses it!
+      >
+        {/* Wrapped the main card in TouchableWithoutFeedback */}
+        <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+          <View style={styles.onboardingCard}>
+            <Text style={styles.onboardingTitle}>Set up your profile</Text>
+            <Text style={styles.onboardingSubtitle}>
+              Add a few details to personalize your account. Everything here is optional.
+            </Text>
 
-        <Pressable onPress={pickImage} style={styles.avatarUploadButton}>
-          {profilePhotoUri ? (
-            <Image source={{ uri: profilePhotoUri }} style={styles.avatarPreview} />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-              <Text style={styles.avatarPlaceholderText}>Add photo</Text>
-            </View>
-          )}
-        </Pressable>
+            <Pressable onPress={pickImage} style={styles.avatarUploadButton}>
+              {profilePhotoUri ? (
+                <Image source={{ uri: profilePhotoUri }} style={styles.avatarPreview} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarPlaceholderText}>Add photo</Text>
+                </View>
+              )}
+            </Pressable>
 
-        {uploadError ? <Text style={styles.errorText}>{uploadError}</Text> : null}
+            {uploadError ? <Text style={styles.errorText}>{uploadError}</Text> : null}
 
-        <Text style={styles.fieldLabel}>Degree</Text>
-        <TextInput
-          autoCapitalize="words"
-          onChangeText={setDegree}
-          placeholder="Bachelor of Science in Computer Science"
-          style={styles.input}
-          value={degree}
-        />
+            <Text style={styles.fieldLabel}>Degree</Text>
+            <TextInput
+              autoCapitalize="words"
+              onChangeText={setDegree}
+              placeholder="Bachelor of Science in Computer Science"
+              style={styles.input}
+              value={degree}
+            />
 
-        <Text style={styles.fieldLabel}>Short bio</Text>
-        <TextInput
-          multiline
-          numberOfLines={4}
-          onChangeText={setBio}
-          placeholder="Write a short bio about yourself..."
-          style={styles.bioInput}
-          textAlignVertical="top"
-          value={bio}
-        />
+            <Text style={styles.fieldLabel}>Short bio</Text>
+            <TextInput
+              multiline
+              numberOfLines={4}
+              onChangeText={setBio}
+              placeholder="Write a short bio about yourself..."
+              style={styles.bioInput}
+              textAlignVertical="top"
+              value={bio}
+            />
 
-        <Pressable
-          disabled={saving}
-          onPress={handleSubmit}
-          style={[styles.primaryButton, saving && styles.primaryButtonDisabled]}
-        >
-          {saving ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text style={styles.primaryButtonText}>Finish setup</Text>
-          )}
-        </Pressable>
-      </View>
-    </ScrollView>
+            <Pressable
+              disabled={saving}
+              onPress={handleSubmit}
+              style={[styles.primaryButton, saving && styles.primaryButtonDisabled]}
+            >
+              {saving ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Finish setup</Text>
+              )}
+            </Pressable>
+          </View>
+        </TouchableWithoutFeedback>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
