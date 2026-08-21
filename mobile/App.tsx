@@ -19,7 +19,8 @@ import HomePage from './pages/HomePage';
 import CalendarPage from './pages/CalendarPage';
 import RidesPage from './pages/RidesPage';
 import DrivesPage from './pages/DrivesPage';
-import ProfilePage from './pages/ProfilePage'; // Added missing import
+import ProfilePage from './pages/ProfilePage';
+import OnboardingPage from './pages/OnboardingPage';
 
 // Define your tabs for the bottom navigation
 type TabKey = 'home' | 'calendar' | 'rides' | 'drives' | 'profile';
@@ -64,6 +65,8 @@ function AppContent() {
     confirmPassword,
     setConfirmPassword,
     isFormValid,
+    needsProfileSetup,
+    completeProfileSetup,
     handleLogin,
     handleSignup,
     handleLogout,
@@ -125,7 +128,7 @@ function AppContent() {
                   setDob(value);
                   if (error) clearError();
                 }}
-                placeholder="Date of Birth"
+                placeholder="Date of Birth (DD/MM/YYYY)"
                 style={styles.input}
                 value={dob}
               />
@@ -184,11 +187,11 @@ function AppContent() {
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
           <Pressable
-            disabled={!isFormValid || submitting}
+            disabled={submitting}
             onPress={mode === 'login' ? handleLogin : handleSignup}
             style={[
               styles.primaryButton,
-              (!isFormValid || submitting) && styles.primaryButtonDisabled,
+              submitting && styles.primaryButtonDisabled,
             ]}
           >
             {submitting ? (
@@ -215,6 +218,17 @@ function AppContent() {
           </Text>
         </View>
       </KeyboardAvoidingView>
+    );
+  }
+
+  if (needsProfileSetup) {
+    return (
+      <OnboardingPage
+        onComplete={async (data) => {
+          await completeProfileSetup(data);
+          setActiveTab('home');
+        }}
+      />
     );
   }
 
