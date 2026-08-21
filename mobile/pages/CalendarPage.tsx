@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
-import styles from '../styles';
+import styles, { colors } from '../styles';
 
 type RideStatus = 'pending' | 'awaiting' | 'confirmed';
 
@@ -43,9 +43,9 @@ function getCalendarDays(month: Date) {
 }
 
 const statusDetails: Record<RideStatus, { label: string; color: string }> = {
-  pending: { label: 'Pending Ride', color: '#ff5e54' },
-  awaiting: { label: 'Awaiting Confirmation', color: '#ffb13b' },
-  confirmed: { label: 'Confirmed Ride', color: '#38c85b' },
+  pending: { label: 'Pending Ride', color: colors.pending },
+  awaiting: { label: 'Awaiting Confirmation', color: colors.awaiting },
+  confirmed: { label: 'Confirmed Ride', color: colors.confirmed },
 };
 
 export default function CalendarPage() {
@@ -62,9 +62,6 @@ export default function CalendarPage() {
     <ScrollView contentContainerStyle={styles.calendarScreen} showsVerticalScrollIndicator={false}>
       <View style={styles.calendarHeader}>
         <Text style={styles.calendarTitle}>Calendar</Text>
-        <Pressable accessibilityLabel="Calendar visibility" style={styles.visibilityButton}>
-          <Text style={styles.visibilityIcon}>◉</Text>
-        </Pressable>
       </View>
 
       <View style={styles.monthControls}>
