@@ -29,6 +29,8 @@ const todaysRides: RideCardProps[] = [
     co2SavedKg: 2.1,
     driver: { name: 'Marcus Vance', vehicle: 'Honda Civic - Silver' },
     plate: '1ABC234',
+    driverPhone: '0412345678',
+    pickupDateTime: new Date(Date.now() + 6 * 60 * 60 * 1000), // 6h away - within reveal window
   },
   {
     status: 'confirmed',
@@ -40,6 +42,8 @@ const todaysRides: RideCardProps[] = [
     co2SavedKg: 2.1,
     driver: { name: 'Marcus Vance', vehicle: 'Honda Civic - Silver' },
     plate: '1ABC234',
+    driverPhone: '0412345678',
+    pickupDateTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 2 days away - still masked
   },
 ];
 
