@@ -1,37 +1,39 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   Pressable,
   SafeAreaView,
   StatusBar,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
+import { useFonts, Marcellus_400Regular } from '@expo-google-fonts/marcellus';
 
 // Make sure all these imports exist in your project path
 import { AuthProvider, useAuth } from './auth/useAuth';
-import styles from './styles';
+import styles, { colors } from './styles';
+import AppNavigation, { NavigationTab } from './components/AppNavigation';
 import HomePage from './pages/HomePage';
 import CalendarPage from './pages/CalendarPage';
 import RidesPage from './pages/RidesPage';
-import DrivesPage from './pages/DrivesPage';
 import ProfilePage from './pages/ProfilePage'; // Added missing import
 
-// Define your tabs for the bottom navigation
-type TabKey = 'home' | 'calendar' | 'rides' | 'drives' | 'profile';
-const tabs: { key: TabKey; label: string }[] = [
-  { key: 'home', label: 'Home' },
-  { key: 'calendar', label: 'Calendar' },
-  { key: 'rides', label: 'Rides' },
-  { key: 'drives', label: 'Drives' },
-  { key: 'profile', label: 'Profile' },
-];
-
 export default function App() {
+  const [fontsLoaded] = useFonts({ Marcellus_400Regular });
+
+  if (!fontsLoaded) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator color={colors.mediumBlue} size="large" />
+      </View>
+    );
+  }
+
   return (
     <AuthProvider>
       <AppContent />
@@ -41,8 +43,19 @@ export default function App() {
 
 function AppContent() {
   // Navigation State
-  const [activeTab, setActiveTab] = useState<TabKey>('home');
-  
+  const [activeTab, setActiveTab] = useState<NavigationTab>('home');
+  const [navHidden, setNavHidden] = useState(false);
+  const lastScrollY = useRef(0);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = event.nativeEvent.contentOffset.y;
+    const diff = y - lastScrollY.current;
+    if (Math.abs(diff) > 6) {
+      setNavHidden(diff > 0 && y > 20);
+      lastScrollY.current = y;
+    }
+  };
+
   const {
     user,
     loading,
@@ -75,12 +88,10 @@ function AppContent() {
         return <CalendarPage />;
       case 'rides':
         return <RidesPage />;
-      case 'drives':
-        return <DrivesPage />;
       case 'profile':
-        return <ProfilePage />;
+        return <ProfilePage onLogout={handleLogout} />;
       default:
-        return <HomePage />;
+        return <HomePage onScroll={handleScroll} />;
     }
   };
 
@@ -88,7 +99,7 @@ function AppContent() {
   if (loading) {
     return (
       <View style={styles.loadingScreen}>
-        <ActivityIndicator color="#2563eb" size="large" />
+        <ActivityIndicator color={colors.mediumBlue} size="large" />
       </View>
     );
   }
@@ -100,7 +111,7 @@ function AppContent() {
         style={styles.screen}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
         <View style={styles.card}>
           <Text style={styles.title}>Ribe</Text>
           <Text style={styles.subtitle}>
@@ -221,41 +232,11 @@ function AppContent() {
   // 3. Authenticated Main App Screen
   return (
     <SafeAreaView style={styles.appContainer}>
-      <StatusBar barStyle="dark-content" />
-
-      <View style={styles.header}>
-        <Text style={styles.headerText}>Hi, {user.displayName || user.email}</Text>
-        <TouchableOpacity onPress={handleLogout}>
-          <Text style={styles.logoutText}>Sign out</Text>
-        </TouchableOpacity>
-      </View>
+      <StatusBar barStyle="light-content" />
 
       <View style={styles.contentContainer}>{renderPage()}</View>
 
-      <View style={styles.bottomNav}>
-        {tabs.map((tab) => {
-          const isActive = tab.key === activeTab;
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={[
-                styles.navButton,
-                isActive ? styles.navButtonActive : styles.navButtonInactive,
-              ]}
-              onPress={() => setActiveTab(tab.key)}
-            >
-              <Text
-                style={[
-                  styles.navButtonText,
-                  isActive ? styles.navButtonTextActive : null,
-                ]}
-              >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      <AppNavigation activeTab={activeTab} onChange={setActiveTab} hidden={navHidden} />
     </SafeAreaView>
   );
 }

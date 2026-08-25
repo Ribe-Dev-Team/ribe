@@ -1,43 +1,53 @@
 import { StyleSheet } from 'react-native';
 
+export const colors = {
+  darkBlue: '#095389',
+  mediumBlue: '#1376BE',
+  pending: '#FF7052',
+  pendingLight: '#FFBEB5',
+  awaiting: '#FFA852',
+  awaitingLight: '#FFF1A1',
+  confirmed: '#37B157',
+  confirmedLight: '#B9FFB0',
+  white: '#FFFFFF',
+};
+
 export default StyleSheet.create({
   // App-specific
-  screen: { flex: 1, backgroundColor: '#f8fafc', justifyContent: 'center', padding: 24 },
-  card: { backgroundColor: '#ffffff', borderRadius: 24, padding: 24, shadowColor: '#0f172a', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4 },
-  title: { fontSize: 32, fontWeight: '700', color: '#0f172a', marginBottom: 8 },
-  subtitle: { fontSize: 16, color: '#475569', marginBottom: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  headerText: { fontSize: 14, color: '#475569', fontWeight: '500' },
-  logoutText: { color: '#2563eb', fontSize: 14, fontWeight: '600' },
+  screen: { flex: 1, backgroundColor: colors.darkBlue, justifyContent: 'center', padding: 24 },
+  card: { backgroundColor: colors.white, borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4 },
+  title: { fontFamily: 'Marcellus_400Regular', fontSize: 32, color: colors.darkBlue, marginBottom: 8 },
+  subtitle: { fontFamily: 'Marcellus_400Regular', fontSize: 16, color: colors.darkBlue, marginBottom: 20 },
   contentContainer: { flex: 1 },
   appContainer: {
     flex: 1,
-    backgroundColor: '#fff5eb',
+    backgroundColor: colors.darkBlue,
   },
   pageScreen: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.darkBlue,
     justifyContent: 'center',
     paddingTop: 40,
     paddingHorizontal: 24,
+    paddingBottom: 100,
   },
   pageTitle: {
     fontSize: 38,
     fontWeight: '800',
-    color: '#c74c14',
+    color: colors.darkBlue,
     marginBottom: 12,
   },
   pageSubtitle: {
     fontSize: 16,
     lineHeight: 24,
-    color: '#7d4a2d',
+    color: colors.darkBlue,
   },
   pageCard: {
     flex: 1,
     borderRadius: 28,
-    backgroundColor: '#fff0e3',
+    backgroundColor: colors.white,
     padding: 24,
-    shadowColor: '#c36a49',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
@@ -45,13 +55,13 @@ export default StyleSheet.create({
   },
   loadingScreen: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.darkBlue,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
   loadingText: {
-    color: '#475569',
+    color: colors.white,
     fontSize: 15,
     marginTop: 12,
   },
@@ -103,36 +113,41 @@ export default StyleSheet.create({
   successContainer: {
     alignItems: 'center',
   },
-  bottomNav: {
+  navigationBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
-    borderColor: '#ffd7bf',
-    backgroundColor: '#ffe7d4',
+    position: 'absolute',
+    bottom: 20,
+    left: '7%',
+    right: '7%',
+    padding: 10,
+    borderRadius: 40,
+    backgroundColor: colors.mediumBlue,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
   },
-  navButton: {
+  navigationItem: {
     flex: 1,
-    marginHorizontal: 4,
-    borderRadius: 18,
-    paddingVertical: 10,
+    marginHorizontal: 2,
+    borderRadius: 30,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 2,
   },
-  navButtonActive: {
-    backgroundColor: '#ffb17d',
+  navigationItemActive: {
+    backgroundColor: colors.darkBlue,
   },
-  navButtonInactive: {
-    backgroundColor: 'transparent',
-  },
-  navButtonText: {
+  navigationLabel: {
+    fontFamily: 'Marcellus_400Regular',
     fontSize: 12,
-    fontWeight: '700',
-    color: '#8a3b1b',
+    color: '#bfdbfe',
   },
-  navButtonTextActive: {
-    color: '#fff',
+  navigationLabelActive: {
+    color: colors.white,
   },
 });
