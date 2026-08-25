@@ -10,6 +10,7 @@ import styles from './styles';
 import { MenuPage } from './pages/MenuPage';
 import { AuthPage } from './pages/AuthPage';
 
+// Return page with credentials checked
 export default function App() {
   return (
     <AuthProvider>
@@ -18,32 +19,12 @@ export default function App() {
   );
 }
 
+// Determine app state
 function AppContent(): React.JSX.Element {
 
   const {
     user,
     loading,
-    submitting,
-    error,
-    mode,
-    clearError,
-    toggleMode,
-    name,
-    setName,
-    dob,
-    setDob,
-    phoneNumber,
-    setPhoneNumber,
-    email,
-    setEmail,
-    password,
-    setPassword,
-    confirmPassword,
-    setConfirmPassword,
-    isFormValid,
-    handleLogin,
-    handleSignup,
-    handleLogout,
   } = useAuth();
 
   // 1. Loading Screen

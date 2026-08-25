@@ -40,6 +40,7 @@ export function MenuPage(): React.JSX.Element {
     handleLogout,
   } = useAuth();
 
+  // Routing table for all 'main menu' pages/options
   const renderPage = () => {
     switch (activeTab) {
       case 'calendar':
@@ -57,8 +58,9 @@ export function MenuPage(): React.JSX.Element {
 
   return (
     <SafeAreaProvider style={ styles.appContainer }>
-      <StatusBar barStyle="dark-content" />
 
+      {/* Page Header */ }
+      <StatusBar barStyle="dark-content" />
       <View style={ styles.header }>
         <Text style={ styles.headerText }>Hi, { user?.displayName || user?.email }</Text>;
         <TouchableOpacity onPress={ handleLogout }>
@@ -66,8 +68,10 @@ export function MenuPage(): React.JSX.Element {
         </TouchableOpacity>
       </View>
 
+      {/* Page Body */ }
       < View style={ styles.contentContainer } > { renderPage() }</View >
 
+      {/* Page Footer / Navigation Bar */ }
       <View style={ styles.bottomNav }>
         { tabs.map((tab) => {
           const isActive = tab.key === activeTab;
