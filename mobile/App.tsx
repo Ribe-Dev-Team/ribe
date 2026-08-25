@@ -20,7 +20,7 @@ import styles, { colors } from './styles';
 import AppNavigation, { NavigationTab } from './components/AppNavigation';
 import HomePage from './pages/HomePage';
 import CalendarPage from './pages/CalendarPage';
-import RidesPage from './pages/RidesPage';
+import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage'; // Added missing import
 
 export default function App() {
@@ -87,7 +87,7 @@ function AppContent() {
       case 'calendar':
         return <CalendarPage />;
       case 'rides':
-        return <RidesPage />;
+        return <DashboardPage onScroll={handleScroll} />;
       case 'profile':
         return <ProfilePage onLogout={handleLogout} />;
       default:
