@@ -18,6 +18,8 @@ import DrivesPage from './pages/DrivesPage';
 import HomePage from './pages/HomePage';
 import ProfilePage from './pages/ProfilePage';
 import RidesPage from './pages/RidesPage';
+import RideDetailPage from './pages/RideDetailPage';
+import { Ride } from './pages/CalendarPage';
 
 export default function App() {
   return (
@@ -29,6 +31,7 @@ export default function App() {
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState<NavigationTab>('home');
+  const [selectedRide, setSelectedRide] = useState<{ ride: Ride; date: Date } | null>(null);
   const {
     user, loading, submitting, error, mode, clearError, toggleMode,
     name, setName, dob, setDob, phoneNumber, setPhoneNumber,
@@ -37,8 +40,11 @@ function AppContent() {
   } = useAuth();
 
   const renderPage = () => {
+    if (selectedRide) {
+      return <RideDetailPage ride={selectedRide.ride} date={selectedRide.date} onBack={() => setSelectedRide(null)} />;
+    }
     switch (activeTab) {
-      case 'calendar': return <CalendarPage />;
+      case 'calendar': return <CalendarPage onOpenRide={(ride, date) => setSelectedRide({ ride, date })} />;
       case 'rides': return <RidesPage />;
       case 'drives': return <DrivesPage />;
       case 'profile': return <ProfilePage />;
@@ -84,7 +90,7 @@ function AppContent() {
         <Pressable onPress={handleLogout}><Text style={styles.logoutText}>Sign out</Text></Pressable>
       </View> */}
       <View style={styles.contentContainer}>{renderPage()}</View>
-      <AppNavigation activeTab={activeTab} onChange={setActiveTab} />
+      {!selectedRide && <AppNavigation activeTab={activeTab} onChange={setActiveTab} />}
     </SafeAreaView>
   );
 }

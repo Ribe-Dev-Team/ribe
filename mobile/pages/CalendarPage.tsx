@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import styles, { colors } from '../styles';
 
-type RideStatus = 'pending' | 'awaiting' | 'confirmed';
+export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
 
-interface Ride {
+export interface Ride {
   status: RideStatus;
   time: string;
   duration?: string;
@@ -48,7 +48,11 @@ const statusDetails: Record<RideStatus, { label: string; color: string }> = {
   confirmed: { label: 'Confirmed Ride', color: colors.confirmed },
 };
 
-export default function CalendarPage() {
+interface CalendarPageProps {
+  onOpenRide: (ride: Ride, date: Date) => void;
+}
+
+export default function CalendarPage({ onOpenRide }: CalendarPageProps) {
   const [month, setMonth] = useState(new Date(2026, 7, 1));
   const [selectedDate, setSelectedDate] = useState(new Date(2026, 7, 16));
   const calendarDays = useMemo(() => getCalendarDays(month), [month]);
@@ -104,7 +108,7 @@ export default function CalendarPage() {
       {selectedRides.length ? selectedRides.map((ride) => {
         const detail = statusDetails[ride.status];
         return (
-          <View key={ride.status} style={[styles.rideCard, { borderLeftColor: detail.color }]}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Open details for ${ride.driver} ride`} key={ride.status} onPress={() => onOpenRide(ride, selectedDate)} style={[styles.rideCard, { borderLeftColor: detail.color }]}>
             <View style={styles.rideTopRow}>
               <Text style={styles.rideStatus}><Text style={{ color: detail.color }}>●</Text> {detail.label}</Text>
               <Text style={styles.rideTime}>{ride.time}{ride.duration ? ` (${ride.duration})` : ''}</Text>
@@ -114,7 +118,7 @@ export default function CalendarPage() {
             <View style={styles.rideDivider} />
             <Text style={styles.driverName}>●  {ride.driver}</Text>
             <Text style={styles.vehicleText}>     {ride.vehicle}</Text>
-          </View>
+          </Pressable>
         );
       }) : <Text style={styles.emptyRides}>No rides scheduled for this day.</Text>}
 
