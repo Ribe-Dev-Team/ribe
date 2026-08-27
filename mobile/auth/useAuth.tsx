@@ -69,22 +69,58 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/* email mask: 5 parts,
+    1: '[^\s@]+', one or more characters that are not whitespace (\s) or the '@' symbol
+    2: '@', the '@' symbol
+    3: '[^\s@]+', same as (1)
+    4: '\.', the '.' character
+    5: '[^\s@]{2,}', same as (1) but minimum of 2 characters
+  note: leading '^' and trailing '$' require that to be beginning and end of the string
+*/
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/* name mask:
+    1: '[A-Za-zÀ-ÖØ-öø-ÿ]+', one or more characters from an extended alphabet set - a name
+    2: '?:[ '-]', permit name spacer (space, apstrophe or hypen)
+    3: '(...)*', zero or more additional names after the first one
+  note: leading '^' and trailing '$' require that to be beginning and end of the string
+*/
 const namePattern = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/;
-const phonePattern = /^\+?[0-9()\-\s]{7,20}$/;
+/* phone number mask:
+    1: '\+?', optionally may begin with a '+'
+    2: '[0-9()\- ]', defines the character set of digits, round brackets, hypens and spaces
+    3: '{10,20}', the phone number should be 10 to 20 digits long
+  note: leading '^' and trailing '$' require that to be beginning and end of the string
+*/
+const phonePattern = /^\+?[0-9()\- ]{10,15}$/;
+/* password mask:
+    1: '(?=.*[a-z])', checks a lowercase character exists somewhere in the string
+    2: '(?=.*[A-Z])', checks an uppercase character exists somewhere in the string
+    3: '(?=.*\d)', checks a digit exists somewhere in the string
+    4: '.{8,}', checks the string has at least 8 characters
+  note: leading '^' and trailing '$' require that to be beginning and end of the string
+*/
 const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+/* date mask:
+    1: '\d{2}', 2 digits (DD - leading 0s required)
+    2: '\/', the literal '/' character
+    3: '\d{2}', another 2 digits (MM - leading 0s required)
+    4: '\/', the literal '/' character
+    5: '\d{4}', another 4 digits (YYYY - full year required)
+  note: leading '^' and trailing '$' require that to be beginning and end of the string
+*/
+const datePattern = /^\d{2}\/\d{2}\/\d{4}$/;
 
 const isValidEmail = (value: string) => emailPattern.test(value.trim());
 const isValidName = (value: string) => value.trim().length >= 2 && namePattern.test(value.trim());
 const isValidPhoneNumber = (value: string) => {
-  const digitsOnly = value.replace(/\D/g, '');
-  return phonePattern.test(value.trim()) && digitsOnly.length >= 10 && digitsOnly.length <= 15;
+  const digitsOnly = value.replace(/[^0-9]/g, '');
+  return phonePattern.test(value.trim()) && digitsOnly.length >= 10 && digitsOnly.length <= 11;
 };
 const isValidDob = (value: string) => {
   const trimmed = value.trim();
-  
+
   // 1. Check for DD/MM/YYYY format
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) return false;
+  if (!datePattern.test(trimmed)) return false;
 
   // 2. Extract parts and safely create the Date object
   const [day, month, year] = trimmed.split('/').map(Number);
@@ -376,7 +412,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // 4. Save to Firestore
       await setDoc(doc(db, 'users', currentUser.uid), profilePayload, { merge: true });
-      
+
       // 5. Update local state
       setProfileData((currentProfile) => ({
         ...(currentProfile ?? {}),
