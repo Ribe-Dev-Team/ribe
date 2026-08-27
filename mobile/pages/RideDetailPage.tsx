@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
+import MapPreview from '../components/MapPreview';
 
 interface RideDetailPageProps {
 	ride: Ride;
@@ -15,21 +16,6 @@ const profiles: Record<string, { initials: string; bio: string; degree: string; 
 
 function formatDate(date: Date) {
 	return date.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-}
-
-function MapPreview({ ride }: { ride: Ride }) {
-	const isConfirmed = ride.status === 'confirmed';
-	return (
-		<View style={styles.mapPreview} accessibilityLabel={isConfirmed ? 'Preview of the confirmed ride route' : 'Map showing pickup and drop-off locations'}>
-			<View style={styles.mapRoadOne} />
-			<View style={styles.mapRoadTwo} />
-			<View style={styles.mapRoadThree} />
-			<View style={[styles.mapMarker, styles.mapPickupMarker]}><Text style={styles.mapMarkerText}>A</Text></View>
-			<View style={[styles.mapMarker, styles.mapDropoffMarker]}><Text style={styles.mapMarkerText}>B</Text></View>
-			{isConfirmed && <View style={styles.mapRoute} />}
-			<View style={styles.mapCaption}><Text style={styles.mapCaptionText}>{isConfirmed ? 'Confirmed route preview' : 'Pickup and drop-off preview'}</Text></View>
-		</View>
-	);
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -49,7 +35,7 @@ export default function RideDetailPage({ ride, date, onBack }: RideDetailPagePro
 			<Text style={styles.detailDate}>{formatDate(date)}</Text>
 
 			<View style={styles.detailStatusRow}><Text style={styles.detailTime}>{ride.time}</Text><View style={[styles.statusPill, { backgroundColor: statusColor }]}><Text style={styles.statusPillText}>{status}</Text></View></View>
-			<MapPreview ride={ride} />
+			<MapPreview routeShown={isConfirmed} locations={[ride.start, ride.destination]} />
 
 			<Section title="Journey">
 				<View style={styles.locationRow}><Text style={[styles.locationDot, { color: colors.confirmed }]}>●</Text><View><Text style={styles.locationLabel}>Pickup {ride.status === 'pending' ? 'window' : 'spot'}</Text><Text style={styles.locationText}>{ride.start}</Text><Text style={styles.locationMeta}>{ride.status === 'pending' ? ride.time : '10 minutes before departure'}</Text></View></View>

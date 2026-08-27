@@ -1,8 +1,20 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, ScrollView, Text } from 'react-native';
 import styles, { colors } from '../styles';
+import CalendarGrid from '../components/CalendarGrid';
+import PageHeader from '../components/PageHeader';
+import CarouselControls from '../components/CarouselControls';
+import NewRideButton from '../components/NewRideButton';
+import RideCard from '../components/RideCard';
 
 export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
+
+//TODO: link to real data
+//TODO: make the +New Ride button hover over the whole page
+//TODO: make the +New Ride button go to form
+//TODO: update calendar dot colours
+//TODO: have it auto open on TODAY
+//TODO: make past days greyed out.
 
 export interface Ride {
   status: RideStatus;
@@ -64,68 +76,34 @@ export default function CalendarPage({ onOpenRide }: CalendarPageProps) {
 
   return (
     <ScrollView contentContainerStyle={styles.calendarScreen} showsVerticalScrollIndicator={false}>
-      <View style={styles.calendarHeader}>
-        <Text style={styles.calendarTitle}>Calendar</Text>
-      </View>
+      <PageHeader />
 
-      <View style={styles.monthControls}>
-        <Pressable accessibilityLabel="Previous month" onPress={() => changeMonth(-1)} style={styles.monthButton}>
-          <Text style={styles.monthButtonText}>‹</Text>
-        </Pressable>
-        <Text style={styles.monthTitle}>{monthNames[month.getMonth()]} {month.getFullYear()}</Text>
-        <Pressable accessibilityLabel="Next month" onPress={() => changeMonth(1)} style={styles.monthButton}>
-          <Text style={styles.monthButtonText}>›</Text>
-        </Pressable>
-      </View>
+      <CarouselControls
+        itemLabel={`${monthNames[month.getMonth()]} ${month.getFullYear()}`}
+        onNext={() => changeMonth(1)}
+        onPrevious={() => changeMonth(-1)}
+      />
 
-      <View style={styles.calendarCard}>
-        <View style={styles.weekdayRow}>
-          {weekdays.map((weekday) => <Text key={weekday} style={styles.weekday}>{weekday}</Text>)}
-        </View>
-        <View style={styles.daysGrid}>
-          {calendarDays.map((date) => {
-            const isCurrentMonth = date.getMonth() === month.getMonth();
-            const isSelected = dateKey(date) === dateKey(selectedDate);
-            const dayRides = rides[dateKey(date)] ?? [];
-            return (
-              <Pressable
-                accessibilityLabel={`Select ${monthNames[date.getMonth()]} ${date.getDate()}`}
-                key={dateKey(date)}
-                onPress={() => { setSelectedDate(date); if (!isCurrentMonth) setMonth(new Date(date.getFullYear(), date.getMonth(), 1)); }}
-                style={[styles.dayCell, isSelected ? styles.selectedDay : null]}
-              >
-                <Text style={[styles.dayText, !isCurrentMonth ? styles.outsideMonthText : null]}>{date.getDate()}</Text>
-                <View style={styles.dotRow}>
-                  {dayRides.map((ride) => <View key={ride.status} style={[styles.dayDot, { backgroundColor: statusDetails[ride.status].color }]} />)}
-                </View>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
+      <CalendarGrid
+        days={calendarDays}
+        getDateKey={dateKey}
+        getRideColors={(date) => (rides[dateKey(date)] ?? []).map((ride) => statusDetails[ride.status].color)}
+        month={month}
+        onSelectDate={(date) => {
+          setSelectedDate(date);
+          if (date.getMonth() !== month.getMonth()) setMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+        }}
+        selectedDate={selectedDate}
+        weekdays={weekdays}
+      />
 
       <Text style={styles.ridesHeading}>Rides on {monthNames[selectedDate.getMonth()]} {selectedDate.getDate()}</Text>
       {selectedRides.length ? selectedRides.map((ride) => {
         const detail = statusDetails[ride.status];
-        return (
-          <Pressable accessibilityRole="button" accessibilityLabel={`Open details for ${ride.driver} ride`} key={ride.status} onPress={() => onOpenRide(ride, selectedDate)} style={[styles.rideCard, { borderLeftColor: detail.color }]}>
-            <View style={styles.rideTopRow}>
-              <Text style={styles.rideStatus}><Text style={{ color: detail.color }}>●</Text> {detail.label}</Text>
-              <Text style={styles.rideTime}>{ride.time}{ride.duration ? ` (${ride.duration})` : ''}</Text>
-            </View>
-            <Text style={styles.rideDetail}>•  {ride.start}</Text>
-            <Text style={styles.rideDetail}>▰  {ride.destination}</Text>
-            <View style={styles.rideDivider} />
-            <Text style={styles.driverName}>●  {ride.driver}</Text>
-            <Text style={styles.vehicleText}>     {ride.vehicle}</Text>
-          </Pressable>
-        );
+        return <RideCard key={ride.status} onPress={() => onOpenRide(ride, selectedDate)} ride={ride} statusColor={detail.color} statusLabel={detail.label} />;
       }) : <Text style={styles.emptyRides}>No rides scheduled for this day.</Text>}
 
-      <Pressable onPress={() => Alert.alert('New Ride', 'The new ride form will be available here.')} style={styles.newRideButton}>
-        <Text style={styles.newRidePlus}>＋</Text>
-        <Text style={styles.newRideText}>New Ride</Text>
-      </Pressable>
+      <NewRideButton onPress={() => Alert.alert('New Ride', 'The new ride form will be available here.')} />
     </ScrollView>
   );
 }
