@@ -1,10 +1,62 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import styles from '../styles';
+import { Booking } from './schema/booking.schema';
 
 export default function BookingPage() {
   // create hook for dynamic behaviour
-  const [toUni, setToUni] = useState(true);
+  const [toUni, setToUni] = useState<boolean>(true);
+  const [address, setAddress] = useState<string>('');
+  const [addrErr, setAddrErr] = useState<string>('');
+  const [travelDate, setTravelDate] = useState<string>('');
+  const [travelDateErr, setTravelDateErr] = useState<string>('');
+  const [depTime, setDepTime] = useState<string>('');
+  const [depTimeErr, setDepTimeErr] = useState<string>('');
+  const [arrTime, setArrTime] = useState<string>('');
+  const [arrTimeErr, setArrTimeErr] = useState<string>('');
+
+  const isValid = (): boolean => {
+    return (addrErr === '') && (travelDateErr === '') && (depTimeErr === '') && (arrTimeErr === '');
+  };
+
+  const validateBooking = (): boolean => {
+    console.log(travelDate);
+
+    // address validation
+    if (address === '') {
+      setAddrErr("Address required");
+    } else {
+      setAddrErr('');
+    }
+
+    // date validation
+    if (travelDate === '') {
+      setTravelDateErr("Travel date required");
+    } else {
+      setTravelDateErr('');
+    }
+
+    // departure time validation
+    if (depTime === '') {
+      setDepTimeErr("Departure time required");
+    } else {
+      setDepTimeErr('');
+    }
+
+    // arrival time validation
+    if (arrTime === '') {
+      setArrTimeErr("Arrival time required");
+    } else {
+      setArrTimeErr('');
+    }
+
+    return isValid();
+  };
+  const submitBooking = async (): Promise<void> => {
+    if (!validateBooking()) return;
+
+    // send to database/backend
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.calendarScreen} showsVerticalScrollIndicator={false}>
@@ -32,36 +84,34 @@ export default function BookingPage() {
           </View>
 
           {/* Address Selection (depending on travel direction) */}
-          {
-            (toUni)
-              ? (<View>
-                <Text style={styles.helperText}>Enter pick up address:</Text>
-                <TextInput style={styles.input} />
-              </View>)
-              : (<View>
-                <Text style={styles.helperText}>Enter destination address:</Text>
-                <TextInput style={styles.input} />
-              </View>)
-          }
+          <View>
+            <Text style={styles.helperText}>{(toUni) ? "Enter pick up address:" : "Enter destination address:"}</Text>
+            <TextInput onChangeText={setAddress} style={styles.input} />
+            {(addrErr !== '') ? <Text style={styles.errorText}>{addrErr}</Text> : null}
+          </View>
+
 
           {/* Date and time inputs */}
           <View>
             <Text style={styles.helperText}>What date would you like to travel?</Text>
-            <TextInput style={styles.input} />
+            <TextInput onChangeText={setTravelDate} style={styles.input} />
+            {(travelDateErr !== '') ? <Text style={styles.errorText}>{travelDateErr}</Text> : null}
           </View>
           <View>
             <Text style={styles.helperText}>Earliest Departure:</Text>
-            <TextInput style={styles.input} />
+            <TextInput onChangeText={setDepTime} style={styles.input} />
+            {(depTimeErr !== '') ? <Text style={styles.errorText}>{depTimeErr}</Text> : null}
           </View>
           <View>
             <Text style={styles.helperText}>Latest Arrival:</Text>
-            <TextInput style={styles.input} />
+            <TextInput onChangeText={setArrTime} style={styles.input} />
+            {(arrTimeErr !== '') ? <Text style={styles.errorText}>{arrTimeErr}</Text> : null}
           </View>
 
           {/* Submit Button */}
           <View>
-            <Pressable style={styles.primaryButton}>
-              <Text onPress={() => { }} style={styles.primaryButtonText}>Submit</Text>
+            <Pressable onPress={validateBooking} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonText}>Submit</Text>
             </Pressable>
           </View>
         </View>
