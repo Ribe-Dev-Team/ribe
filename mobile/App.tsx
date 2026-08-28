@@ -14,6 +14,8 @@ import {
   Keyboard, // <-- Added Keyboard here
 } from 'react-native';
 
+//TEST COMMIT
+
 // Make sure all these imports exist in your project path
 import { AuthProvider, useAuth } from './auth/useAuth';
 import styles from './styles';
