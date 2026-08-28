@@ -56,25 +56,20 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
-    console.log('--- SAVE BUTTON CLICKED ---'); 
 
     if (submitting) {
-      console.log('Save aborted: already submitting');
       return;
     }
 
     try {
-      console.log('Attempting to update profile...');
       await updateProfileDetails({
         profilePhotoBase64: profilePhotoBase64 ?? undefined,
         profilePhotoMimeType: profilePhotoMimeType ?? undefined,
         degree: degree.trim(),
         bio: bio.trim(),
       });
-      console.log('Save successful!');
       setIsEditing(false);
     } catch (error) {
-      console.log('Save failed:', error);
       // keep the edit screen open so the user can retry after a failed save
     }
   };

@@ -9,8 +9,6 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
-// Replace uploadBytes with uploadString
-
 
 type UserProfileData = {
   name?: string | null;
@@ -74,20 +72,19 @@ const namePattern = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-öø-ÿ]+)*
 const phonePattern = /^\+?[0-9()\-\s]{7,20}$/;
 const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 
-const isValidEmail = (value: string) => emailPattern.test(value.trim());
-const isValidName = (value: string) => value.trim().length >= 2 && namePattern.test(value.trim());
+// Helpers now expect pre-trimmed values
+const isValidEmail = (value: string) => emailPattern.test(value);
+const isValidName = (value: string) => value.length >= 2 && namePattern.test(value);
 const isValidPhoneNumber = (value: string) => {
   const digitsOnly = value.replace(/\D/g, '');
-  return phonePattern.test(value.trim()) && digitsOnly.length >= 10 && digitsOnly.length <= 15;
+  return phonePattern.test(value) && digitsOnly.length >= 10 && digitsOnly.length <= 15;
 };
 const isValidDob = (value: string) => {
-  const trimmed = value.trim();
-  
   // 1. Check for DD/MM/YYYY format
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) return false;
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return false;
 
   // 2. Extract parts and safely create the Date object
-  const [day, month, year] = trimmed.split('/').map(Number);
+  const [day, month, year] = value.split('/').map(Number);
   const date = new Date(year, month - 1, day); // Month is 0-indexed
 
   // 3. Prevent invalid dates rolling over (e.g., 31/02/2023 becoming March 3rd)
@@ -99,7 +96,7 @@ const isValidDob = (value: string) => {
     return false;
   }
 
-  // 4. Calculate age (logic remains unchanged)
+  // 4. Calculate age
   const today = new Date();
   let age = today.getFullYear() - date.getFullYear();
   const hasBirthdayPassed =
@@ -112,7 +109,10 @@ const isValidDob = (value: string) => {
 
   return age >= 18;
 };
-const isValidPassword = (value: string) => passwordPattern.test(value) && !/\s/.test(value);
+
+// We don't trim passwords because some users might intentionally use spaces in passphrases,
+// or we want the regex `!/\s/.test(value)` to strictly catch leading/trailing spaces as invalid.
+const isValidPassword = (value: string) => passwordPattern.test(value);
 
 const getFormValidationError = ({
   mode,
@@ -131,8 +131,11 @@ const getFormValidationError = ({
   password: string;
   confirmPassword: string;
 }) => {
+  // Trim everything internally for live validation checking (like isFormValid)
   const trimmedEmail = email.trim();
-  const trimmedPassword = password.trim();
+  const trimmedName = name.trim();
+  const trimmedDob = dob.trim();
+  const trimmedPhone = phoneNumber.trim();
 
   if (!trimmedEmail) {
     return 'Email is required.';
@@ -142,7 +145,7 @@ const getFormValidationError = ({
     return 'Enter a valid email address.';
   }
 
-  if (!trimmedPassword) {
+  if (!password) {
     return 'Password is required.';
   }
 
@@ -154,19 +157,19 @@ const getFormValidationError = ({
     return null;
   }
 
-  if (!isValidName(name)) {
+  if (!isValidName(trimmedName)) {
     return 'Please enter a valid full name.';
   }
 
-  if (!isValidDob(dob)) {
-    return 'Please enter a valid date of birth in YYYY-MM-DD format and you must be at least 18 years old.';
+  if (!isValidDob(trimmedDob)) {
+    return 'Please enter a valid date of birth in DD/MM/YYYY format and you must be at least 18 years old.';
   }
 
-  if (!isValidPhoneNumber(phoneNumber)) {
+  if (!isValidPhoneNumber(trimmedPhone)) {
     return 'Please enter a valid phone number.';
   }
 
-  if (!confirmPassword.trim()) {
+  if (!confirmPassword) {
     return 'Please confirm your password.';
   }
 
@@ -264,12 +267,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [confirmPassword, dob, email, mode, name, password, phoneNumber]);
 
   const handleLogin = async () => {
+    const trimmedEmail = email.trim();
+
     const validationError = getFormValidationError({
       mode: 'login',
       name,
       dob,
       phoneNumber,
-      email,
+      email: trimmedEmail,
       password,
       confirmPassword,
     });
@@ -283,7 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      await signInWithEmailAndPassword(auth, trimmedEmail, password);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to sign in right now.';
       setError(message);
@@ -293,12 +298,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleSignup = async () => {
+    // Clean inputs exactly once for the signup process
+    const trimmedName = name.trim();
+    const trimmedDob = dob.trim();
+    const trimmedPhone = phoneNumber.trim();
+    const trimmedEmail = email.trim();
+
     const validationError = getFormValidationError({
       mode: 'signup',
-      name,
-      dob,
-      phoneNumber,
-      email,
+      name: trimmedName,
+      dob: trimmedDob,
+      phoneNumber: trimmedPhone,
+      email: trimmedEmail,
       password,
       confirmPassword,
     });
@@ -312,15 +323,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
       const currentUser = userCredential.user;
 
-      await updateProfile(currentUser, { displayName: name.trim() });
+      await updateProfile(currentUser, { displayName: trimmedName });
+      
       const profilePayload = {
-        name: name.trim(),
-        dob: dob.trim(),
-        phoneNumber: phoneNumber.trim(),
-        email: email.trim(),
+        name: trimmedName,
+        dob: trimmedDob,
+        phoneNumber: trimmedPhone,
+        email: trimmedEmail,
         onboardingComplete: false,
         createdAt: new Date().toISOString(),
       };
@@ -356,28 +368,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      // 1. Start with the existing photo URL (if any)
       let profilePhotoUrl = profileData?.profilePhotoUrl ?? null;
 
-      // 2. If a new photo was selected, format the base64 string to be saved directly in Firestore
       if (data.profilePhotoBase64) {
         const mimeType = data.profilePhotoMimeType || 'image/jpeg';
         profilePhotoUrl = `data:${mimeType};base64,${data.profilePhotoBase64}`;
       }
 
-      // 3. Prepare the Firestore payload
+      // Clean inputs exactly once for saving to Firestore
+      const trimmedDegree = data.degree?.trim() || null;
+      const trimmedBio = data.bio?.trim() || null;
+
       const profilePayload = {
-        degree: data.degree?.trim() || null,
-        bio: data.bio?.trim() || null,
-        profilePhotoUrl: profilePhotoUrl, // Saving the base64 string directly!
+        degree: trimmedDegree,
+        bio: trimmedBio,
+        profilePhotoUrl, 
         onboardingComplete: true,
         updatedAt: new Date().toISOString(),
       };
 
-      // 4. Save to Firestore
       await setDoc(doc(db, 'users', currentUser.uid), profilePayload, { merge: true });
       
-      // 5. Update local state
       setProfileData((currentProfile) => ({
         ...(currentProfile ?? {}),
         name: currentProfile?.name ?? currentUser.displayName ?? '',
