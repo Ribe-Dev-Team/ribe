@@ -116,7 +116,7 @@ export default function BookingPage() {
           {/* Date and time inputs */}
           <View>
             <Text style={styles.helperText}>What date would you like to travel?</Text>
-            <input type="date" onChange={(e) => {setTravelDate(new Date(e.target.value))}} style={styles.input} />
+            <TextInput onChangeText={(str) => { setTravelDate(new Date(str)); }} style={styles.input} />
             {(travelDateErr !== '') ? <Text style={styles.errorText}>{travelDateErr}</Text> : null}
           </View>
           <View>
