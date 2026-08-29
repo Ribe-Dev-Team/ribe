@@ -2,13 +2,18 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import styles from '../styles';
 import { Booking } from './schema/booking.schema';
+import { Timestamp } from 'firebase/firestore';
+import { addRideRequest } from './schema/firebaseBookingMethods';
 
 export default function BookingPage() {
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
   // create hook for dynamic behaviour
   const [toUni, setToUni] = useState<boolean>(true);
   const [address, setAddress] = useState<string>('');
   const [addrErr, setAddrErr] = useState<string>('');
-  const [travelDate, setTravelDate] = useState<string>('');
+  const [travelDate, setTravelDate] = useState<Date>(tomorrow);
   const [travelDateErr, setTravelDateErr] = useState<string>('');
   const [depTime, setDepTime] = useState<string>('');
   const [depTimeErr, setDepTimeErr] = useState<string>('');
@@ -30,9 +35,11 @@ export default function BookingPage() {
     }
 
     // date validation
-    if (travelDate === '') {
+    if (travelDate === null || travelDate === undefined) {
       setTravelDateErr("Travel date required");
-    } else {
+    } else if (travelDate <= new Date()) {
+      setTravelDateErr("Travel date must be in the future");
+    } {
       setTravelDateErr('');
     }
 
@@ -52,10 +59,25 @@ export default function BookingPage() {
 
     return isValid();
   };
+
   const submitBooking = async (): Promise<void> => {
     if (!validateBooking()) return;
 
     // send to database/backend
+    const booking = {
+      toUni: toUni,
+      address: address,
+      date: Timestamp.fromDate(travelDate),
+      departureTime: depTime,
+      arrivalTime: arrTime,
+    };
+
+    console.log(booking);
+
+    addRideRequest(booking);
+
+    // show success message or return to calendar page
+    alert("Returning to calendar page now...");
   };
 
   return (
@@ -94,7 +116,7 @@ export default function BookingPage() {
           {/* Date and time inputs */}
           <View>
             <Text style={styles.helperText}>What date would you like to travel?</Text>
-            <TextInput onChangeText={setTravelDate} style={styles.input} />
+            <input type="date" onChange={(e) => {setTravelDate(new Date(e.target.value))}} style={styles.input} />
             {(travelDateErr !== '') ? <Text style={styles.errorText}>{travelDateErr}</Text> : null}
           </View>
           <View>
@@ -110,7 +132,7 @@ export default function BookingPage() {
 
           {/* Submit Button */}
           <View>
-            <Pressable onPress={validateBooking} style={styles.primaryButton}>
+            <Pressable onPress={submitBooking} style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Submit</Text>
             </Pressable>
           </View>
