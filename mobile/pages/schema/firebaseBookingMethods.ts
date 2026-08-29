@@ -1,8 +1,9 @@
 import { Timestamp, Firestore } from "firebase/firestore";
 import { RideRequest } from "./firebaseBooking.schema";
+import { db } from '../../firebaseConfig';
 
 const { doc, getDoc, setDoc, updateDoc, collection } = require('firebase/firestore');
-const db = require('../database');
+const requestRef = collection(db, 'rideRequests');
 
 const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -46,7 +47,7 @@ function validateRideRequest(req: Partial<RideRequest>): void {
 // Add request to DB
 export async function addRideRequest(req: Partial<RideRequest>): Promise<void> {
   // Generate a new document reference with an auto ID
-  const docRef = db.collection("rideRequests").doc();
+  const docRef = requestRef.doc();
 
   // add doc reference to data object
   const rideReq = {
@@ -54,7 +55,7 @@ export async function addRideRequest(req: Partial<RideRequest>): Promise<void> {
     requestID: docRef.id,
   }
 
-  validateRideRequest(req);
+  validateRideRequest(rideReq);
 
   await docRef.set(req);
 }
@@ -62,11 +63,11 @@ export async function addRideRequest(req: Partial<RideRequest>): Promise<void> {
 export async function updateRideRequest(requestID: string, updates: Partial<RideRequest>): Promise<void> {
   validateRideRequest(updates);
 
-  const docRef = db.collection("rideRequests").doc(requestID);
+  const docRef = doc(db, 'rideRequests', requestID);
   await docRef.update(updates);
 }
 
 export async function deleteRideRequest(requestID: string): Promise<void> {
-  const docRef = db.collection("rideRequests").doc(requestID);
+  const docRef = doc(db, 'rideRequests', requestID);
   await docRef.delete();
 }
