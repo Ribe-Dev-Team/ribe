@@ -67,6 +67,8 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
 export const addRideOffer = async (booking: Booking): Promise<string> => {
   if (booking.detourTime === undefined) {
     throw new Error("Max detour time is required for ride offers");
+  } else if (booking.capacity === undefined) {
+    throw new Error("Number of available seats needs to be specified for ride offers");
   }
 
   const collectionRef = collection(db, 'rideOffers');
@@ -78,6 +80,7 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     departureTime: booking.depTime.trim(),
     arrivalTime: booking.arrTime.trim(),
     maxDetourTime: booking.detourTime,
+    seatCapacity: booking.capacity,
   };
 
   // existence & type checking
@@ -97,6 +100,10 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error("detour time must be a number");
   }
 
+  if (offer.seatCapacity !== undefined && typeof offer.seatCapacity !== "number") {
+    throw new Error("seat capacity time must be a number");
+  }
+
   if (offer.departureTime !== undefined && !timePattern.test(offer.departureTime)) {
     throw new Error("departureTime must be in 'HH:mm' (24-hour) format");
   }
@@ -105,7 +112,7 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error("arrivalTime must be in 'HH:mm' (24-hour) format");
   }
 
-  // range checking (time in bounds)
+  // range checking (time in bounds + seats within reason)
   if (offer.departureTime && offer.arrivalTime) {
     const [depHrs, depMins] = offer.departureTime.split(":").map(Number);
     const [arrHrs, arrMins] = offer.arrivalTime.split(":").map(Number);
@@ -119,6 +126,10 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     } else if (timeDiff < offer.maxDetourTime) {
       throw new Error(`detour allowance of ${offer.maxDetourTime} (min) exceeds travel window of ${timeDiff} (min)`);
     }
+  }
+
+  if (offer.seatCapacity < 1 || offer.seatCapacity > 12) {
+    throw new Error(`Ride offers require 1 to 12 seats (inclusive) be available but ${offer.seatCapacity} were given.`);
   }
 
   const docRef = await addDoc(collectionRef, offer);

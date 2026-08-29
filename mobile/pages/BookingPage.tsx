@@ -16,6 +16,8 @@ export default function BookingPage() {
   const [travelDateErr, setTravelDateErr] = useState<string>('');
   const [detourTime, setDetourTime] = useState<number>(0);
   const [detourTimeErr, setDetourTimeErr] = useState<string>('');
+  const [numSeats, setNumSeats] = useState<number>(1);
+  const [numSeatsErr, setNumSeatsErr] = useState<string>('');
   const [depTime, setDepTime] = useState<string>(''); // Format: HH:mm
   const [depTimeErr, setDepTimeErr] = useState<string>('');
   const [arrTime, setArrTime] = useState<string>(''); // Format: HH:mm
@@ -44,13 +46,22 @@ export default function BookingPage() {
       } else setTravelDateErr('');
     }
 
-    // detour time validation
+    // detour time & seats validation
     if (!isDriving) {
       setDetourTimeErr('');
       setDetourTime(0);
-    } else if (detourTime <= 0) {
-      setDetourTimeErr("Maximum detour time required");
-    } else setDetourTimeErr('');
+      setNumSeatsErr('');
+    } else {
+      if (detourTime <= 0) {
+        setDetourTimeErr("Maximum detour time required");
+      } else setDetourTimeErr('');
+
+      if (numSeats < 1) {
+        setNumSeatsErr("Ride offers require at least one available seat");
+      } else if (numSeats > 12) {
+        setNumSeatsErr("Too many seats offered. Max 12.");
+      } else setNumSeatsErr('');
+    }
 
     // departure time validation
     if (!timePattern.test(depTime.trim())) {
@@ -84,7 +95,12 @@ export default function BookingPage() {
         arrTime: arrTime.trim(),
       };
       // add detour time for drivers
-      const bookingData: Booking = (isDriving) ? { ...commonData, detourTime: detourTime } : commonData;
+      const bookingData: Booking = (isDriving)
+        ? {
+          ...commonData,
+          detourTime: detourTime,
+          capacity: numSeats,
+        } : commonData;
 
       // Pass object to firebaseBookingMethods which converts it to Firestore format
       if (isDriving) {
@@ -165,7 +181,7 @@ export default function BookingPage() {
             <View>
               <Text style={styles.helperText}>How much are you willing to detour? (mins)</Text>
               <TextInput onChangeText={(str) => setDetourTime(Number(str))} style={styles.input} />
-              {(addrErr !== '') ? <Text style={styles.errorText}>{detourTimeErr}</Text> : null}
+              {(detourTimeErr !== '') ? <Text style={styles.errorText}>{detourTimeErr}</Text> : null}
             </View>
           ) : null}
 
@@ -182,6 +198,15 @@ export default function BookingPage() {
             <TextInput onChangeText={setArrTime} style={styles.input} value={arrTime} placeholder="HH:MM (24hr)" />
             {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
           </View>
+
+          {/* Passenger capacity, drivers only */}
+          {(isDriving) ? (
+            <View>
+              <Text style={styles.helperText}>How many passengers are you willing to take?</Text>
+              <TextInput onChangeText={(str) => setNumSeats(Number(str))} style={styles.input} />
+              {(numSeatsErr !== '') ? <Text style={styles.errorText}>{numSeatsErr}</Text> : null}
+            </View>
+          ) : null}
 
           {/* Submit */}
           <View>

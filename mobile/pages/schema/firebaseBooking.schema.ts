@@ -17,4 +17,5 @@ export interface RideOffer {
   departureTime: string; // "HH:mm", 24-hr time
   arrivalTime: string;   // "HH:mm", 24-hr time
   maxDetourTime: number;    // time in minutes
+  seatCapacity: number;  // max number of passengers
 }

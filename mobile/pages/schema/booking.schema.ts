@@ -6,4 +6,5 @@ export interface Booking {
     depTime: string,
     arrTime: string;
     detourTime?: number;
+    capacity?: number;
 }
