@@ -4,12 +4,18 @@ import styles from '../styles';
 import { Booking } from './schema/booking.schema';
 import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
 
+const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const timePattern = /^\d{2}:\d{2}$/;
+
 export default function BookingPage() {
+  const [isDriving, setIsDriving] = useState<boolean>(false);
   const [toUni, setToUni] = useState<boolean>(true);
   const [address, setAddress] = useState<string>('');
   const [addrErr, setAddrErr] = useState<string>('');
   const [travelDate, setTravelDate] = useState<string>(''); // Format: YYYY-MM-DD
   const [travelDateErr, setTravelDateErr] = useState<string>('');
+  const [detourTime, setDetourTime] = useState<number>(0);
+  const [detourTimeErr, setDetourTimeErr] = useState<string>('');
   const [depTime, setDepTime] = useState<string>(''); // Format: HH:mm
   const [depTimeErr, setDepTimeErr] = useState<string>('');
   const [arrTime, setArrTime] = useState<string>(''); // Format: HH:mm
@@ -19,12 +25,14 @@ export default function BookingPage() {
   const validateBooking = (): boolean => {
     let valid = true;
 
+    // address validation
     if (!address.trim()) {
       setAddrErr('Address is required.');
       valid = false;
     } else setAddrErr('');
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(travelDate.trim())) {
+    // travel date validation
+    if (!datePattern.test(travelDate.trim())) {
       setTravelDateErr('Enter date in YYYY-MM-DD format.');
       valid = false;
     } else {
@@ -36,16 +44,27 @@ export default function BookingPage() {
       } else setTravelDateErr('');
     }
 
-    if (!/^\d{2}:\d{2}$/.test(depTime.trim())) {
+    // detour time validation
+    if (!isDriving) {
+      setDetourTimeErr('');
+      setDetourTime(0);
+    } else if (detourTime <= 0) {
+      setDetourTimeErr("Maximum detour time required");
+    } else setDetourTimeErr('');
+
+    // departure time validation
+    if (!timePattern.test(depTime.trim())) {
       setDepTimeErr('Departure time must be HH:mm (24-hr).');
       valid = false;
     } else setDepTimeErr('');
 
-    if (!/^\d{2}:\d{2}$/.test(arrTime.trim())) {
+    // arrival time validation
+    if (!timePattern.test(arrTime.trim())) {
       setArrTimeErr('Arrival time must be HH:mm (24-hr).');
       valid = false;
     } else setArrTimeErr('');
 
+    // return valid if no issues found, otherwise return false
     return valid;
   };
 
@@ -55,21 +74,30 @@ export default function BookingPage() {
     setIsSubmitting(true);
 
     try {
-      // 1. Build local Booking object matching booking.schema.ts
-      const bookingData: Booking = {
+      // Build common booking data
+      const commonData: Booking = {
+        isDriving,
         toUni,
         address: address.trim(),
         travelDate: travelDate.trim(),
         depTime: depTime.trim(),
         arrTime: arrTime.trim(),
       };
+      // add detour time for drivers
+      const bookingData: Booking = (isDriving) ? { ...commonData, detourTime: detourTime } : commonData;
 
-      // 2. Pass to firebaseBookingMethods which converts it to RideRequest for Firestore
-      const newRequestId = await addRideRequest(bookingData);
-      console.log('Ride request created with ID:', newRequestId);
-      alert('Ride request successfully created!');
+      // Pass object to firebaseBookingMethods which converts it to Firestore format
+      if (isDriving) {
+        const newOfferId = await addRideOffer(bookingData);
+        console.log('Ride offer created with ID:', newOfferId);
+        alert('Ride offer successfully created!');
+      } else {
+        const newRequestId = await addRideRequest(bookingData);
+        console.log('Ride request created with ID:', newRequestId);
+        alert('Ride request successfully created!');
+      }
     } catch (error) {
-      console.error('Failed to create ride request:', error);
+      console.error('Failed to create ride request/offer:', error);
       alert('Error submitting booking.');
     } finally {
       setIsSubmitting(false);
@@ -81,6 +109,25 @@ export default function BookingPage() {
       <View style={styles.pageScreen}>
         <View style={styles.pageCard}>
           <Text style={styles.title}>Make a Booking</Text>
+
+          {/* Driver/Rider Selection */}
+          <View>
+            <Text style={styles.helperText}>Are you offering to drive?</Text>
+            <Pressable onPress={() => setIsDriving(true)} style={
+              (isDriving)
+                ? [styles.primaryButton, styles.primaryButtonDisabled]
+                : styles.primaryButton
+            }>
+              <Text style={styles.primaryButtonText}>Yes, I'll drive</Text>
+            </Pressable>
+            <Pressable onPress={() => setIsDriving(false)} style={
+              (isDriving)
+                ? styles.primaryButton
+                : [styles.primaryButton, styles.primaryButtonDisabled]
+            }>
+              <Text style={styles.primaryButtonText}>No, I'll be a passenger</Text>
+            </Pressable>
+          </View>
 
           {/* Travel Direction */}
           <View>
@@ -112,6 +159,15 @@ export default function BookingPage() {
             <TextInput onChangeText={setTravelDate} style={styles.input} value={travelDate} placeholder="2026-09-01" />
             {travelDateErr !== '' && <Text style={styles.errorText}>{travelDateErr}</Text>}
           </View>
+
+          {/* Detour limit, drivers only */}
+          {(isDriving) ? (
+            <View>
+              <Text style={styles.helperText}>How much are you willing to detour? (mins)</Text>
+              <TextInput onChangeText={(str) => setDetourTime(Number(str))} style={styles.input} />
+              {(addrErr !== '') ? <Text style={styles.errorText}>{detourTimeErr}</Text> : null}
+            </View>
+          ) : null}
 
           {/* Departure Time Input */}
           <View>

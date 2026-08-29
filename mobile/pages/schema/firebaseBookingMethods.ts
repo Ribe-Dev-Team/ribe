@@ -2,9 +2,9 @@ import { collection, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestor
 import { db } from '../../firebaseConfig';
 import { Booking } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
-const requestRef = collection(db, 'rideRequests');
 
 const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
 // Helper: Convert YYYY-MM-DD string to Firestore Timestamp safely
 export const parseDateToTimestamp = (dateStr: string): Timestamp => {
   const [year, month, day] = dateStr.trim().split('-').map(Number);
@@ -66,10 +66,11 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
   return docRef.id;
 };
 
-export const addRideOffer = async (
-  booking: Booking,
-  maxDetourTime: number
-): Promise<string> => {
+export const addRideOffer = async (booking: Booking): Promise<string> => {
+  if (booking.detourTime === undefined) {
+    throw new Error("Max detour time is required for ride offers");
+  }
+
   const collectionRef = collection(db, 'rideOffers');
 
   const offerPayload: Omit<RideOffer, 'offerID'> = {
@@ -78,7 +79,7 @@ export const addRideOffer = async (
     date: parseDateToTimestamp(booking.travelDate),
     departureTime: booking.depTime.trim(),
     arrivalTime: booking.arrTime.trim(),
-    maxDetourTime,
+    maxDetourTime: booking.detourTime,
   };
 
   const docRef = await addDoc(collectionRef, offerPayload);
