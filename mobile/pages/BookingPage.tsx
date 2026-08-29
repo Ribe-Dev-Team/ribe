@@ -2,82 +2,78 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import styles from '../styles';
 import { Booking } from './schema/booking.schema';
-import { Timestamp } from 'firebase/firestore';
-import { addRideRequest } from './schema/firebaseBookingMethods';
+import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
 
 export default function BookingPage() {
-  const today = new Date();
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-  // create hook for dynamic behaviour
   const [toUni, setToUni] = useState<boolean>(true);
   const [address, setAddress] = useState<string>('');
   const [addrErr, setAddrErr] = useState<string>('');
-  const [travelDate, setTravelDate] = useState<Date>(tomorrow);
+  const [travelDate, setTravelDate] = useState<string>(''); // Format: YYYY-MM-DD
   const [travelDateErr, setTravelDateErr] = useState<string>('');
-  const [depTime, setDepTime] = useState<string>('');
+  const [depTime, setDepTime] = useState<string>(''); // Format: HH:mm
   const [depTimeErr, setDepTimeErr] = useState<string>('');
-  const [arrTime, setArrTime] = useState<string>('');
+  const [arrTime, setArrTime] = useState<string>(''); // Format: HH:mm
   const [arrTimeErr, setArrTimeErr] = useState<string>('');
-
-  const isValid = (): boolean => {
-    return (addrErr === '') && (travelDateErr === '') && (depTimeErr === '') && (arrTimeErr === '');
-  };
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const validateBooking = (): boolean => {
-    console.log(travelDate);
+    let valid = true;
 
-    // address validation
-    if (address === '') {
-      setAddrErr("Address required");
+    if (!address.trim()) {
+      setAddrErr('Address is required.');
+      valid = false;
+    } else setAddrErr('');
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(travelDate.trim())) {
+      setTravelDateErr('Enter date in YYYY-MM-DD format.');
+      valid = false;
     } else {
-      setAddrErr('');
+      const [year, month, day] = travelDate.trim().split('-').map(Number);
+      const parsedDate = new Date(year, month - 1, day);
+      if (isNaN(parsedDate.getTime()) || parsedDate <= new Date()) {
+        setTravelDateErr('Date must be a valid future date.');
+        valid = false;
+      } else setTravelDateErr('');
     }
 
-    // date validation
-    if (travelDate === null || travelDate === undefined) {
-      setTravelDateErr("Travel date required");
-    } else if (travelDate <= new Date()) {
-      setTravelDateErr("Travel date must be in the future");
-    } {
-      setTravelDateErr('');
-    }
+    if (!/^\d{2}:\d{2}$/.test(depTime.trim())) {
+      setDepTimeErr('Departure time must be HH:mm (24-hr).');
+      valid = false;
+    } else setDepTimeErr('');
 
-    // departure time validation
-    if (depTime === '') {
-      setDepTimeErr("Departure time required");
-    } else {
-      setDepTimeErr('');
-    }
+    if (!/^\d{2}:\d{2}$/.test(arrTime.trim())) {
+      setArrTimeErr('Arrival time must be HH:mm (24-hr).');
+      valid = false;
+    } else setArrTimeErr('');
 
-    // arrival time validation
-    if (arrTime === '') {
-      setArrTimeErr("Arrival time required");
-    } else {
-      setArrTimeErr('');
-    }
-
-    return isValid();
+    return valid;
   };
 
   const submitBooking = async (): Promise<void> => {
-    if (!validateBooking()) return;
+    if (!validateBooking() || isSubmitting) return;
 
-    // send to database/backend
-    const booking = {
-      toUni: toUni,
-      address: address,
-      date: Timestamp.fromDate(travelDate),
-      departureTime: depTime,
-      arrivalTime: arrTime,
-    };
+    setIsSubmitting(true);
 
-    console.log(booking);
+    try {
+      // 1. Build local Booking object matching booking.schema.ts
+      const bookingData: Booking = {
+        toUni,
+        address: address.trim(),
+        travelDate: travelDate.trim(),
+        depTime: depTime.trim(),
+        arrTime: arrTime.trim(),
+      };
 
-    addRideRequest(booking);
-
-    // show success message or return to calendar page
-    alert("Returning to calendar page now...");
+      // 2. Pass to firebaseBookingMethods which converts it to RideRequest for Firestore
+      const newRequestId = await addRideRequest(bookingData);
+      console.log('Ride request created with ID:', newRequestId);
+      alert('Ride request successfully created!');
+    } catch (error) {
+      console.error('Failed to create ride request:', error);
+      alert('Error submitting booking.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -86,54 +82,55 @@ export default function BookingPage() {
         <View style={styles.pageCard}>
           <Text style={styles.title}>Make a Booking</Text>
 
-          {/* To/From Uni Selection */}
+          {/* Travel Direction */}
           <View>
             <Text style={styles.helperText}>Are you heading to uni?</Text>
-            <Pressable onPress={() => setToUni(true)} style={
-              (toUni)
-                ? [styles.primaryButton, styles.primaryButtonDisabled]
-                : styles.primaryButton
-            }>
+            <Pressable
+              onPress={() => setToUni(true)}
+              style={toUni ? [styles.primaryButton, styles.primaryButtonDisabled] : styles.primaryButton}
+            >
               <Text style={styles.primaryButtonText}>Yes</Text>
             </Pressable>
-            <Pressable onPress={() => setToUni(false)} style={
-              (toUni)
-                ? styles.primaryButton
-                : [styles.primaryButton, styles.primaryButtonDisabled]
-            }>
+            <Pressable
+              onPress={() => setToUni(false)}
+              style={toUni ? styles.primaryButton : [styles.primaryButton, styles.primaryButtonDisabled]}
+            >
               <Text style={styles.primaryButtonText}>No</Text>
             </Pressable>
           </View>
 
-          {/* Address Selection (depending on travel direction) */}
+          {/* Address Input */}
           <View>
-            <Text style={styles.helperText}>{(toUni) ? "Enter pick up address:" : "Enter destination address:"}</Text>
-            <TextInput onChangeText={setAddress} style={styles.input} />
-            {(addrErr !== '') ? <Text style={styles.errorText}>{addrErr}</Text> : null}
+            <Text style={styles.helperText}>{toUni ? 'Pickup Address:' : 'Destination Address:'}</Text>
+            <TextInput onChangeText={setAddress} style={styles.input} value={address} placeholder="123 Main St, Suburb" />
+            {addrErr !== '' && <Text style={styles.errorText}>{addrErr}</Text>}
           </View>
 
-
-          {/* Date and time inputs */}
+          {/* Date Input */}
           <View>
-            <Text style={styles.helperText}>What date would you like to travel?</Text>
-            <TextInput onChangeText={(str) => { setTravelDate(new Date(str)); }} style={styles.input} />
-            {(travelDateErr !== '') ? <Text style={styles.errorText}>{travelDateErr}</Text> : null}
-          </View>
-          <View>
-            <Text style={styles.helperText}>Earliest Departure:</Text>
-            <TextInput onChangeText={setDepTime} style={styles.input} />
-            {(depTimeErr !== '') ? <Text style={styles.errorText}>{depTimeErr}</Text> : null}
-          </View>
-          <View>
-            <Text style={styles.helperText}>Latest Arrival:</Text>
-            <TextInput onChangeText={setArrTime} style={styles.input} />
-            {(arrTimeErr !== '') ? <Text style={styles.errorText}>{arrTimeErr}</Text> : null}
+            <Text style={styles.helperText}>Travel Date (YYYY-MM-DD):</Text>
+            <TextInput onChangeText={setTravelDate} style={styles.input} value={travelDate} placeholder="2026-09-01" />
+            {travelDateErr !== '' && <Text style={styles.errorText}>{travelDateErr}</Text>}
           </View>
 
-          {/* Submit Button */}
+          {/* Departure Time Input */}
           <View>
-            <Pressable onPress={submitBooking} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonText}>Submit</Text>
+            <Text style={styles.helperText}>Earliest Departure (HH:mm):</Text>
+            <TextInput onChangeText={setDepTime} style={styles.input} value={depTime} placeholder="08:30" />
+            {depTimeErr !== '' && <Text style={styles.errorText}>{depTimeErr}</Text>}
+          </View>
+
+          {/* Arrival Time Input */}
+          <View>
+            <Text style={styles.helperText}>Latest Arrival (HH:mm):</Text>
+            <TextInput onChangeText={setArrTime} style={styles.input} value={arrTime} placeholder="09:15" />
+            {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
+          </View>
+
+          {/* Submit */}
+          <View>
+            <Pressable onPress={submitBooking} style={styles.primaryButton} disabled={isSubmitting}>
+              <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Submit'}</Text>
             </Pressable>
           </View>
         </View>
