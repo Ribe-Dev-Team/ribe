@@ -4,7 +4,7 @@ import styles from '../styles';
 import { Booking } from './schema/booking.schema';
 import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
 
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const datePattern = /^\d{2}-\d{2}-\d{4}$/;
 const timePattern = /^\d{2}:\d{2}$/;
 
 export default function BookingPage() {
@@ -12,7 +12,7 @@ export default function BookingPage() {
   const [toUni, setToUni] = useState<boolean>(true);
   const [address, setAddress] = useState<string>('');
   const [addrErr, setAddrErr] = useState<string>('');
-  const [travelDate, setTravelDate] = useState<string>(''); // Format: YYYY-MM-DD
+  const [travelDate, setTravelDate] = useState<string>(''); // Format: DD-MM-YYYY
   const [travelDateErr, setTravelDateErr] = useState<string>('');
   const [detourTime, setDetourTime] = useState<number>(0);
   const [detourTimeErr, setDetourTimeErr] = useState<string>('');
@@ -33,10 +33,10 @@ export default function BookingPage() {
 
     // travel date validation
     if (!datePattern.test(travelDate.trim())) {
-      setTravelDateErr('Enter date in YYYY-MM-DD format.');
+      setTravelDateErr('Enter date in DD-MM-YYYY format.');
       valid = false;
     } else {
-      const [year, month, day] = travelDate.trim().split('-').map(Number);
+      const [day, month, year] = travelDate.trim().split('-').map(Number);
       const parsedDate = new Date(year, month - 1, day);
       if (isNaN(parsedDate.getTime()) || parsedDate <= new Date()) {
         setTravelDateErr('Date must be a valid future date.');
@@ -156,7 +156,7 @@ export default function BookingPage() {
           {/* Date Input */}
           <View>
             <Text style={styles.helperText}>Travel Date (YYYY-MM-DD):</Text>
-            <TextInput onChangeText={setTravelDate} style={styles.input} value={travelDate} placeholder="2026-09-01" />
+            <TextInput onChangeText={setTravelDate} style={styles.input} value={travelDate} placeholder="DD-MM-YYYY" />
             {travelDateErr !== '' && <Text style={styles.errorText}>{travelDateErr}</Text>}
           </View>
 
@@ -172,14 +172,14 @@ export default function BookingPage() {
           {/* Departure Time Input */}
           <View>
             <Text style={styles.helperText}>Earliest Departure (HH:mm):</Text>
-            <TextInput onChangeText={setDepTime} style={styles.input} value={depTime} placeholder="08:30" />
+            <TextInput onChangeText={setDepTime} style={styles.input} value={depTime} placeholder="HH:MM (24hr)" />
             {depTimeErr !== '' && <Text style={styles.errorText}>{depTimeErr}</Text>}
           </View>
 
           {/* Arrival Time Input */}
           <View>
             <Text style={styles.helperText}>Latest Arrival (HH:mm):</Text>
-            <TextInput onChangeText={setArrTime} style={styles.input} value={arrTime} placeholder="09:15" />
+            <TextInput onChangeText={setArrTime} style={styles.input} value={arrTime} placeholder="HH:MM (24hr)" />
             {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
           </View>
 
