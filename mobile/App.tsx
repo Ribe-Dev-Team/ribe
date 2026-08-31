@@ -20,10 +20,11 @@ import { AuthProvider, useAuth } from './auth/useAuth';
 import styles, { colors } from './styles';
 import AppNavigation, { NavigationTab } from './components/AppNavigation';
 import HomePage from './pages/HomePage';
-import CalendarPage from './pages/CalendarPage';
+import CalendarPage, { Ride } from './pages/CalendarPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import OnboardingPage from './pages/OnboardingPage';
+import RideDetailPage from './pages/RideDetailPage';
 
 export default function App() {
   const [fontsLoaded] = useFonts({ Marcellus_400Regular });
@@ -47,6 +48,7 @@ function AppContent() {
   // Navigation State
   const [activeTab, setActiveTab] = useState<NavigationTab>('home');
   const [navHidden, setNavHidden] = useState(false);
+  const [selectedRide, setSelectedRide] = useState<{ ride: Ride; date: Date } | null>(null);
   const lastScrollY = useRef(0);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -87,9 +89,18 @@ function AppContent() {
   } = useAuth();
 
   const renderPage = () => {
+    if (selectedRide) {
+      return (
+        <RideDetailPage
+          ride={selectedRide.ride}
+          date={selectedRide.date}
+          onBack={() => setSelectedRide(null)}
+        />
+      );
+    }
     switch (activeTab) {
       case 'calendar':
-        return <CalendarPage />;
+        return <CalendarPage onOpenRide={(ride, date) => setSelectedRide({ ride, date })} />;
       case 'rides':
         return <DashboardPage onScroll={handleScroll} />;
       case 'profile':
@@ -200,11 +211,11 @@ function AppContent() {
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
             <Pressable
-              disabled={submitting}
+              disabled={!isFormValid || submitting}
               onPress={mode === 'login' ? handleLogin : handleSignup}
               style={[
                 styles.primaryButton,
-                submitting && styles.primaryButtonDisabled,
+                (!isFormValid || submitting) && styles.primaryButtonDisabled,
               ]}
             >
               {submitting ? (
@@ -253,7 +264,7 @@ function AppContent() {
 
       <View style={styles.contentContainer}>{renderPage()}</View>
 
-      <AppNavigation activeTab={activeTab} onChange={setActiveTab} hidden={navHidden} />
+      <AppNavigation activeTab={activeTab} onChange={setActiveTab} hidden={navHidden || !!selectedRide} />
     </SafeAreaView>
   );
 }
