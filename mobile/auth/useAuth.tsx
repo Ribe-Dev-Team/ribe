@@ -184,12 +184,12 @@ const getFormValidationError = ({
     return 'Password is required.';
   }
 
-  if (!isValidPassword(password)) {
-    return 'Password must be at least 8 characters long and include uppercase, lowercase, and a number.';
-  }
-
   if (mode !== 'signup') {
     return null;
+  }
+
+  if (!isValidPassword(password)) {
+    return 'Password must be at least 8 characters long and include uppercase, lowercase, and a number.';
   }
 
   if (!isValidName(trimmedName)) {
