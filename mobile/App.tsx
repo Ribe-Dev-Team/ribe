@@ -11,17 +11,19 @@ import {
   Text,
   TextInput,
   View,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { useFonts, Marcellus_400Regular } from '@expo-google-fonts/marcellus';
 
-// Make sure all these imports exist in your project path
 import { AuthProvider, useAuth } from './auth/useAuth';
 import styles, { colors } from './styles';
 import AppNavigation, { NavigationTab } from './components/AppNavigation';
 import HomePage from './pages/HomePage';
 import CalendarPage from './pages/CalendarPage';
 import DashboardPage from './pages/DashboardPage';
-import ProfilePage from './pages/ProfilePage'; // Added missing import
+import ProfilePage from './pages/ProfilePage';
+import OnboardingPage from './pages/OnboardingPage';
 
 export default function App() {
   const [fontsLoaded] = useFonts({ Marcellus_400Regular });
@@ -77,6 +79,8 @@ function AppContent() {
     confirmPassword,
     setConfirmPassword,
     isFormValid,
+    needsProfileSetup,
+    completeProfileSetup,
     handleLogin,
     handleSignup,
     handleLogout,
@@ -107,125 +111,138 @@ function AppContent() {
   // 2. Unauthenticated Screen (Login/Signup form)
   if (!user) {
     return (
-      <KeyboardAvoidingView
-        style={styles.screen}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <StatusBar barStyle="light-content" />
-        <View style={styles.card}>
-          <Text style={styles.title}>Ribe</Text>
-          <Text style={styles.subtitle}>
-            {mode === 'login' ? 'Sign in to continue' : 'Create your account'}
-          </Text>
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+        <KeyboardAvoidingView
+          style={styles.screen}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <StatusBar barStyle="light-content" />
+          <View style={styles.card}>
+            <Text style={styles.title}>Ribe</Text>
+            <Text style={styles.subtitle}>
+              {mode === 'login' ? 'Sign in to continue' : 'Create your account'}
+            </Text>
 
-          {mode === 'signup' && (
-            <>
-              <TextInput
-                autoCapitalize="words"
-                onChangeText={(value) => {
-                  setName(value);
-                  if (error) clearError();
-                }}
-                placeholder="Name"
-                style={styles.input}
-                value={name}
-              />
+            {mode === 'signup' && (
+              <>
+                <TextInput
+                  autoCapitalize="words"
+                  onChangeText={(value) => {
+                    setName(value);
+                    if (error) clearError();
+                  }}
+                  placeholder="Name"
+                  style={styles.input}
+                  value={name}
+                />
 
-              <TextInput
-                onChangeText={(value) => {
-                  setDob(value);
-                  if (error) clearError();
-                }}
-                placeholder="Date of Birth"
-                style={styles.input}
-                value={dob}
-              />
+                <TextInput
+                  onChangeText={(value) => {
+                    setDob(value);
+                    if (error) clearError();
+                  }}
+                  placeholder="Date of Birth (DD/MM/YYYY)"
+                  style={styles.input}
+                  value={dob}
+                />
 
-              <TextInput
-                autoCapitalize="none"
-                keyboardType="phone-pad"
-                onChangeText={(value) => {
-                  setPhoneNumber(value);
-                  if (error) clearError();
-                }}
-                placeholder="Phone Number"
-                style={styles.input}
-                value={phoneNumber}
-              />
-            </>
-          )}
+                <TextInput
+                  autoCapitalize="none"
+                  keyboardType="phone-pad"
+                  onChangeText={(value) => {
+                    setPhoneNumber(value);
+                    if (error) clearError();
+                  }}
+                  placeholder="Phone Number"
+                  style={styles.input}
+                  value={phoneNumber}
+                />
+              </>
+            )}
 
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            onChangeText={(value) => {
-              setEmail(value);
-              if (error) clearError();
-            }}
-            placeholder="Email"
-            style={styles.input}
-            value={email}
-          />
-
-          <TextInput
-            onChangeText={(value) => {
-              setPassword(value);
-              if (error) clearError();
-            }}
-            placeholder="Password"
-            secureTextEntry
-            style={styles.input}
-            value={password}
-          />
-
-          {mode === 'signup' && (
             <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
               onChangeText={(value) => {
-                setConfirmPassword(value);
+                setEmail(value);
                 if (error) clearError();
               }}
-              placeholder="Confirm password"
+              placeholder="Email"
+              style={styles.input}
+              value={email}
+            />
+
+            <TextInput
+              onChangeText={(value) => {
+                setPassword(value);
+                if (error) clearError();
+              }}
+              placeholder="Password"
               secureTextEntry
               style={styles.input}
-              value={confirmPassword}
+              value={password}
             />
-          )}
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <Pressable
-            disabled={!isFormValid || submitting}
-            onPress={mode === 'login' ? handleLogin : handleSignup}
-            style={[
-              styles.primaryButton,
-              (!isFormValid || submitting) && styles.primaryButtonDisabled,
-            ]}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.primaryButtonText}>
-                {mode === 'login' ? 'Log in' : 'Create account'}
-              </Text>
+            {mode === 'signup' && (
+              <TextInput
+                onChangeText={(value) => {
+                  setConfirmPassword(value);
+                  if (error) clearError();
+                }}
+                placeholder="Confirm password"
+                secureTextEntry
+                style={styles.input}
+                value={confirmPassword}
+              />
             )}
-          </Pressable>
 
-          <Pressable onPress={toggleMode} style={styles.linkButton}>
-            <Text style={styles.linkText}>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <Pressable
+              disabled={submitting}
+              onPress={mode === 'login' ? handleLogin : handleSignup}
+              style={[
+                styles.primaryButton,
+                submitting && styles.primaryButtonDisabled,
+              ]}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {mode === 'login' ? 'Log in' : 'Create account'}
+                </Text>
+              )}
+            </Pressable>
+
+            <Pressable onPress={toggleMode} style={styles.linkButton}>
+              <Text style={styles.linkText}>
+                {mode === 'login'
+                  ? 'Need an account? Sign up'
+                  : 'Already have an account? Log in'}
+              </Text>
+            </Pressable>
+
+            <Text style={styles.helperText}>
               {mode === 'login'
-                ? 'Need an account? Sign up'
-                : 'Already have an account? Log in'}
+                ? 'Use a valid Firebase-authenticated email and password.'
+                : 'Create an account to sign in with Firebase Authentication.'}
             </Text>
-          </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
+    );
+  }
 
-          <Text style={styles.helperText}>
-            {mode === 'login'
-              ? 'Use a valid Firebase-authenticated email and password.'
-              : 'Create an account to sign in with Firebase Authentication.'}
-          </Text>
-        </View>
-      </KeyboardAvoidingView>
+  if (needsProfileSetup) {
+    return (
+      <OnboardingPage
+        onComplete={async (data) => {
+          await completeProfileSetup(data);
+          setActiveTab('home');
+        }}
+      />
     );
   }
 
@@ -240,5 +257,3 @@ function AppContent() {
     </SafeAreaView>
   );
 }
-
-// styles are centralized in mobile/styles.ts
