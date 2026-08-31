@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -15,6 +15,10 @@ import RideCard, { RideCardProps } from '../components/RideCard';
 
 interface HomePageProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onOpenProfile: () => void;
+  onNewRide: () => void;
+  onSeeRideDetails: (ride: RideCardProps) => void;
+  onOpenDriverProfile: (ride: RideCardProps) => void;
 }
 
 // Mock data - wiring to real ride data is follow-up work once the backend endpoint exists
@@ -64,15 +68,28 @@ const todaysDrives: RideCardProps[] = [
   },
 ];
 
+const notifications = [
+  { id: '1', text: 'Your ride with Marcus Vance is confirmed for 10:30 AM.' },
+  { id: '2', text: 'A driver has been matched for your 1:15 PM request.' },
+  { id: '3', text: 'Reminder: rate your last trip with Priya Nair.' },
+];
+
 function ridesDescription(count: number, noun: 'ride' | 'drive') {
   if (count === 0) return `No ${noun}s scheduled for today.`;
   if (count === 1) return `You have 1 upcoming ${noun} today.`;
   return `You have ${count} upcoming ${noun}s today.`;
 }
 
-export default function HomePage({ onScroll }: HomePageProps) {
+export default function HomePage({
+  onScroll,
+  onOpenProfile,
+  onNewRide,
+  onSeeRideDetails,
+  onOpenDriverProfile,
+}: HomePageProps) {
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'there';
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   return (
     <ScrollView
@@ -84,10 +101,26 @@ export default function HomePage({ onScroll }: HomePageProps) {
       <View style={localStyles.header}>
         <Text style={localStyles.welcomeText}>Welcome, {firstName}</Text>
         <View style={localStyles.headerIcons}>
-          <TouchableOpacity accessibilityLabel="Notifications" style={localStyles.iconButton}>
-            <Ionicons name="notifications-outline" size={22} color={colors.white} />
-          </TouchableOpacity>
-          <TouchableOpacity accessibilityLabel="Profile" style={localStyles.avatarButton}>
+          <View>
+            <TouchableOpacity
+              accessibilityLabel="Notifications"
+              style={localStyles.iconButton}
+              onPress={() => setNotificationsOpen((v) => !v)}
+            >
+              <Ionicons name="notifications-outline" size={22} color={colors.white} />
+            </TouchableOpacity>
+            {notificationsOpen && (
+              <View style={localStyles.notificationsDropdown}>
+                {notifications.map((item) => (
+                  <View key={item.id} style={localStyles.notificationRow}>
+                    <Ionicons name="ellipse" size={6} color={colors.mediumBlue} style={{ marginTop: 5 }} />
+                    <Text style={localStyles.notificationText}>{item.text}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+          <TouchableOpacity accessibilityLabel="Profile" style={localStyles.avatarButton} onPress={onOpenProfile}>
             <Ionicons name="person" size={18} color={colors.white} />
           </TouchableOpacity>
         </View>
@@ -95,7 +128,7 @@ export default function HomePage({ onScroll }: HomePageProps) {
 
       <View style={localStyles.ctaRow}>
         <Text style={localStyles.ctaText}>Ready to find a ride?</Text>
-        <TouchableOpacity style={localStyles.newRideButton}>
+        <TouchableOpacity style={localStyles.newRideButton} onPress={onNewRide}>
           <Ionicons name="add" size={18} color={colors.white} />
           <Text style={localStyles.newRideButtonText}>New Ride</Text>
         </TouchableOpacity>
@@ -107,7 +140,12 @@ export default function HomePage({ onScroll }: HomePageProps) {
       </Text>
 
       {todaysRides.map((ride, index) => (
-        <RideCard key={index} {...ride} />
+        <RideCard
+          key={index}
+          {...ride}
+          onSeeDetails={() => onSeeRideDetails(ride)}
+          onOpenDriverProfile={() => onOpenDriverProfile(ride)}
+        />
       ))}
 
       <Text style={localStyles.sectionHeading}>Today's Drives</Text>
@@ -116,7 +154,12 @@ export default function HomePage({ onScroll }: HomePageProps) {
       </Text>
 
       {todaysDrives.map((drive, index) => (
-        <RideCard key={index} {...drive} />
+        <RideCard
+          key={index}
+          {...drive}
+          onSeeDetails={() => onSeeRideDetails(drive)}
+          onOpenDriverProfile={() => onOpenDriverProfile(drive)}
+        />
       ))}
     </ScrollView>
   );
@@ -138,6 +181,7 @@ const localStyles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 24,
+    zIndex: 10,
   },
   welcomeText: {
     fontFamily: 'Marcellus_400Regular',
@@ -163,6 +207,32 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  notificationsDropdown: {
+    position: 'absolute',
+    top: 42,
+    right: 0,
+    width: 260,
+    borderRadius: 16,
+    padding: 14,
+    backgroundColor: colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 10,
+    zIndex: 20,
+  },
+  notificationRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  notificationText: {
+    flex: 1,
+    color: colors.darkBlue,
+    fontSize: 12,
+    lineHeight: 17,
   },
   ctaRow: {
     flexDirection: 'row',

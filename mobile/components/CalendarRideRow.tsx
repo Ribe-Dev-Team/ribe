@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import styles from '../styles';
+import { Ionicons } from '@expo/vector-icons';
+import styles, { colors } from '../styles';
 import type { Ride } from '../pages/CalendarPage';
 
 interface CalendarRideRowProps {
@@ -27,6 +28,10 @@ export default function CalendarRideRow({ ride, statusLabel, statusColor, onPres
       <View style={styles.rideDivider} />
       <Text style={styles.driverName}>●  {ride.driver}</Text>
       <Text style={styles.vehicleText}>     {ride.vehicle}</Text>
+      <View style={styles.seeMoreLink}>
+        <Text style={styles.seeMoreLinkText}>See details</Text>
+        <Ionicons name="chevron-forward" size={13} color={colors.white} />
+      </View>
     </Pressable>
   );
 }

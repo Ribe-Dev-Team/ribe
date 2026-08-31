@@ -102,6 +102,10 @@ export interface RideCardProps {
   /** Only relevant for 'pending' cards */
   onEdit?: () => void;
   onCancel?: () => void;
+  /** Opens the full ride details page. Falls back to the in-card modal when omitted. */
+  onSeeDetails?: () => void;
+  /** Opens the driver's full profile page. Falls back to the in-card modal when omitted. */
+  onOpenDriverProfile?: () => void;
 }
 
 export default function RideCard({
@@ -121,6 +125,8 @@ export default function RideCard({
   onDecline,
   onEdit,
   onCancel,
+  onSeeDetails,
+  onOpenDriverProfile,
 }: RideCardProps) {
   const accent = statusAccent[status];
   const remainingMs = useApprovalCountdown(status === 'awaiting' ? matchedAt : undefined);
@@ -164,20 +170,21 @@ export default function RideCard({
       )}
 
       <View style={styles.statsRow}>
-        <View style={styles.statChip}>
-          <Ionicons name="cash-outline" size={14} color={colors.white} />
-          <Text style={styles.statText}>{cost}</Text>
+        <View style={styles.statInline}>
+          <Ionicons name="cash-outline" size={13} color={colors.white} />
+          <Text style={styles.statInlineText}>{cost}</Text>
           <TouchableOpacity
             accessibilityLabel="What does this fee cover?"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onPress={() => setShowCostInfo((v) => !v)}
           >
-            <Ionicons name="information-circle-outline" size={14} color={colors.white} />
+            <Ionicons name="information-circle-outline" size={13} color={colors.white} style={{ opacity: 0.7 }} />
           </TouchableOpacity>
         </View>
-        <View style={styles.statChip}>
-          <Ionicons name="leaf-outline" size={14} color={colors.confirmedLight} />
-          <Text style={styles.statText}>{co2SavedKg}kg CO2 saved</Text>
+        <Text style={styles.statSeparator}>·</Text>
+        <View style={styles.statInline}>
+          <Ionicons name="leaf-outline" size={13} color={colors.confirmedLight} />
+          <Text style={styles.statInlineText}>{co2SavedKg}kg CO2 saved</Text>
         </View>
       </View>
 
@@ -193,7 +200,10 @@ export default function RideCard({
 
       {status === 'awaiting' ? (
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.seeDetailsButton} onPress={() => setDetailsVisible(true)}>
+          <TouchableOpacity
+            style={styles.seeDetailsButton}
+            onPress={() => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true))}
+          >
             <Ionicons name="eye-outline" size={16} color={colors.white} />
             <Text style={styles.seeDetailsText}>See Details</Text>
           </TouchableOpacity>
@@ -203,58 +213,73 @@ export default function RideCard({
           </TouchableOpacity>
         </View>
       ) : status === 'pending' ? (
-        <View style={styles.footerRow}>
-          <View style={styles.searchingRow}>
-            <Ionicons name="search" size={14} color={colors.white} />
-            <Text style={styles.searchingText}>Searching for driver...</Text>
-          </View>
-          <View style={styles.pendingIconRow}>
-            <TouchableOpacity
-              accessibilityLabel="Edit ride request"
-              style={styles.pendingIconButton}
-              onPress={onEdit}
-            >
-              <Ionicons name="create-outline" size={16} color={colors.white} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              accessibilityLabel="Cancel ride request"
-              style={[styles.pendingIconButton, styles.cancelIconButton]}
-              onPress={() =>
-                Alert.alert(
-                  'Cancel ride request?',
-                  'Are you sure you want to cancel this ride request?',
-                  [
-                    { text: 'Keep Request', style: 'cancel' },
-                    { text: 'Cancel Ride', style: 'destructive', onPress: onCancel },
-                  ],
-                )
-              }
-            >
-              <Ionicons name="close" size={16} color={colors.white} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        <View style={styles.footerRow}>
-          <TouchableOpacity
-            style={styles.driverRow}
-            accessibilityLabel="View driver profile"
-            onPress={() => setDetailsVisible(true)}
-          >
-            {driver.avatarUri ? (
-              <Image source={{ uri: driver.avatarUri }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Ionicons name="person" size={16} color={colors.white} />
-              </View>
-            )}
-            <View>
-              <Text style={styles.driverName}>{driver.name}</Text>
-              <Text style={styles.vehicleText}>{driver.vehicle}</Text>
+        <>
+          <View style={styles.footerRow}>
+            <View style={styles.searchingRow}>
+              <Ionicons name="search" size={14} color={colors.white} />
+              <Text style={styles.searchingText}>Searching for driver...</Text>
             </View>
+            <View style={styles.pendingIconRow}>
+              <TouchableOpacity
+                accessibilityLabel="Edit ride request"
+                style={styles.pendingIconButton}
+                onPress={onEdit}
+              >
+                <Ionicons name="create-outline" size={16} color={colors.white} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityLabel="Cancel ride request"
+                style={[styles.pendingIconButton, styles.cancelIconButton]}
+                onPress={() =>
+                  Alert.alert(
+                    'Cancel ride request?',
+                    'Are you sure you want to cancel this ride request?',
+                    [
+                      { text: 'Keep Request', style: 'cancel' },
+                      { text: 'Cancel Ride', style: 'destructive', onPress: onCancel },
+                    ],
+                  )
+                }
+              >
+                <Ionicons name="close" size={16} color={colors.white} />
+              </TouchableOpacity>
+            </View>
+          </View>
+          <TouchableOpacity style={styles.seeMoreLink} onPress={onSeeDetails}>
+            <Text style={styles.seeMoreLinkText}>See more information</Text>
+            <Ionicons name="chevron-forward" size={13} color={colors.white} />
           </TouchableOpacity>
-          <Text style={styles.plateBadge}>{plate}</Text>
-        </View>
+        </>
+      ) : (
+        <>
+          <View style={styles.footerRow}>
+            <TouchableOpacity
+              style={styles.driverRow}
+              accessibilityLabel="View driver profile"
+              onPress={() => (onOpenDriverProfile ? onOpenDriverProfile() : setDetailsVisible(true))}
+            >
+              {driver.avatarUri ? (
+                <Image source={{ uri: driver.avatarUri }} style={styles.avatar} />
+              ) : (
+                <View style={styles.avatarFallback}>
+                  <Ionicons name="person" size={16} color={colors.white} />
+                </View>
+              )}
+              <View>
+                <Text style={styles.driverName}>{driver.name}</Text>
+                <Text style={styles.vehicleText}>{driver.vehicle}</Text>
+              </View>
+            </TouchableOpacity>
+            <Text style={styles.plateBadge}>{plate}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.seeMoreLink}
+            onPress={() => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true))}
+          >
+            <Text style={styles.seeMoreLinkText}>See more information</Text>
+            <Ionicons name="chevron-forward" size={13} color={colors.white} />
+          </TouchableOpacity>
+        </>
       )}
 
       <Modal
@@ -410,7 +435,8 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 6,
     marginTop: 10,
   },
   infoNote: {
@@ -425,19 +451,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     opacity: 0.9,
   },
-  statChip: {
+  statInline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
   },
-  statText: {
+  statInlineText: {
     color: colors.white,
     fontSize: 12,
-    fontWeight: '600',
+    opacity: 0.9,
+  },
+  statSeparator: {
+    color: colors.white,
+    opacity: 0.4,
+    fontSize: 12,
   },
   divider: {
     height: 1,
@@ -486,6 +513,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
     overflow: 'hidden',
+  },
+  seeMoreLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 10,
+  },
+  seeMoreLinkText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '600',
+    opacity: 0.85,
   },
   modalPhoneRow: {
     flexDirection: 'row',

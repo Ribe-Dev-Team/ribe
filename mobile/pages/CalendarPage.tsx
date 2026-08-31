@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ScrollView, Text } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import styles, { colors } from '../styles';
 import CalendarGrid from '../components/CalendarGrid';
 import PageHeader from '../components/PageHeader';
@@ -12,7 +12,6 @@ export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
 //TODO: link to real data
 //TODO: make the +New Ride button hover over the whole page
 //TODO: update calendar dot colours
-//TODO: have it auto open on TODAY
 //TODO: make past days greyed out.
 
 export interface Ride {
@@ -64,9 +63,11 @@ interface CalendarPageProps {
   onNewRide: () => void;
 }
 
+const today = new Date();
+
 export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProps) {
-  const [month, setMonth] = useState(new Date(2026, 7, 1));
-  const [selectedDate, setSelectedDate] = useState(new Date(2026, 7, 16));
+  const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState(today);
   const calendarDays = useMemo(() => getCalendarDays(month), [month]);
   const selectedRides = rides[dateKey(selectedDate)] ?? [];
 
@@ -97,13 +98,14 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
         weekdays={weekdays}
       />
 
-      <Text style={styles.ridesHeading}>Rides on {monthNames[selectedDate.getMonth()]} {selectedDate.getDate()}</Text>
+      <View style={styles.ridesHeadingRow}>
+        <Text style={styles.ridesHeading}>Rides on {monthNames[selectedDate.getMonth()]} {selectedDate.getDate()}</Text>
+        <NewRideButton onPress={onNewRide} />
+      </View>
       {selectedRides.length ? selectedRides.map((ride) => {
         const detail = statusDetails[ride.status];
         return <CalendarRideRow key={ride.status} onPress={() => onOpenRide(ride, selectedDate)} ride={ride} statusColor={detail.color} statusLabel={detail.label} />;
       }) : <Text style={styles.emptyRides}>No rides scheduled for this day.</Text>}
-
-      <NewRideButton onPress={onNewRide} />
     </ScrollView>
   );
 }

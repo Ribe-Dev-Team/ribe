@@ -15,6 +15,8 @@ import RideCard, { RideCardProps, RideStatus } from '../components/RideCard';
 
 interface DashboardPageProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  onSeeRideDetails: (ride: RideCardProps) => void;
+  onOpenDriverProfile: (ride: RideCardProps) => void;
 }
 
 type ViewMode = 'rider' | 'driver';
@@ -125,7 +127,7 @@ const driverDrives: RideCardProps[] = [
 const lanes: { status: RideStatus; title: string; description: string }[] = [
   {
     status: 'confirmed',
-    title: 'Upcoming Ride',
+    title: 'Upcoming Rides',
     description: 'Your next confirmed trip.',
   },
   {
@@ -135,14 +137,14 @@ const lanes: { status: RideStatus; title: string; description: string }[] = [
   },
   {
     status: 'pending',
-    title: 'Pending Ride',
+    title: 'Pending Rides',
     description: 'Still searching for a driver.',
   },
 ];
 
 const CARD_GAP = 12;
 
-export default function DashboardPage({ onScroll }: DashboardPageProps) {
+export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriverProfile }: DashboardPageProps) {
   const [mode, setMode] = useState<ViewMode>('rider');
   const dataset = mode === 'rider' ? riderRides : driverDrives;
   const { width } = useWindowDimensions();
@@ -208,7 +210,9 @@ export default function DashboardPage({ onScroll }: DashboardPageProps) {
                       onAccept={() => Alert.alert('Ride accepted', `Trip with ${ride.driver.name} confirmed.`)}
                       onDecline={() => Alert.alert('Ride declined', 'The driver has been notified.')}
                       onEdit={() => Alert.alert('Edit ride request', 'Editing this request is coming soon.')}
-                      onCancel={() => Alert.alert('Cancel ride request', 'This request has been canceled.')}
+                      onCancel={() => Alert.alert('Ride canceled', 'This ride has been canceled.')}
+                      onSeeDetails={() => onSeeRideDetails(ride)}
+                      onOpenDriverProfile={() => onOpenDriverProfile(ride)}
                     />
                   </View>
                 ))}

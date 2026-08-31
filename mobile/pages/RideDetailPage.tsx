@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import MapPreview from '../components/MapPreview';
@@ -7,11 +7,16 @@ import MapPreview from '../components/MapPreview';
 interface RideDetailPageProps {
 	ride: Ride;
 	date: Date;
+	backLabel?: string;
 	onBack: () => void;
+	onAccept?: () => void;
+	onDecline?: () => void;
+	onCancel?: () => void;
 }
 
 const profiles: Record<string, { initials: string; bio: string; degree: string; phone: string }> = {
 	'Marcus Vance': { initials: 'MV', bio: 'Calm, reliable driver who enjoys helping students get to campus.', degree: 'Bachelor of Engineering', phone: '(03) 9905 2418' },
+	'Priya Nair': { initials: 'PN', bio: 'Early riser, always on time. Happy to chat or drive in quiet.', degree: 'Bachelor of Commerce', phone: '(03) 9905 7731' },
 };
 
 function formatDate(date: Date) {
@@ -22,7 +27,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 	return <View style={styles.detailSection}><Text style={styles.detailSectionTitle}>{title}</Text>{children}</View>;
 }
 
-export default function RideDetailPage({ ride, date, onBack }: RideDetailPageProps) {
+export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel }: RideDetailPageProps) {
 	const profile = profiles[ride.driver];
 	const isConfirmed = ride.status === 'confirmed';
 	const status = ride.status === 'confirmed' ? 'Confirmed ride' : ride.status === 'awaiting' ? 'Awaiting confirmation' : 'Pending ride';
@@ -30,11 +35,12 @@ export default function RideDetailPage({ ride, date, onBack }: RideDetailPagePro
 
 	return (
 		<ScrollView contentContainerStyle={styles.detailScreen} showsVerticalScrollIndicator={false}>
-			<Pressable accessibilityLabel="Back to calendar" onPress={onBack} style={styles.backButton}><Text style={styles.backButtonText}>‹</Text><Text style={styles.backButtonLabel}>Calendar</Text></Pressable>
+			<Pressable accessibilityLabel={`Back to ${backLabel}`} onPress={onBack} style={styles.backButton}><Text style={styles.backButtonText}>‹</Text><Text style={styles.backButtonLabel}>{backLabel}</Text></Pressable>
 			<Text style={styles.detailTitle}>Ride details</Text>
 			<Text style={styles.detailDate}>{formatDate(date)}</Text>
 
 			<View style={styles.detailStatusRow}><Text style={styles.detailTime}>{ride.time}</Text><View style={[styles.statusPill, { backgroundColor: statusColor }]}><Text style={styles.statusPillText}>{status}</Text></View></View>
+
 			<MapPreview routeShown={isConfirmed} locations={[ride.start, ride.destination]} />
 
 			<Section title="Journey">
@@ -50,6 +56,56 @@ export default function RideDetailPage({ ride, date, onBack }: RideDetailPagePro
 
 			<View style={styles.savingsPanel}><Text style={styles.savingsKicker}>CO2 SAVINGS</Text><Text style={styles.savingsValue}>2.4 kg saved</Text><Text style={styles.savingsText}>Sharing this ride keeps another car off the road.</Text></View>
 			<View style={styles.costPanel}><Text style={styles.costTitle}>Estimated cost split</Text><View style={styles.costRow}><Text style={styles.costLabel}>Estimated trip cost</Text><Text style={styles.costValue}>$8.50</Text></View><View style={styles.costRow}><Text style={styles.costLabel}>Your share</Text><Text style={styles.costValue}>$4.25</Text></View><Text style={styles.costNote}>Final amount may change with route detours.</Text></View>
+
+			{ride.status === 'awaiting' && (onAccept || onDecline) && (
+				<View style={[styles.editActionsRow, { marginTop: 14 }]}>
+					<Pressable
+						onPress={() =>
+							Alert.alert(
+								'Decline this ride?',
+								'Are you sure you want to decline this ride?',
+								[
+									{ text: 'Keep Ride', style: 'cancel' },
+									{ text: 'Decline', style: 'destructive', onPress: onDecline },
+								],
+							)
+						}
+						style={styles.dangerButton}
+					>
+						<Text style={styles.dangerButtonText}>Decline</Text>
+					</Pressable>
+					<Pressable onPress={onAccept} style={[styles.successButton, { marginTop: 0 }]}>
+						<Text style={styles.successButtonText}>Accept</Text>
+					</Pressable>
+				</View>
+			)}
+
+			{(isConfirmed || ride.status === 'pending') && onCancel && (
+				<Pressable
+					onPress={() =>
+						ride.status === 'pending'
+							? Alert.alert(
+								'Cancel this ride request?',
+								'Are you sure you want to cancel this ride request?',
+								[
+									{ text: 'Keep Request', style: 'cancel' },
+									{ text: 'Cancel Request', style: 'destructive', onPress: onCancel },
+								],
+							)
+							: Alert.alert(
+								'Cancel this ride?',
+								'Are you sure you want to cancel this confirmed ride?',
+								[
+									{ text: 'Keep Ride', style: 'cancel' },
+									{ text: 'Cancel Ride', style: 'destructive', onPress: onCancel },
+								],
+							)
+					}
+					style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
+				>
+					<Text style={styles.dangerButtonText}>{ride.status === 'pending' ? 'Cancel pending ride' : 'Cancel ride'}</Text>
+				</Pressable>
+			)}
 		</ScrollView>
 	);
 }

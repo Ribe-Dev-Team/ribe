@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -15,6 +16,7 @@ import {
   Keyboard,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../auth/useAuth';
 import styles, { colors } from '../styles';
@@ -22,6 +24,8 @@ import styles, { colors } from '../styles';
 interface ProfilePageProps {
   onLogout: () => void;
 }
+
+const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 
 export default function ProfilePage({ onLogout }: ProfilePageProps) {
   const { user, profileData, submitting, updateProfileDetails } = useAuth();
@@ -31,6 +35,15 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(profileData?.profilePhotoUrl || null);
   const [profilePhotoBase64, setProfilePhotoBase64] = useState<string | null>(null);
   const [profilePhotoMimeType, setProfilePhotoMimeType] = useState<string | null>(null);
+  // Local-only for now - no backend field yet, follow-up work once profile schema supports it
+  const [driverMode, setDriverMode] = useState(false);
+  const [campusDays, setCampusDays] = useState<string[]>([]);
+
+  const toggleCampusDay = (day: string) => {
+    setCampusDays((current) =>
+      current.includes(day) ? current.filter((d) => d !== day) : [...current, day],
+    );
+  };
 
   const profileName = profileData?.name || user?.displayName || 'Your name';
   const profileEmail = profileData?.email || user?.email || 'No email added';
@@ -110,13 +123,24 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                 </Pressable>
               ) : null}
 
-              {profilePhotoUri ? (
-                <Image source={{ uri: profilePhotoUri }} style={styles.profilePhoto} />
-              ) : (
-                <View style={styles.profilePhotoPlaceholder}>
-                  <Text style={styles.profilePhotoPlaceholderText}>No photo</Text>
-                </View>
-              )}
+              <View style={localStyles.photoWrap}>
+                {profilePhotoUri ? (
+                  <Image source={{ uri: profilePhotoUri }} style={styles.profilePhoto} />
+                ) : (
+                  <View style={styles.profilePhotoPlaceholder}>
+                    <Text style={styles.profilePhotoPlaceholderText}>No photo</Text>
+                  </View>
+                )}
+                {isEditing && (
+                  <Pressable
+                    accessibilityLabel="Change photo"
+                    onPress={openImagePicker}
+                    style={localStyles.editPhotoBadge}
+                  >
+                    <Ionicons name="pencil" size={14} color={colors.darkBlue} />
+                  </Pressable>
+                )}
+              </View>
 
               <Text style={styles.profileName}>{profileName}</Text>
               <Text style={styles.profileEmail}>{profileEmail}</Text>
@@ -128,10 +152,6 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
 
               {isEditing ? (
                 <>
-                  <Pressable onPress={openImagePicker} style={localStyles.changePhotoButton}>
-                    <Text style={localStyles.changePhotoText}>Change photo</Text>
-                  </Pressable>
-
                   <View style={styles.profileInfoBlock}>
                     <Text style={styles.profileLabel}>Degree</Text>
                     <TextInput
@@ -147,6 +167,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                   <View style={styles.profileInfoBlock}>
                     <Text style={styles.profileLabel}>Bio</Text>
                     <TextInput
+                      maxLength={200}
                       multiline
                       numberOfLines={4}
                       onChangeText={setBio}
@@ -156,6 +177,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                       textAlignVertical="top"
                       value={bio}
                     />
+                    <Text style={localStyles.charCount}>{bio.length} / 200</Text>
                   </View>
 
                   <View style={styles.editActionsRow}>
@@ -188,6 +210,42 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                   </View>
                 </>
               )}
+
+              <View style={styles.profileInfoBlock}>
+                <Text style={styles.profileLabel}>On campus</Text>
+                <View style={localStyles.daysRow}>
+                  {weekdays.map((day) => {
+                    const active = campusDays.includes(day);
+                    return (
+                      <Pressable
+                        key={day}
+                        onPress={() => toggleCampusDay(day)}
+                        style={[localStyles.dayPill, active && localStyles.dayPillActive]}
+                      >
+                        <Text style={[localStyles.dayPillText, active && localStyles.dayPillTextActive]}>{day}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={[styles.profileInfoBlock, localStyles.driverModeRow]}>
+                <View style={localStyles.driverModeCopy}>
+                  <View style={localStyles.driverModeTitleRow}>
+                    <Ionicons name="car-sport-outline" size={16} color={colors.white} />
+                    <Text style={localStyles.driverModeTitle}>Driver mode</Text>
+                  </View>
+                  <Text style={localStyles.driverModeSubtitle}>
+                    {driverMode ? 'Honda Civic - 1ABC234' : 'Add your vehicle details to start driving'}
+                  </Text>
+                </View>
+                <Switch
+                  value={driverMode}
+                  onValueChange={setDriverMode}
+                  trackColor={{ false: 'rgba(255,255,255,0.3)', true: colors.confirmed }}
+                  thumbColor={colors.white}
+                />
+              </View>
             </View>
 
             <TouchableOpacity onPress={onLogout} style={localStyles.signOutButton}>
@@ -207,19 +265,74 @@ const localStyles = StyleSheet.create({
     color: colors.white,
     marginBottom: 20,
   },
-  changePhotoButton: {
+  photoWrap: {
     alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    borderColor: 'rgba(255,255,255,0.4)',
-    borderRadius: 999,
-    borderWidth: 1,
-    marginBottom: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    marginBottom: 4,
   },
-  changePhotoText: {
+  editPhotoBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+    borderWidth: 2,
+    borderColor: colors.mediumBlue,
+  },
+  daysRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  dayPill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  dayPillActive: {
+    backgroundColor: colors.white,
+  },
+  dayPillText: {
     color: colors.white,
+    fontSize: 12,
     fontWeight: '600',
+  },
+  dayPillTextActive: {
+    color: colors.mediumBlue,
+  },
+  driverModeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  driverModeCopy: {
+    flex: 1,
+    marginRight: 12,
+  },
+  driverModeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+  },
+  driverModeTitle: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  driverModeSubtitle: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+  },
+  charCount: {
+    alignSelf: 'flex-end',
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 11,
+    marginTop: 4,
   },
   signOutButton: {
     marginTop: 20,

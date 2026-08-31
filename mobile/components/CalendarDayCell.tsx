@@ -10,15 +10,20 @@ interface CalendarDayCellProps {
   onPress: () => void;
 }
 
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
 export default function CalendarDayCell({ date, month, isSelected, rideColors, onPress }: CalendarDayCellProps) {
   const isCurrentMonth = date.getMonth() === month.getMonth();
+  const isToday = isSameDay(date, new Date());
   const monthName = date.toLocaleString('en-AU', { month: 'long' });
 
   return (
     <Pressable
       accessibilityLabel={`Select ${monthName} ${date.getDate()}`}
       onPress={onPress}
-      style={[styles.dayCell, isSelected ? styles.selectedDay : null]}
+      style={[styles.dayCell, isToday && !isSelected ? styles.todayDay : null, isSelected ? styles.selectedDay : null]}
     >
       <Text style={[styles.dayText, !isCurrentMonth ? styles.outsideMonthText : null]}>{date.getDate()}</Text>
       <View style={styles.dotRow}>
