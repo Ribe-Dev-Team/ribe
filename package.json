@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "firebase": "^12.17.1"
+    "firebase": "^12.17.1",
+    "jest": "^30.5.0"
   }
 }
