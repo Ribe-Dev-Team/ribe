@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, Text } from 'react-native';
+import { ScrollView, Text } from 'react-native';
 import styles, { colors } from '../styles';
 import CalendarGrid from '../components/CalendarGrid';
 import PageHeader from '../components/PageHeader';
@@ -11,7 +11,6 @@ export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
 
 //TODO: link to real data
 //TODO: make the +New Ride button hover over the whole page
-//TODO: make the +New Ride button go to form
 //TODO: update calendar dot colours
 //TODO: have it auto open on TODAY
 //TODO: make past days greyed out.
@@ -62,9 +61,10 @@ const statusDetails: Record<RideStatus, { label: string; color: string }> = {
 
 interface CalendarPageProps {
   onOpenRide: (ride: Ride, date: Date) => void;
+  onNewRide: () => void;
 }
 
-export default function CalendarPage({ onOpenRide }: CalendarPageProps) {
+export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProps) {
   const [month, setMonth] = useState(new Date(2026, 7, 1));
   const [selectedDate, setSelectedDate] = useState(new Date(2026, 7, 16));
   const calendarDays = useMemo(() => getCalendarDays(month), [month]);
@@ -103,7 +103,7 @@ export default function CalendarPage({ onOpenRide }: CalendarPageProps) {
         return <CalendarRideRow key={ride.status} onPress={() => onOpenRide(ride, selectedDate)} ride={ride} statusColor={detail.color} statusLabel={detail.label} />;
       }) : <Text style={styles.emptyRides}>No rides scheduled for this day.</Text>}
 
-      <NewRideButton onPress={() => Alert.alert('New Ride', 'The new ride form will be available here.')} />
+      <NewRideButton onPress={onNewRide} />
     </ScrollView>
   );
 }

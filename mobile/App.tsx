@@ -25,6 +25,7 @@ import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import OnboardingPage from './pages/OnboardingPage';
 import RideDetailPage from './pages/RideDetailPage';
+import BookingPage from './pages/BookingPage';
 
 export default function App() {
   const [fontsLoaded] = useFonts({ Marcellus_400Regular });
@@ -49,6 +50,7 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState<NavigationTab>('home');
   const [navHidden, setNavHidden] = useState(false);
   const [selectedRide, setSelectedRide] = useState<{ ride: Ride; date: Date } | null>(null);
+  const [showBooking, setShowBooking] = useState(false);
   const lastScrollY = useRef(0);
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -89,6 +91,9 @@ function AppContent() {
   } = useAuth();
 
   const renderPage = () => {
+    if (showBooking) {
+      return <BookingPage onDone={() => setShowBooking(false)} />;
+    }
     if (selectedRide) {
       return (
         <RideDetailPage
@@ -100,7 +105,12 @@ function AppContent() {
     }
     switch (activeTab) {
       case 'calendar':
-        return <CalendarPage onOpenRide={(ride, date) => setSelectedRide({ ride, date })} />;
+        return (
+          <CalendarPage
+            onOpenRide={(ride, date) => setSelectedRide({ ride, date })}
+            onNewRide={() => setShowBooking(true)}
+          />
+        );
       case 'rides':
         return <DashboardPage onScroll={handleScroll} />;
       case 'profile':
@@ -264,7 +274,11 @@ function AppContent() {
 
       <View style={styles.contentContainer}>{renderPage()}</View>
 
-      <AppNavigation activeTab={activeTab} onChange={setActiveTab} hidden={navHidden || !!selectedRide} />
+      <AppNavigation
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        hidden={navHidden || !!selectedRide || showBooking}
+      />
     </SafeAreaView>
   );
 }
