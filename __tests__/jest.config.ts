@@ -17,7 +17,7 @@ export default defineConfig({
     setupFilesAfterEnv: ['./jest.setup.js'],
     testEnvironment: 'node',
     transformIgnorePatterns: [
-        '/node_modules/(?!(@react-native|react-native|expo|expo-.*)/)', // only these 4 modules will be untransformed
+        '/node_modules/(?!(@react-native|react-native|expo|expo-.*)/)', // transforms/translates specified modules, rest are ignored for efficiency
     ],
     verbose: true,
 });
