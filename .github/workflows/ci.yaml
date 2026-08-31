@@ -21,19 +21,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: "npm"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
         
-      - name: Run TypeScript check
-        run: npx tsc --noEmit -p mobile
+      - name: Run linting
+        run: npx tsc --noEmit
 
       - name: Run tests (with coverage)
-        run: npm test -- --coverage --ci
+        run: npm test -- --cverage --ci
 
       - name: Upload HTML coverage report
         uses: actions/upload-artifact@v4
-        with:
+        with: 
           name: html-coverage
-          path: mobile/coverage/lcov-report
+          path: coverage/lcov-report

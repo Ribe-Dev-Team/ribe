@@ -19,10 +19,5 @@
     "noPropertyAccessFromIndexSignature": true,
     "forceConsistentCasingInFileNames": true
   },
-  "exclude": [
-    "node_modules",
-    "assets",
-    ".expo"
-  ],
-  "extends": "expo/tsconfig.base"
+  "exclude": ["node_modules", "assets", ".expo"]
 }
