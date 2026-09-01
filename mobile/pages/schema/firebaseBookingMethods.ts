@@ -7,13 +7,23 @@ import { RideRequest, RideOffer } from './firebaseBooking.schema';
   - hours: all from 00->19 + 20->23
   - minutes: all from 00->59
 */
-const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+export const timePattern = /^(?:[01]\d|2[0-3]):(?:[0-5]\d)$/;
 /* Date:
   - days: all from 01->09 + 10->29 + 30->31
   - months all from 01->09 + 10->12
   - years: all from 2020->2099
 */
-const datePattern = /^([0][1-9]|[12]\d|3[01])-(0[1-9]|1[0-2])-(20[2-9]\d)$/;
+export const datePattern = /^(?:[0][1-9]|[12]\d|3[01])-(?:0[1-9]|1[0-2])-(?:20[2-9]\d)$/;
+/* Match to specific invalid dates, namely
+  - 30th of Feb     (2)
+  - 29th Feb when years are not a multiple of 4 (3)
+  - 31st of Feb     (1)
+  - 31st April      (1)
+  - 31st June       (1)
+  - 31st September  (1)
+  - 31st November   (1)
+*/
+export const dateExclusions = /^(?:31-(?:02|04|06|09|11)-\d{4}|30-02-\d{4}|29-02-20(?:[02468][048]|[13579][26]))$/;
 
 // convert DD-MM-YYYY string to Firestore Timestamp
 const parseDateToTimestamp = (dateStr: string): Timestamp => {
@@ -44,7 +54,7 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
 
   if (req.date !== undefined && !(req.date instanceof Timestamp)) {
     throw new Error("date must be a Firestore Timestamp");
-  } else if (!Number.isNaN(req.date)) {
+  } else if (!Number.isNaN(req.date) || !datePattern.test(booking.travelDate) || dateExclusions.test(booking.travelDate)) {
     throw new Error(`the date '${booking.travelDate}' is not valid`);
   } else if (new Date(req.date.toDate()).setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0)) {
     // create new date objects to protect against mutation
@@ -110,7 +120,7 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
 
   if (offer.date !== undefined && !(offer.date instanceof Timestamp)) {
     throw new Error("date must be a Firestore Timestamp");
-  } else if (!Number.isNaN(offer.date)) {
+  } else if (!Number.isNaN(offer.date) || !datePattern.test(booking.travelDate) || dateExclusions.test(booking.travelDate)) {
     throw new Error(`the date '${booking.travelDate}' is not valid`);
   } else if (new Date(offer.date.toDate()).setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0)) {
     // create new date objects to protect against mutation

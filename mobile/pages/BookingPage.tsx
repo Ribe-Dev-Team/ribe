@@ -3,10 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { Ionicons } from '@expo/vector-icons';
 import styles, { colors } from '../styles';
 import { Booking } from './schema/booking.schema';
-import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
-
-const datePattern = /^\d{2}-\d{2}-\d{4}$/;
-const timePattern = /^\d{2}:\d{2}$/;
+import { addRideRequest, addRideOffer, datePattern, dateExclusions, timePattern } from './schema/firebaseBookingMethods';
 
 interface BookingPageProps {
   onDone: () => void;
@@ -42,8 +39,8 @@ export default function BookingPage({ onDone }: BookingPageProps) {
     } else setAddrErr('');
 
     // travel date validation
-    if (!datePattern.test(travelDate.trim())) {
-      setTravelDateErr('Enter date in DD-MM-YYYY format.');
+    if (!datePattern.test(travelDate.trim()) || !dateExclusions.test(travelDate.trim())) {
+      setTravelDateErr('Enter valid date in DD-MM-YYYY format.');
       valid = false;
     } else {
       const [day, month, year] = travelDate.trim().split('-').map(Number);
