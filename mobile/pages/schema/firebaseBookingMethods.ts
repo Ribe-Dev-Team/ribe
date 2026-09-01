@@ -3,12 +3,22 @@ import { db } from '../../firebaseConfig';
 import { Booking } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
 
+/* Time (24hr):
+  - hours: all from 00->19 + 20->23
+  - minutes: all from 00->59
+*/
 const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
+/* Date:
+  - days: all from 01->09 + 10->29 + 30->31
+  - months all from 01->09 + 10->12
+  - years: all from 2020->2099
+*/
+const datePattern = /^([0][1-9]|[12]\d|3[01])-(0[1-9]|1[0-2])-(20[2-9]\d)$/;
 
 // convert DD-MM-YYYY string to Firestore Timestamp
 const parseDateToTimestamp = (dateStr: string): Timestamp => {
   const [day, month, year] = dateStr.trim().split('-').map(Number);
-  return Timestamp.fromDate(new Date(year, month - 1, day));
+  return Timestamp.fromDate(new Date(year, month - 1, day, 0, 0, 0, 0));
 };
 
 // Add request to DB
@@ -34,6 +44,12 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
 
   if (req.date !== undefined && !(req.date instanceof Timestamp)) {
     throw new Error("date must be a Firestore Timestamp");
+  } else if (!Number.isNaN(req.date)) {
+    throw new Error(`the date '${booking.travelDate}' is not valid`);
+  } else if (new Date(req.date.toDate()).setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0)) {
+    // create new date objects to protect against mutation
+    // set hours, minutes, seconds and milliseconds to 0 so only date components are compared
+    throw new Error(`a future date must be provided, not '${booking.travelDate}'`);
   }
 
   if (req.departureTime !== undefined && !timePattern.test(req.departureTime)) {
@@ -94,6 +110,12 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
 
   if (offer.date !== undefined && !(offer.date instanceof Timestamp)) {
     throw new Error("date must be a Firestore Timestamp");
+  } else if (!Number.isNaN(offer.date)) {
+    throw new Error(`the date '${booking.travelDate}' is not valid`);
+  } else if (new Date(offer.date.toDate()).setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0)) {
+    // create new date objects to protect against mutation
+    // set hours, minutes, seconds and milliseconds to 0 so only date components are compared
+    throw new Error(`a future date must be provided, not '${booking.travelDate}'`);
   }
 
   if (offer.maxDetourTime !== undefined && typeof offer.maxDetourTime !== "number") {
