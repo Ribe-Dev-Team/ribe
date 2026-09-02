@@ -28,7 +28,8 @@ export const dateExclusions = /^(?:31-(?:02|04|06|09|11)-\d{4}|30-02-\d{4}|29-02
 // convert DD-MM-YYYY string to Firestore Timestamp
 const parseDateToTimestamp = (dateStr: string): Timestamp => {
   const [day, month, year] = dateStr.trim().split('-').map(Number);
-  return Timestamp.fromDate(new Date(year, month - 1, day, 0, 0, 0, 0));
+  const asDate = new Date(year, month - 1, day, 0, 0, 0, 0);
+  return Timestamp.fromDate(asDate);
 };
 
 // Add request to DB
@@ -54,8 +55,10 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
 
   if (req.date !== undefined && !(req.date instanceof Timestamp)) {
     throw new Error("date must be a Firestore Timestamp");
-  } else if (!Number.isNaN(req.date) || !datePattern.test(booking.travelDate) || dateExclusions.test(booking.travelDate)) {
-    throw new Error(`the date '${booking.travelDate}' is not valid`);
+  } else if (Number.isNaN(req.date)) {
+    throw new Error(`couldn't convert '${booking.travelDate}' into a Firestore date format`);
+  } else if (!datePattern.test(booking.travelDate) || dateExclusions.test(booking.travelDate)) {
+    throw new Error(`the date '${booking.travelDate}' is not a real date`);
   } else if (new Date(req.date.toDate()).setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0)) {
     // create new date objects to protect against mutation
     // set hours, minutes, seconds and milliseconds to 0 so only date components are compared
@@ -120,8 +123,10 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
 
   if (offer.date !== undefined && !(offer.date instanceof Timestamp)) {
     throw new Error("date must be a Firestore Timestamp");
-  } else if (!Number.isNaN(offer.date) || !datePattern.test(booking.travelDate) || dateExclusions.test(booking.travelDate)) {
-    throw new Error(`the date '${booking.travelDate}' is not valid`);
+  } else if (Number.isNaN(offer.date)) {
+    throw new Error(`couldn't convert '${booking.travelDate}' into a Firestore date format`);
+  } else if (!datePattern.test(booking.travelDate) || dateExclusions.test(booking.travelDate)) {
+    throw new Error(`the date '${booking.travelDate}' is not a real date`);
   } else if (new Date(offer.date.toDate()).setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0)) {
     // create new date objects to protect against mutation
     // set hours, minutes, seconds and milliseconds to 0 so only date components are compared
