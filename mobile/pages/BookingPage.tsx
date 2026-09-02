@@ -39,7 +39,7 @@ export default function BookingPage({ onDone }: BookingPageProps) {
     } else setAddrErr('');
 
     // travel date validation
-    if (!datePattern.test(travelDate.trim()) || !dateExclusions.test(travelDate.trim())) {
+    if (!datePattern.test(travelDate.trim()) || dateExclusions.test(travelDate.trim())) {
       setTravelDateErr('Enter valid date in DD-MM-YYYY format.');
       valid = false;
     } else {
