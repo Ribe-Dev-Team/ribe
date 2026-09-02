@@ -9,17 +9,16 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import type { UserProfileDraft } from '../pages/schema/user.schema';
+import {
+  isValidDob,
+  isValidEmail,
+  isValidName,
+  isValidPassword,
+  isValidPhoneNumber,
+} from '../pages/schema/user.validation';
 
-type UserProfileData = {
-  name?: string | null;
-  dob?: string | null;
-  phoneNumber?: string | null;
-  email?: string | null;
-  degree?: string | null;
-  bio?: string | null;
-  profilePhotoUrl?: string | null;
-  onboardingComplete?: boolean;
-};
+type UserProfileData = UserProfileDraft;
 
 type AuthContextType = {
   user: User | null;
@@ -66,88 +65,6 @@ type AuthContextType = {
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-/* email mask: 5 parts,
-    1: '[^\s@]+', one or more characters that are not whitespace (\s) or the '@' symbol
-    2: '@', the '@' symbol
-    3: '[^\s@]+', same as (1)
-    4: '\.', the '.' character
-    5: '[^\s@]{2,}', same as (1) but minimum of 2 characters
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-/* email mask: 5 parts,
-    1: '[^\s@]+', one or more characters that are not whitespace (\s) or the '@' symbol
-    2: '@', the '@' symbol
-    3: '[^\s@]+', same as (1)
-    4: '\.', the '.' character
-    5: '[^\s@]{2,}', same as (1) but minimum of 2 characters
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-/* name mask:
-    1: '[A-Za-zÀ-ÖØ-öø-ÿ]+', one or more characters from an extended alphabet set - a name
-    2: '?:[ '-]', permit name spacer (space, apstrophe or hypen)
-    3: '(...)*', zero or more additional names after the first one
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-const namePattern = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/;
-/* phone number mask:
-    1: '\+?', optionally may begin with a '+'
-    2: '[0-9()\- ]', defines the character set of digits, round brackets, hypens and spaces
-    3: '{10,20}', the phone number should be 10 to 20 digits long
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-const phonePattern = /^\+?[0-9()\- ]{10,15}$/;
-/* password mask:
-    1: '(?=.*[a-z])', checks a lowercase character exists somewhere in the string
-    2: '(?=.*[A-Z])', checks an uppercase character exists somewhere in the string
-    3: '(?=.*\d)', checks a digit exists somewhere in the string
-    4: '.{8,}', checks the string has at least 8 characters
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
-
-// Helpers now expect pre-trimmed values
-const isValidEmail = (value: string) => emailPattern.test(value);
-const isValidName = (value: string) => value.length >= 2 && namePattern.test(value);
-const isValidPhoneNumber = (value: string) => {
-  const digitsOnly = value.replace(/\D/g, '');
-  return phonePattern.test(value) && digitsOnly.length >= 10 && digitsOnly.length <= 15;
-};
-const isValidDob = (value: string) => {
-  // 1. Check for DD/MM/YYYY format
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return false;
-
-  // 2. Extract parts and safely create the Date object
-  const [day, month, year] = value.split('/').map(Number);
-  const date = new Date(year, month - 1, day); // Month is 0-indexed
-
-  // 3. Prevent invalid dates rolling over (e.g., 31/02/2023 becoming March 3rd)
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return false;
-  }
-
-  // 4. Calculate age
-  const today = new Date();
-  let age = today.getFullYear() - date.getFullYear();
-  const hasBirthdayPassed =
-    today.getMonth() > date.getMonth() ||
-    (today.getMonth() === date.getMonth() && today.getDate() >= date.getDate());
-
-  if (!hasBirthdayPassed) {
-    age -= 1;
-  }
-
-  return age >= 18;
-};
-
-// We don't trim passwords because some users might intentionally use spaces in passphrases,
-// or we want the regex `!/\s/.test(value)` to strictly catch leading/trailing spaces as invalid.
-const isValidPassword = (value: string) => passwordPattern.test(value);
 
 const getFormValidationError = ({
   mode,
