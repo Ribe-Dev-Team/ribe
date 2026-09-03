@@ -4,6 +4,7 @@
     "target": "es2020",
     "module": "esnext",
     "jsx": "react-native",
+    "types": ["jest", "node"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

@@ -1,8 +1,6 @@
-/** @jest-config-loader ts-node */
+import type { Config } from "jest";
 
-import { defineConfig } from "jest";
-
-export default defineConfig({
+export const config: Config = {
     preset: 'jest-expo', // Expo-specific Jest preset
     collectCoverageFrom: [
         '**/*.{ts,tsx}', // only catches typescript files
@@ -17,7 +15,7 @@ export default defineConfig({
     setupFilesAfterEnv: ['./jest.setup.js'],
     testEnvironment: 'node',
     transformIgnorePatterns: [
-        '/node_modules/(?!(@react-native|react-native|expo|expo-.*)/)', // transforms/translates specified modules, rest are ignored for efficiency
+        '/node_modules/(?!(jest-)?(@)?react-native(-community)?)/', // transforms/translates specified modules, rest are ignored for efficiency
     ],
     verbose: true,
-});
+};
