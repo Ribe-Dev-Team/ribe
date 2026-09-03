@@ -66,6 +66,48 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const getAuthErrorMessage = (err: unknown) => {
+  const message = err instanceof Error ? err.message : 'Unable to complete that request right now.';
+
+  if (typeof err === 'object' && err && 'code' in err) {
+    const code = String((err as { code?: string }).code || '').toLowerCase();
+
+    if (code.includes('email-already-in-use')) {
+      return 'This email is already in use. Try logging in instead or use a different email.';
+    }
+
+    if (code.includes('weak-password')) {
+      return 'Your password is too weak. Use at least 8 characters with upper and lower case letters and a number.';
+    }
+
+    if (code.includes('invalid-email')) {
+      return 'The email address is not valid. Please check it and try again.';
+    }
+
+    if (code.includes('network-request-failed')) {
+      return 'Connection issue. Please check your internet and try again.';
+    }
+
+    if (code.includes('too-many-requests')) {
+      return 'Too many attempts. Please wait a moment and try again.';
+    }
+
+    if (code.includes('wrong-password')) {
+      return 'Incorrect password. Please try again.';
+    }
+
+    if (code.includes('user-not-found')) {
+      return 'No account was found for this email. Create an account or check the email.';
+    }
+  }
+
+  if (message.toLowerCase().includes('password')) {
+    return 'Password must be at least 8 characters long and include uppercase, lowercase, and a number.';
+  }
+
+  return message;
+};
+
 const getFormValidationError = ({
   mode,
   name,
@@ -242,8 +284,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await signInWithEmailAndPassword(auth, trimmedEmail, password);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to sign in right now.';
-      setError(message);
+      setError(getAuthErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -296,8 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }));
       setNeedsProfileSetup(true);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to create an account right now.';
-      setError(message);
+      setError(getAuthErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
