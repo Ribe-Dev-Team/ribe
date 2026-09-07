@@ -1,9 +1,22 @@
 import React, { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles, { colors } from '../styles';
 import { Booking } from './schema/booking.schema';
 import { addRideRequest, addRideOffer, datePattern, dateExclusions, timePattern } from './schema/firebaseBookingMethods';
+import DatePickerModal from '../components/DatePickerModal';
+import TimePickerModal from '../components/TimePickerModal';
 
 interface BookingPageProps {
   onDone: () => void;
@@ -11,11 +24,29 @@ interface BookingPageProps {
 }
 
 type Step = 'form' | 'confirm';
+type FieldName = 'address' | 'travelDate' | 'depTime' | 'arrTime' | 'detourTime' | 'numSeats';
 
 function formatTravelDate(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   return `${day}-${month}-${date.getFullYear()}`;
+}
+
+function parseTravelDate(value: string): Date | undefined {
+  if (!datePattern.test(value.trim())) return undefined;
+  const [day, month, year] = value.trim().split('-').map(Number);
+  const parsed = new Date(year, month - 1, day);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function toTitleCase(value: string): string {
+  return value.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
+}
+
+function isFutureDate(date: Date): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return date > today;
 }
 
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
@@ -24,7 +55,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [toUni, setToUni] = useState<boolean>(true);
   const [address, setAddress] = useState<string>('');
   const [addrErr, setAddrErr] = useState<string>('');
-  const [travelDate, setTravelDate] = useState<string>(initialDate ? formatTravelDate(initialDate) : ''); // Format: DD-MM-YYYY
+  const [travelDate, setTravelDate] = useState<string>(
+    initialDate && isFutureDate(initialDate) ? formatTravelDate(initialDate) : '',
+  ); // Format: DD-MM-YYYY
   const [travelDateErr, setTravelDateErr] = useState<string>('');
   const [detourTime, setDetourTime] = useState<number>(0);
   const [detourTimeErr, setDetourTimeErr] = useState<string>('');
@@ -35,6 +68,8 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [arrTime, setArrTime] = useState<string>(''); // Format: HH:mm
   const [arrTimeErr, setArrTimeErr] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [focusedField, setFocusedField] = useState<FieldName | null>(null);
+  const [activePicker, setActivePicker] = useState<'date' | 'dep' | 'arr' | null>(null);
 
   const validateBooking = (): boolean => {
     let valid = true;
@@ -199,7 +234,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           </Pressable>
           <Pressable
             onPress={submitBooking}
-            style={[styles.primaryButton, { flex: 1 }, isSubmitting && styles.primaryButtonDisabled]}
+            style={[localStyles.actionButton, { flex: 1 }, isSubmitting && localStyles.actionButtonDisabled]}
             disabled={isSubmitting}
           >
             <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Submit request'}</Text>
@@ -210,124 +245,198 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   }
 
   return (
-    <ScrollView contentContainerStyle={localStyles.screen} showsVerticalScrollIndicator={false}>
-      <Pressable style={localStyles.headerRow} onPress={onDone}>
-        <Ionicons name="chevron-back" size={22} color={colors.white} />
-        <Text style={localStyles.headerTitle}>Request a ride</Text>
-      </Pressable>
-
-      <View style={localStyles.card}>
-        <Text style={localStyles.cardLabel}>I am...</Text>
-        <View style={localStyles.segmentRow}>
-          <Pressable
-            onPress={() => setIsDriving(false)}
-            style={[localStyles.segmentOption, !isDriving && localStyles.segmentOptionActive]}
-          >
-            <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a ride</Text>
+    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={localStyles.screen}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Pressable style={localStyles.headerRow} onPress={onDone}>
+            <Ionicons name="chevron-back" size={22} color={colors.white} />
+            <Text style={localStyles.headerTitle}>Request a ride</Text>
           </Pressable>
-          <Pressable
-            onPress={() => setIsDriving(true)}
-            style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive]}
-          >
-            <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a ride</Text>
+
+          <View style={localStyles.card}>
+            <Text style={localStyles.cardLabel}>I am...</Text>
+            <View style={localStyles.segmentRow}>
+              <Pressable
+                onPress={() => setIsDriving(false)}
+                style={[localStyles.segmentOption, !isDriving && localStyles.segmentOptionActive]}
+              >
+                <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a ride</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setIsDriving(true)}
+                style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive]}
+              >
+                <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a ride</Text>
+              </Pressable>
+            </View>
+
+            <Text style={[localStyles.cardLabel, { marginTop: 16 }]}>Direction</Text>
+            <View style={localStyles.segmentRow}>
+              <Pressable
+                onPress={() => setToUni(true)}
+                style={[localStyles.segmentOption, toUni && localStyles.segmentOptionActive]}
+              >
+                <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To uni</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setToUni(false)}
+                style={[localStyles.segmentOption, !toUni && localStyles.segmentOptionActive]}
+              >
+                <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From uni</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={localStyles.card}>
+            <Text style={localStyles.cardLabel}>Where</Text>
+            <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup address' : 'Destination address'}</Text>
+            <TextInput
+              autoCapitalize="words"
+              onBlur={() => setFocusedField(null)}
+              onChangeText={(value) => setAddress(toTitleCase(value))}
+              onFocus={() => setFocusedField('address')}
+              style={[localStyles.fieldInput, focusedField === 'address' && localStyles.fieldInputFocused]}
+              value={address}
+              placeholder="123 Main St, Suburb"
+              placeholderTextColor="rgba(255,255,255,0.4)"
+            />
+            {addrErr !== '' && <Text style={styles.errorText}>{addrErr}</Text>}
+          </View>
+
+          <View style={localStyles.card}>
+            <Text style={localStyles.cardLabel}>When</Text>
+            <Text style={localStyles.fieldLabel}>Travel date</Text>
+            <Pressable
+              onPress={() => {
+                setFocusedField('travelDate');
+                setActivePicker('date');
+              }}
+              style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'travelDate' && localStyles.fieldInputFocused]}
+            >
+              <Text style={travelDate ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
+                {travelDate || 'DD-MM-YYYY'}
+              </Text>
+              <Ionicons color="rgba(255,255,255,0.6)" name="calendar-outline" size={18} />
+            </Pressable>
+            {travelDateErr !== '' && <Text style={styles.errorText}>{travelDateErr}</Text>}
+
+            <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest departure</Text>
+            <Pressable
+              onPress={() => {
+                setFocusedField('depTime');
+                setActivePicker('dep');
+              }}
+              style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'depTime' && localStyles.fieldInputFocused]}
+            >
+              <Text style={depTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
+                {depTime || 'HH:MM (24hr)'}
+              </Text>
+              <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
+            </Pressable>
+            {depTimeErr !== '' && <Text style={styles.errorText}>{depTimeErr}</Text>}
+
+            <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest arrival</Text>
+            <Pressable
+              onPress={() => {
+                setFocusedField('arrTime');
+                setActivePicker('arr');
+              }}
+              style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'arrTime' && localStyles.fieldInputFocused]}
+            >
+              <Text style={arrTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
+                {arrTime || 'HH:MM (24hr)'}
+              </Text>
+              <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
+            </Pressable>
+            {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
+          </View>
+
+          {isDriving && (
+            <View style={localStyles.card}>
+              <Text style={localStyles.cardLabel}>Driver details</Text>
+              <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
+              <TextInput
+                keyboardType="number-pad"
+                onBlur={() => setFocusedField(null)}
+                onChangeText={(str) => setDetourTime(Number(str) || 0)}
+                onFocus={() => setFocusedField('detourTime')}
+                style={[localStyles.fieldInput, focusedField === 'detourTime' && localStyles.fieldInputFocused]}
+                placeholder="10"
+                placeholderTextColor="rgba(255,255,255,0.4)"
+              />
+              {detourTimeErr !== '' && <Text style={styles.errorText}>{detourTimeErr}</Text>}
+
+              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
+              <TextInput
+                keyboardType="number-pad"
+                onBlur={() => setFocusedField(null)}
+                onChangeText={(str) => setNumSeats(Number(str) || 0)}
+                onFocus={() => setFocusedField('numSeats')}
+                style={[localStyles.fieldInput, focusedField === 'numSeats' && localStyles.fieldInputFocused]}
+                placeholder="1"
+                placeholderTextColor="rgba(255,255,255,0.4)"
+              />
+              {numSeatsErr !== '' && <Text style={styles.errorText}>{numSeatsErr}</Text>}
+            </View>
+          )}
+
+          <Pressable onPress={goToConfirm} style={localStyles.actionButton}>
+            <Text style={styles.primaryButtonText}>Next</Text>
           </Pressable>
-        </View>
-
-        <Text style={[localStyles.cardLabel, { marginTop: 16 }]}>Direction</Text>
-        <View style={localStyles.segmentRow}>
-          <Pressable
-            onPress={() => setToUni(true)}
-            style={[localStyles.segmentOption, toUni && localStyles.segmentOptionActive]}
-          >
-            <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To uni</Text>
+          <Pressable onPress={onDone} style={localStyles.cancelLink}>
+            <Text style={localStyles.cancelLinkText}>Cancel</Text>
           </Pressable>
-          <Pressable
-            onPress={() => setToUni(false)}
-            style={[localStyles.segmentOption, !toUni && localStyles.segmentOptionActive]}
-          >
-            <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From uni</Text>
-          </Pressable>
-        </View>
-      </View>
+        </ScrollView>
 
-      <View style={localStyles.card}>
-        <Text style={localStyles.cardLabel}>Where</Text>
-        <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup address' : 'Destination address'}</Text>
-        <TextInput
-          onChangeText={setAddress}
-          style={localStyles.fieldInput}
-          value={address}
-          placeholder="123 Main St, Suburb"
-          placeholderTextColor="rgba(255,255,255,0.4)"
+        <DatePickerModal
+          initialDate={parseTravelDate(travelDate)}
+          onClose={() => {
+            setActivePicker(null);
+            setFocusedField(null);
+          }}
+          onSelect={(date) => {
+            setTravelDate(formatTravelDate(date));
+            setActivePicker(null);
+            setFocusedField(null);
+          }}
+          visible={activePicker === 'date'}
         />
-        {addrErr !== '' && <Text style={styles.errorText}>{addrErr}</Text>}
-      </View>
 
-      <View style={localStyles.card}>
-        <Text style={localStyles.cardLabel}>When</Text>
-        <Text style={localStyles.fieldLabel}>Travel date</Text>
-        <TextInput
-          onChangeText={setTravelDate}
-          style={localStyles.fieldInput}
-          value={travelDate}
-          placeholder="DD-MM-YYYY"
-          placeholderTextColor="rgba(255,255,255,0.4)"
+        <TimePickerModal
+          initialTime={depTime}
+          label="Earliest departure"
+          onClose={() => {
+            setActivePicker(null);
+            setFocusedField(null);
+          }}
+          onSelect={(time) => {
+            setDepTime(time);
+            setActivePicker(null);
+            setFocusedField(null);
+          }}
+          visible={activePicker === 'dep'}
         />
-        {travelDateErr !== '' && <Text style={styles.errorText}>{travelDateErr}</Text>}
 
-        <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest departure</Text>
-        <TextInput
-          onChangeText={setDepTime}
-          style={localStyles.fieldInput}
-          value={depTime}
-          placeholder="HH:MM (24hr)"
-          placeholderTextColor="rgba(255,255,255,0.4)"
+        <TimePickerModal
+          initialTime={arrTime}
+          label="Latest arrival"
+          onClose={() => {
+            setActivePicker(null);
+            setFocusedField(null);
+          }}
+          onSelect={(time) => {
+            setArrTime(time);
+            setActivePicker(null);
+            setFocusedField(null);
+          }}
+          visible={activePicker === 'arr'}
         />
-        {depTimeErr !== '' && <Text style={styles.errorText}>{depTimeErr}</Text>}
-
-        <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest arrival</Text>
-        <TextInput
-          onChangeText={setArrTime}
-          style={localStyles.fieldInput}
-          value={arrTime}
-          placeholder="HH:MM (24hr)"
-          placeholderTextColor="rgba(255,255,255,0.4)"
-        />
-        {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
-      </View>
-
-      {isDriving && (
-        <View style={localStyles.card}>
-          <Text style={localStyles.cardLabel}>Driver details</Text>
-          <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
-          <TextInput
-            keyboardType="number-pad"
-            onChangeText={(str) => setDetourTime(Number(str) || 0)}
-            style={localStyles.fieldInput}
-            placeholder="10"
-            placeholderTextColor="rgba(255,255,255,0.4)"
-          />
-          {detourTimeErr !== '' && <Text style={styles.errorText}>{detourTimeErr}</Text>}
-
-          <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
-          <TextInput
-            keyboardType="number-pad"
-            onChangeText={(str) => setNumSeats(Number(str) || 0)}
-            style={localStyles.fieldInput}
-            placeholder="1"
-            placeholderTextColor="rgba(255,255,255,0.4)"
-          />
-          {numSeatsErr !== '' && <Text style={styles.errorText}>{numSeatsErr}</Text>}
-        </View>
-      )}
-
-      <Pressable onPress={goToConfirm} style={styles.primaryButton}>
-        <Text style={styles.primaryButtonText}>Next</Text>
-      </Pressable>
-      <Pressable onPress={onDone} style={localStyles.cancelLink}>
-        <Text style={localStyles.cancelLinkText}>Cancel</Text>
-      </Pressable>
-    </ScrollView>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -401,6 +510,35 @@ const localStyles = StyleSheet.create({
     fontSize: 15,
     color: colors.white,
     backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  fieldInputFocused: {
+    borderColor: colors.white,
+    borderWidth: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  pickerField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  pickerValueText: {
+    fontSize: 15,
+    color: colors.white,
+  },
+  pickerPlaceholderText: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.4)',
+  },
+  actionButton: {
+    alignItems: 'center',
+    backgroundColor: colors.mediumBlue,
+    borderRadius: 12,
+    marginTop: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  actionButtonDisabled: {
+    backgroundColor: 'rgba(19, 118, 190, 0.45)',
   },
   summaryRow: {
     flexDirection: 'row',
