@@ -7,17 +7,24 @@ import { addRideRequest, addRideOffer, datePattern, dateExclusions, timePattern 
 
 interface BookingPageProps {
   onDone: () => void;
+  initialDate?: Date;
 }
 
 type Step = 'form' | 'confirm';
 
-export default function BookingPage({ onDone }: BookingPageProps) {
+function formatTravelDate(date: Date): string {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}-${month}-${date.getFullYear()}`;
+}
+
+export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [step, setStep] = useState<Step>('form');
   const [isDriving, setIsDriving] = useState<boolean>(false);
   const [toUni, setToUni] = useState<boolean>(true);
   const [address, setAddress] = useState<string>('');
   const [addrErr, setAddrErr] = useState<string>('');
-  const [travelDate, setTravelDate] = useState<string>(''); // Format: DD-MM-YYYY
+  const [travelDate, setTravelDate] = useState<string>(initialDate ? formatTravelDate(initialDate) : ''); // Format: DD-MM-YYYY
   const [travelDateErr, setTravelDateErr] = useState<string>('');
   const [detourTime, setDetourTime] = useState<number>(0);
   const [detourTimeErr, setDetourTimeErr] = useState<string>('');
