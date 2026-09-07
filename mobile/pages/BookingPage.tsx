@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
@@ -19,13 +18,16 @@ import { addRideRequest, addRideOffer, datePattern, dateExclusions, timePattern 
 import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
 import NumberStepper from '../components/NumberStepper';
+import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
+import RouteMapPreview from '../components/RouteMapPreview';
+import { geocodeAddress, ResolvedPlace } from '../services/googlePlaces';
 
 interface BookingPageProps {
   onDone: () => void;
   initialDate?: Date;
 }
 
-type Step = 'form' | 'confirm';
+type Step = 'trip' | 'details' | 'confirm';
 type FieldName = 'address' | 'travelDate' | 'depTime' | 'arrTime' | 'detourTime' | 'numSeats';
 
 const BOOKING_DRAFT_KEY = 'ribe:bookingDraftV1';
@@ -78,11 +80,12 @@ function formatTime12h(time: string): string {
 }
 
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
-  const [step, setStep] = useState<Step>('form');
+  const [step, setStep] = useState<Step>('trip');
   const [isDriving, setIsDriving] = useState<boolean>(false);
   const [toUni, setToUni] = useState<boolean>(true);
   const [address, setAddress] = useState<string>('');
   const [addrErr, setAddrErr] = useState<string>('');
+  const [addressPlace, setAddressPlace] = useState<ResolvedPlace | null>(null);
   const [travelDate, setTravelDate] = useState<string>(
     initialDate && isFutureDate(initialDate) ? formatTravelDate(initialDate) : '',
   ); // Format: DD-MM-YYYY
@@ -140,6 +143,20 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     });
   }, [hydrated, isDriving, toUni, address, travelDate, detourTime, numSeats, depTime, arrTime]);
 
+  // A restored draft only carries the address text, not its resolved coordinates - re-resolve it once
+  // so the route preview on step 1 isn't blank after reopening the page mid-booking.
+  useEffect(() => {
+    if (!hydrated || !address.trim()) return;
+    let cancelled = false;
+    geocodeAddress(address).then((resolved) => {
+      if (resolved && !cancelled) setAddressPlace(resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
   const depMinutes = timePattern.test(depTime.trim()) ? toMinutes(depTime.trim()) : null;
   const arrMinutes = timePattern.test(arrTime.trim()) ? toMinutes(arrTime.trim()) : null;
   const timeOrderWarning =
@@ -151,7 +168,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       ? `Detour of ${detourTime} min exceeds your ${arrMinutes - depMinutes} min travel window.`
       : '';
 
-  const validateBooking = (): boolean => {
+  const validateTripStep = (): boolean => {
     let valid = true;
 
     // address validation
@@ -159,6 +176,12 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       setAddrErr('Address is required.');
       valid = false;
     } else setAddrErr('');
+
+    return valid;
+  };
+
+  const validateDetailsStep = (): boolean => {
+    let valid = true;
 
     // travel date validation
     if (!datePattern.test(travelDate.trim()) || dateExclusions.test(travelDate.trim())) {
@@ -209,8 +232,13 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     return valid;
   };
 
+  const goToDetails = () => {
+    if (!validateTripStep()) return;
+    setStep('details');
+  };
+
   const goToConfirm = () => {
-    if (!validateBooking()) return;
+    if (!validateDetailsStep()) return;
     setStep('confirm');
   };
 
@@ -257,15 +285,20 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     }
   };
 
+  const stepLabels: Record<Step, string> = {
+    trip: 'Step 1 of 3 · Trip',
+    details: 'Step 2 of 3 · Details',
+    confirm: 'Step 3 of 3 · Confirm & submit',
+  };
+
   const progressIndicator = (
     <View style={localStyles.progressBlock}>
       <View style={localStyles.progressRow}>
         <View style={[localStyles.progressSegment, localStyles.progressSegmentActive]} />
+        <View style={[localStyles.progressSegment, step !== 'trip' && localStyles.progressSegmentActive]} />
         <View style={[localStyles.progressSegment, step === 'confirm' && localStyles.progressSegmentActive]} />
       </View>
-      <Text style={localStyles.progressLabel}>
-        {step === 'form' ? 'Step 1 of 2 · Trip details' : 'Step 2 of 2 · Confirm & submit'}
-      </Text>
+      <Text style={localStyles.progressLabel}>{stepLabels[step]}</Text>
     </View>
   );
 
@@ -273,7 +306,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     return (
       <View style={localStyles.pageContainer}>
         <View style={localStyles.fixedHeader}>
-          <Pressable style={localStyles.headerRow} onPress={() => setStep('form')}>
+          <Pressable style={localStyles.headerRow} onPress={() => setStep('details')}>
             <Ionicons name="chevron-back" size={22} color={colors.white} />
             <Text style={localStyles.headerTitle}>Confirm your request</Text>
           </Pressable>
@@ -329,7 +362,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         </View>
 
         <View style={localStyles.confirmActions}>
-          <Pressable onPress={() => setStep('form')} style={styles.secondaryButton}>
+          <Pressable onPress={() => setStep('details')} style={styles.secondaryButton}>
             <Text style={styles.secondaryButtonText}>Back</Text>
           </Pressable>
           <Pressable
@@ -345,12 +378,95 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     );
   }
 
+  if (step === 'trip') {
+    return (
+      <View style={localStyles.pageContainer}>
+        <View style={localStyles.fixedHeader}>
+          <Pressable style={localStyles.headerRow} onPress={onDone}>
+            <Ionicons name="chevron-back" size={22} color={colors.white} />
+            <Text style={localStyles.headerTitle}>Request a ride</Text>
+          </Pressable>
+          {progressIndicator}
+        </View>
+
+        <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={localStyles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={localStyles.card}>
+              <Text style={localStyles.cardLabel}>I am...</Text>
+              <View style={localStyles.segmentRow}>
+                <Pressable
+                  onPress={() => setIsDriving(false)}
+                  style={[localStyles.segmentOption, !isDriving && localStyles.segmentOptionActive]}
+                >
+                  <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a ride</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setIsDriving(true)}
+                  style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive]}
+                >
+                  <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a ride</Text>
+                </Pressable>
+              </View>
+
+              <Text style={[localStyles.cardLabel, { marginTop: 16 }]}>Direction</Text>
+              <View style={localStyles.segmentRow}>
+                <Pressable
+                  onPress={() => setToUni(true)}
+                  style={[localStyles.segmentOption, toUni && localStyles.segmentOptionActive]}
+                >
+                  <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To uni</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setToUni(false)}
+                  style={[localStyles.segmentOption, !toUni && localStyles.segmentOptionActive]}
+                >
+                  <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From uni</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={[localStyles.card, { zIndex: 5 }]}>
+              <Text style={localStyles.cardLabel}>Where</Text>
+              <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup address' : 'Destination address'}</Text>
+              <AddressAutocompleteInput
+                inputStyle={[localStyles.fieldInput, focusedField === 'address' && localStyles.fieldInputFocused]}
+                onBlur={() => setFocusedField(null)}
+                onChangeText={(value) => setAddress(toTitleCase(value))}
+                onFocus={() => setFocusedField('address')}
+                onResolvedLocation={setAddressPlace}
+                placeholder="123 Main St, Suburb"
+                value={address}
+              />
+              {addrErr !== '' && <Text style={styles.errorText}>{addrErr}</Text>}
+
+              <Text style={[localStyles.fieldLabel, { marginTop: 16 }]}>Route preview</Text>
+              <RouteMapPreview address={addressPlace} toUni={toUni} />
+            </View>
+
+            <Pressable onPress={goToDetails} style={localStyles.actionButton}>
+              <Text style={styles.primaryButtonText}>Next</Text>
+            </Pressable>
+            <Pressable onPress={onDone} style={localStyles.cancelLink}>
+              <Text style={localStyles.cancelLinkText}>Cancel</Text>
+            </Pressable>
+          </ScrollView>
+        </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </View>
+    );
+  }
+
   return (
     <View style={localStyles.pageContainer}>
       <View style={localStyles.fixedHeader}>
-        <Pressable style={localStyles.headerRow} onPress={onDone}>
+        <Pressable style={localStyles.headerRow} onPress={() => setStep('trip')}>
           <Ionicons name="chevron-back" size={22} color={colors.white} />
-          <Text style={localStyles.headerTitle}>Request a ride</Text>
+          <Text style={localStyles.headerTitle}>Trip details</Text>
         </Pressable>
         {progressIndicator}
       </View>
@@ -362,56 +478,6 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={localStyles.card}>
-            <Text style={localStyles.cardLabel}>I am...</Text>
-            <View style={localStyles.segmentRow}>
-              <Pressable
-                onPress={() => setIsDriving(false)}
-                style={[localStyles.segmentOption, !isDriving && localStyles.segmentOptionActive]}
-              >
-                <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a ride</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setIsDriving(true)}
-                style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive]}
-              >
-                <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a ride</Text>
-              </Pressable>
-            </View>
-
-            <Text style={[localStyles.cardLabel, { marginTop: 16 }]}>Direction</Text>
-            <View style={localStyles.segmentRow}>
-              <Pressable
-                onPress={() => setToUni(true)}
-                style={[localStyles.segmentOption, toUni && localStyles.segmentOptionActive]}
-              >
-                <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To uni</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setToUni(false)}
-                style={[localStyles.segmentOption, !toUni && localStyles.segmentOptionActive]}
-              >
-                <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From uni</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={localStyles.card}>
-            <Text style={localStyles.cardLabel}>Where</Text>
-            <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup address' : 'Destination address'}</Text>
-            <TextInput
-              autoCapitalize="words"
-              onBlur={() => setFocusedField(null)}
-              onChangeText={(value) => setAddress(toTitleCase(value))}
-              onFocus={() => setFocusedField('address')}
-              style={[localStyles.fieldInput, focusedField === 'address' && localStyles.fieldInputFocused]}
-              value={address}
-              placeholder="123 Main St, Suburb"
-              placeholderTextColor="rgba(255,255,255,0.4)"
-            />
-            {addrErr !== '' && <Text style={styles.errorText}>{addrErr}</Text>}
-          </View>
-
           <View style={localStyles.card}>
             <Text style={localStyles.cardLabel}>When</Text>
             <Text style={localStyles.fieldLabel}>Travel date</Text>
@@ -477,6 +543,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
           <Pressable onPress={goToConfirm} style={localStyles.actionButton}>
             <Text style={styles.primaryButtonText}>Next</Text>
+          </Pressable>
+          <Pressable onPress={onDone} style={localStyles.cancelLink}>
+            <Text style={localStyles.cancelLinkText}>Cancel</Text>
           </Pressable>
         </ScrollView>
 
