@@ -1,97 +1,175 @@
-import React, { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Modal,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { colors } from '../styles';
 
 interface TimePickerModalProps {
   visible: boolean;
   label: string;
-  initialTime?: string; // HH:mm
-  onSelect: (time: string) => void;
+  initialTime?: string; // HH:mm (24-hour)
+  onSelect: (time: string) => void; // HH:mm (24-hour)
   onClose: () => void;
 }
 
-const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
-const minutes = Array.from({ length: 12 }, (_, index) => String(index * 5).padStart(2, '0'));
 const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-function nearestMinute(value: string): string {
-  const numeric = Number(value);
-  if (Number.isNaN(numeric)) return '00';
-  let closest = minutes[0];
+const ITEM_HEIGHT = 44;
+const VISIBLE_ITEMS = 5;
+const WHEEL_HEIGHT = ITEM_HEIGHT * VISIBLE_ITEMS;
+const SPACER_HEIGHT = ITEM_HEIGHT * Math.floor(VISIBLE_ITEMS / 2);
+
+const hourValues = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
+const minuteValues = Array.from({ length: 12 }, (_, index) => index * 5);
+const periodValues = ['AM', 'PM'];
+
+function nearestMinuteIndex(minute: number): number {
+  let closestIndex = 0;
   let smallestDiff = Infinity;
-  for (const candidate of minutes) {
-    const diff = Math.abs(Number(candidate) - numeric);
+  minuteValues.forEach((candidate, index) => {
+    const diff = Math.abs(candidate - minute);
     if (diff < smallestDiff) {
       smallestDiff = diff;
-      closest = candidate;
+      closestIndex = index;
     }
+  });
+  return closestIndex;
+}
+
+function parseInitialTime(time?: string) {
+  if (time && timePattern.test(time)) {
+    const [hh, mm] = time.split(':').map(Number);
+    const periodIndex = hh >= 12 ? 1 : 0;
+    let hour12 = hh % 12;
+    if (hour12 === 0) hour12 = 12;
+    return { hourIndex: hour12 - 1, minuteIndex: nearestMinuteIndex(mm), periodIndex };
   }
-  return closest;
+  return { hourIndex: 7, minuteIndex: 0, periodIndex: 0 }; // default 08:00 AM
+}
+
+function toTimeString(hourIndex: number, minuteIndex: number, periodIndex: number): string {
+  let hour = hourIndex + 1; // 1-12
+  if (periodIndex === 0 && hour === 12) hour = 0; // 12 AM -> 00
+  if (periodIndex === 1 && hour !== 12) hour += 12; // PM, except 12 PM stays 12
+  return `${String(hour).padStart(2, '0')}:${String(minuteValues[minuteIndex]).padStart(2, '0')}`;
+}
+
+interface WheelColumnProps {
+  values: (string | number)[];
+  selectedIndex: number;
+  onChangeIndex: (index: number) => void;
+  format?: (value: string | number) => string;
+}
+
+function WheelColumn({ values, selectedIndex, onChangeIndex, format }: WheelColumnProps) {
+  const scrollRef = useRef<ScrollView>(null);
+  const lastReportedIndex = useRef(selectedIndex);
+
+  useEffect(() => {
+    lastReportedIndex.current = selectedIndex;
+    scrollRef.current?.scrollTo({ y: selectedIndex * ITEM_HEIGHT, animated: false });
+    // Only ever want this to run when the modal seeds a new starting index, not on every scroll-driven update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const rawIndex = event.nativeEvent.contentOffset.y / ITEM_HEIGHT;
+    const clampedIndex = Math.max(0, Math.min(values.length - 1, Math.round(rawIndex)));
+    if (clampedIndex !== lastReportedIndex.current) {
+      lastReportedIndex.current = clampedIndex;
+      onChangeIndex(clampedIndex);
+    }
+  };
+
+  return (
+    <ScrollView
+      decelerationRate="fast"
+      onScroll={handleScroll}
+      ref={scrollRef}
+      scrollEventThrottle={16}
+      showsVerticalScrollIndicator={false}
+      snapToInterval={ITEM_HEIGHT}
+      style={localStyles.column}
+    >
+      <View style={{ height: SPACER_HEIGHT }} />
+      {values.map((value, index) => (
+        <View key={String(value)} style={localStyles.cell}>
+          <Text style={[localStyles.cellText, index === selectedIndex && localStyles.cellTextActive]}>
+            {format ? format(value) : value}
+          </Text>
+        </View>
+      ))}
+      <View style={{ height: SPACER_HEIGHT }} />
+    </ScrollView>
+  );
 }
 
 export default function TimePickerModal({ visible, label, initialTime, onSelect, onClose }: TimePickerModalProps) {
-  const [selectedHour, setSelectedHour] = useState('08');
-  const [selectedMinute, setSelectedMinute] = useState('00');
+  const [hourIndex, setHourIndex] = useState(7);
+  const [minuteIndex, setMinuteIndex] = useState(0);
+  const [periodIndex, setPeriodIndex] = useState(0);
+  const [seed, setSeed] = useState(0);
 
   useEffect(() => {
     if (!visible) return;
-    if (initialTime && timePattern.test(initialTime)) {
-      const [h, m] = initialTime.split(':');
-      setSelectedHour(h);
-      setSelectedMinute(nearestMinute(m));
-    } else {
-      setSelectedHour('08');
-      setSelectedMinute('00');
-    }
+    const parsed = parseInitialTime(initialTime);
+    setHourIndex(parsed.hourIndex);
+    setMinuteIndex(parsed.minuteIndex);
+    setPeriodIndex(parsed.periodIndex);
+    setSeed((current) => current + 1); // forces the wheels to remount and re-center on the restored value
   }, [visible, initialTime]);
 
   if (!visible) return null;
 
   return (
     <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
-      <Pressable style={localStyles.backdrop} onPress={onClose}>
-        <Pressable style={localStyles.sheet} onPress={(event) => event.stopPropagation()}>
+      <View style={localStyles.backdrop}>
+        {/*
+          Dismiss target is a Pressable that only fills the space behind the sheet, as a
+          sibling rather than an ancestor of it. A Pressable *wrapping* the sheet claims the
+          touch responder on press-down and won't release it to the ScrollView wheels below,
+          which silently breaks their drag-to-scroll gesture.
+        */}
+        <Pressable onPress={onClose} style={StyleSheet.absoluteFillObject} />
+
+        <View style={localStyles.sheet}>
           <Text style={localStyles.title}>{label}</Text>
-          <Text style={localStyles.preview}>{selectedHour}:{selectedMinute}</Text>
 
-          <View style={localStyles.columnsRow}>
-            <ScrollView showsVerticalScrollIndicator={false} style={localStyles.column}>
-              {hours.map((hour) => (
-                <Pressable
-                  key={hour}
-                  onPress={() => setSelectedHour(hour)}
-                  style={[localStyles.cell, hour === selectedHour && localStyles.cellActive]}
-                >
-                  <Text style={[localStyles.cellText, hour === selectedHour && localStyles.cellTextActive]}>{hour}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            <Text style={localStyles.colon}>:</Text>
-
-            <ScrollView showsVerticalScrollIndicator={false} style={localStyles.column}>
-              {minutes.map((minute) => (
-                <Pressable
-                  key={minute}
-                  onPress={() => setSelectedMinute(minute)}
-                  style={[localStyles.cell, minute === selectedMinute && localStyles.cellActive]}
-                >
-                  <Text style={[localStyles.cellText, minute === selectedMinute && localStyles.cellTextActive]}>{minute}</Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+          <View style={localStyles.wheelContainer}>
+            <View pointerEvents="none" style={localStyles.selectionBand} />
+            <View key={seed} style={localStyles.columnsRow}>
+              <WheelColumn onChangeIndex={setHourIndex} selectedIndex={hourIndex} values={hourValues} />
+              <Text style={localStyles.colon}>:</Text>
+              <WheelColumn
+                format={(value) => String(value).padStart(2, '0')}
+                onChangeIndex={setMinuteIndex}
+                selectedIndex={minuteIndex}
+                values={minuteValues}
+              />
+              <WheelColumn onChangeIndex={setPeriodIndex} selectedIndex={periodIndex} values={periodValues} />
+            </View>
           </View>
 
           <View style={localStyles.actionsRow}>
             <Pressable onPress={onClose} style={localStyles.cancelButton}>
               <Text style={localStyles.cancelButtonText}>Cancel</Text>
             </Pressable>
-            <Pressable onPress={() => onSelect(`${selectedHour}:${selectedMinute}`)} style={localStyles.confirmButton}>
+            <Pressable
+              onPress={() => onSelect(toTimeString(hourIndex, minuteIndex, periodIndex))}
+              style={localStyles.confirmButton}
+            >
               <Text style={localStyles.confirmButtonText}>Set time</Text>
             </Pressable>
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -116,52 +194,57 @@ const localStyles = StyleSheet.create({
     fontSize: 16,
     color: colors.white,
     textAlign: 'center',
-    marginBottom: 4,
-  },
-  preview: {
-    fontFamily: 'Marcellus_400Regular',
-    fontSize: 30,
-    color: colors.white,
-    textAlign: 'center',
     marginBottom: 12,
+  },
+  wheelContainer: {
+    height: WHEEL_HEIGHT,
+    justifyContent: 'center',
+  },
+  selectionBand: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: SPACER_HEIGHT,
+    height: ITEM_HEIGHT,
+    borderRadius: 12,
+    backgroundColor: 'rgba(145, 211, 249, 0.22)',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
   },
   columnsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 200,
+    height: WHEEL_HEIGHT,
   },
   column: {
-    width: 72,
+    width: 70,
+    height: WHEEL_HEIGHT,
   },
   colon: {
     color: colors.white,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
-    marginHorizontal: 6,
   },
   cell: {
+    height: ITEM_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginVertical: 2,
-  },
-  cellActive: {
-    backgroundColor: 'rgba(145, 211, 249, 0.68)',
   },
   cellText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 16,
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 17,
   },
   cellTextActive: {
     color: colors.white,
+    fontSize: 20,
     fontWeight: '700',
   },
   actionsRow: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 16,
+    marginTop: 18,
   },
   cancelButton: {
     flex: 1,

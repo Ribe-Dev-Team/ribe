@@ -69,6 +69,14 @@ function toMinutes(time: string): number {
   return hours * 60 + mins;
 }
 
+function formatTime12h(time: string): string {
+  if (!timePattern.test(time.trim())) return time;
+  const [hh, mm] = time.trim().split(':').map(Number);
+  const period = hh >= 12 ? 'PM' : 'AM';
+  const hour12 = hh % 12 === 0 ? 12 : hh % 12;
+  return `${hour12}:${String(mm).padStart(2, '0')} ${period}`;
+}
+
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [step, setStep] = useState<Step>('form');
   const [isDriving, setIsDriving] = useState<boolean>(false);
@@ -284,11 +292,11 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           </View>
           <View style={localStyles.summaryRow}>
             <Text style={localStyles.summaryLabel}>Earliest departure</Text>
-            <Text style={localStyles.summaryValue}>{depTime}</Text>
+            <Text style={localStyles.summaryValue}>{formatTime12h(depTime)}</Text>
           </View>
           <View style={localStyles.summaryRow}>
             <Text style={localStyles.summaryLabel}>Latest arrival</Text>
-            <Text style={localStyles.summaryValue}>{arrTime}</Text>
+            <Text style={localStyles.summaryValue}>{formatTime12h(arrTime)}</Text>
           </View>
           <View style={localStyles.summaryRow}>
             <Text style={localStyles.summaryLabel}>Role</Text>
@@ -430,7 +438,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'depTime' && localStyles.fieldInputFocused]}
             >
               <Text style={depTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
-                {depTime || 'HH:MM (24hr)'}
+                {depTime ? formatTime12h(depTime) : 'Select time'}
               </Text>
               <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
             </Pressable>
@@ -445,7 +453,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'arrTime' && localStyles.fieldInputFocused]}
             >
               <Text style={arrTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
-                {arrTime || 'HH:MM (24hr)'}
+                {arrTime ? formatTime12h(arrTime) : 'Select time'}
               </Text>
               <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
             </Pressable>
@@ -469,9 +477,6 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
           <Pressable onPress={goToConfirm} style={localStyles.actionButton}>
             <Text style={styles.primaryButtonText}>Next</Text>
-          </Pressable>
-          <Pressable onPress={onDone} style={localStyles.cancelLink}>
-            <Text style={localStyles.cancelLinkText}>Cancel</Text>
           </Pressable>
         </ScrollView>
 
