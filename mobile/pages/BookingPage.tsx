@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -12,11 +12,13 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import styles, { colors } from '../styles';
 import { Booking } from './schema/booking.schema';
 import { addRideRequest, addRideOffer, datePattern, dateExclusions, timePattern } from './schema/firebaseBookingMethods';
 import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
+import NumberStepper from '../components/NumberStepper';
 
 interface BookingPageProps {
   onDone: () => void;
@@ -25,6 +27,19 @@ interface BookingPageProps {
 
 type Step = 'form' | 'confirm';
 type FieldName = 'address' | 'travelDate' | 'depTime' | 'arrTime' | 'detourTime' | 'numSeats';
+
+const BOOKING_DRAFT_KEY = 'ribe:bookingDraftV1';
+
+interface BookingDraft {
+  isDriving: boolean;
+  toUni: boolean;
+  address: string;
+  travelDate: string;
+  detourTime: number;
+  numSeats: number;
+  depTime: string;
+  arrTime: string;
+}
 
 function formatTravelDate(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
@@ -49,6 +64,11 @@ function isFutureDate(date: Date): boolean {
   return date > today;
 }
 
+function toMinutes(time: string): number {
+  const [hours, mins] = time.split(':').map(Number);
+  return hours * 60 + mins;
+}
+
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [step, setStep] = useState<Step>('form');
   const [isDriving, setIsDriving] = useState<boolean>(false);
@@ -70,6 +90,58 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [focusedField, setFocusedField] = useState<FieldName | null>(null);
   const [activePicker, setActivePicker] = useState<'date' | 'dep' | 'arr' | null>(null);
+  const [hydrated, setHydrated] = useState<boolean>(false);
+
+  // Restore any in-progress draft so a user doesn't lose their inputs if they navigate away mid-form.
+  useEffect(() => {
+    let isMounted = true;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(BOOKING_DRAFT_KEY);
+        if (raw && isMounted) {
+          const draft: Partial<BookingDraft> = JSON.parse(raw);
+          if (typeof draft.isDriving === 'boolean') setIsDriving(draft.isDriving);
+          if (typeof draft.toUni === 'boolean') setToUni(draft.toUni);
+          if (typeof draft.address === 'string') setAddress(draft.address);
+          if (typeof draft.detourTime === 'number') setDetourTime(draft.detourTime);
+          if (typeof draft.numSeats === 'number') setNumSeats(draft.numSeats);
+          if (typeof draft.depTime === 'string') setDepTime(draft.depTime);
+          if (typeof draft.arrTime === 'string') setArrTime(draft.arrTime);
+          if (typeof draft.travelDate === 'string') {
+            const parsed = parseTravelDate(draft.travelDate);
+            setTravelDate(parsed && isFutureDate(parsed) ? draft.travelDate : '');
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to restore booking draft:', err);
+      } finally {
+        if (isMounted) setHydrated(true);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Keep the draft up to date as the user fills in the form.
+  useEffect(() => {
+    if (!hydrated) return;
+    const draft: BookingDraft = { isDriving, toUni, address, travelDate, detourTime, numSeats, depTime, arrTime };
+    AsyncStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(draft)).catch((err) => {
+      console.warn('Failed to save booking draft:', err);
+    });
+  }, [hydrated, isDriving, toUni, address, travelDate, detourTime, numSeats, depTime, arrTime]);
+
+  const depMinutes = timePattern.test(depTime.trim()) ? toMinutes(depTime.trim()) : null;
+  const arrMinutes = timePattern.test(arrTime.trim()) ? toMinutes(arrTime.trim()) : null;
+  const timeOrderWarning =
+    depMinutes !== null && arrMinutes !== null && arrMinutes <= depMinutes
+      ? 'Arrival time must be later than departure time.'
+      : '';
+  const detourWarning =
+    isDriving && detourTime > 0 && depMinutes !== null && arrMinutes !== null && arrMinutes - depMinutes < detourTime
+      ? `Detour of ${detourTime} min exceeds your ${arrMinutes - depMinutes} min travel window.`
+      : '';
 
   const validateBooking = (): boolean => {
     let valid = true;
@@ -122,6 +194,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       valid = false;
     } else setArrTimeErr('');
 
+    // arrival-after-departure and detour-vs-window sanity checks (surfaced inline as the user types)
+    if (timeOrderWarning || detourWarning) valid = false;
+
     // return valid if no issues found, otherwise return false
     return valid;
   };
@@ -164,6 +239,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         console.log('Ride request created with ID:', newRequestId);
         alert('Ride request successfully created!');
       }
+      await AsyncStorage.removeItem(BOOKING_DRAFT_KEY).catch(() => {});
       onDone();
     } catch (error) {
       console.error('Failed to create ride request/offer:', error);
@@ -173,14 +249,30 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     }
   };
 
+  const progressIndicator = (
+    <View style={localStyles.progressBlock}>
+      <View style={localStyles.progressRow}>
+        <View style={[localStyles.progressSegment, localStyles.progressSegmentActive]} />
+        <View style={[localStyles.progressSegment, step === 'confirm' && localStyles.progressSegmentActive]} />
+      </View>
+      <Text style={localStyles.progressLabel}>
+        {step === 'form' ? 'Step 1 of 2 · Trip details' : 'Step 2 of 2 · Confirm & submit'}
+      </Text>
+    </View>
+  );
+
   if (step === 'confirm') {
     return (
-      <ScrollView contentContainerStyle={localStyles.screen} showsVerticalScrollIndicator={false}>
-        <Pressable style={localStyles.headerRow} onPress={() => setStep('form')}>
-          <Ionicons name="chevron-back" size={22} color={colors.white} />
-          <Text style={localStyles.headerTitle}>Confirm your request</Text>
-        </Pressable>
+      <View style={localStyles.pageContainer}>
+        <View style={localStyles.fixedHeader}>
+          <Pressable style={localStyles.headerRow} onPress={() => setStep('form')}>
+            <Ionicons name="chevron-back" size={22} color={colors.white} />
+            <Text style={localStyles.headerTitle}>Confirm your request</Text>
+          </Pressable>
+          {progressIndicator}
+        </View>
 
+        <ScrollView contentContainerStyle={localStyles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={localStyles.card}>
           <View style={localStyles.summaryRow}>
             <Text style={localStyles.summaryLabel}>{toUni ? 'Pickup' : 'Destination'}</Text>
@@ -240,23 +332,28 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Submit request'}</Text>
           </Pressable>
         </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
     );
   }
 
   return (
-    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+    <View style={localStyles.pageContainer}>
+      <View style={localStyles.fixedHeader}>
+        <Pressable style={localStyles.headerRow} onPress={onDone}>
+          <Ionicons name="chevron-back" size={22} color={colors.white} />
+          <Text style={localStyles.headerTitle}>Request a ride</Text>
+        </Pressable>
+        {progressIndicator}
+      </View>
+
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView
-          contentContainerStyle={localStyles.screen}
+          contentContainerStyle={localStyles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Pressable style={localStyles.headerRow} onPress={onDone}>
-            <Ionicons name="chevron-back" size={22} color={colors.white} />
-            <Text style={localStyles.headerTitle}>Request a ride</Text>
-          </Pressable>
-
           <View style={localStyles.card}>
             <Text style={localStyles.cardLabel}>I am...</Text>
             <View style={localStyles.segmentRow}>
@@ -353,39 +450,28 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
             </Pressable>
             {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
+            {arrTimeErr === '' && timeOrderWarning !== '' && <Text style={localStyles.warningText}>{timeOrderWarning}</Text>}
           </View>
 
           {isDriving && (
             <View style={localStyles.card}>
               <Text style={localStyles.cardLabel}>Driver details</Text>
               <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
-              <TextInput
-                keyboardType="number-pad"
-                onBlur={() => setFocusedField(null)}
-                onChangeText={(str) => setDetourTime(Number(str) || 0)}
-                onFocus={() => setFocusedField('detourTime')}
-                style={[localStyles.fieldInput, focusedField === 'detourTime' && localStyles.fieldInputFocused]}
-                placeholder="10"
-                placeholderTextColor="rgba(255,255,255,0.4)"
-              />
+              <NumberStepper max={120} min={0} onChange={setDetourTime} step={5} style={localStyles.fieldInput} value={detourTime} />
               {detourTimeErr !== '' && <Text style={styles.errorText}>{detourTimeErr}</Text>}
+              {detourTimeErr === '' && detourWarning !== '' && <Text style={localStyles.warningText}>{detourWarning}</Text>}
 
               <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
-              <TextInput
-                keyboardType="number-pad"
-                onBlur={() => setFocusedField(null)}
-                onChangeText={(str) => setNumSeats(Number(str) || 0)}
-                onFocus={() => setFocusedField('numSeats')}
-                style={[localStyles.fieldInput, focusedField === 'numSeats' && localStyles.fieldInputFocused]}
-                placeholder="1"
-                placeholderTextColor="rgba(255,255,255,0.4)"
-              />
+              <NumberStepper max={12} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
               {numSeatsErr !== '' && <Text style={styles.errorText}>{numSeatsErr}</Text>}
             </View>
           )}
 
           <Pressable onPress={goToConfirm} style={localStyles.actionButton}>
             <Text style={styles.primaryButtonText}>Next</Text>
+          </Pressable>
+          <Pressable onPress={onDone} style={localStyles.cancelLink}>
+            <Text style={localStyles.cancelLinkText}>Cancel</Text>
           </Pressable>
         </ScrollView>
 
@@ -433,27 +519,64 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           visible={activePicker === 'arr'}
         />
       </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
+      </TouchableWithoutFeedback>
+    </View>
   );
 }
 
 const localStyles = StyleSheet.create({
-  screen: {
-    padding: 20,
-    paddingTop: 40,
-    paddingBottom: 40,
+  pageContainer: {
+    flex: 1,
     backgroundColor: colors.darkBlue,
+  },
+  fixedHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 12,
+    backgroundColor: colors.darkBlue,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 18,
   },
   headerTitle: {
     fontFamily: 'Marcellus_400Regular',
     fontSize: 22,
     color: colors.white,
     marginLeft: 2,
+  },
+  progressBlock: {
+    marginTop: 14,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  progressSegment: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  progressSegmentActive: {
+    backgroundColor: colors.white,
+  },
+  progressLabel: {
+    marginTop: 8,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  warningText: {
+    color: colors.awaiting,
+    fontSize: 13,
+    marginBottom: 8,
   },
   card: {
     borderRadius: 20,
