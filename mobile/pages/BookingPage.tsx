@@ -387,9 +387,6 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           <Pressable onPress={goToConfirm} style={localStyles.actionButton}>
             <Text style={styles.primaryButtonText}>Next</Text>
           </Pressable>
-          <Pressable onPress={onDone} style={localStyles.cancelLink}>
-            <Text style={localStyles.cancelLinkText}>Cancel</Text>
-          </Pressable>
         </ScrollView>
 
         <DatePickerModal
