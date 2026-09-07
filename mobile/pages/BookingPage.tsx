@@ -306,10 +306,11 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     return (
       <View style={localStyles.pageContainer}>
         <View style={localStyles.fixedHeader}>
-          <Pressable style={localStyles.headerRow} onPress={() => setStep('details')}>
-            <Ionicons name="chevron-back" size={22} color={colors.white} />
-            <Text style={localStyles.headerTitle}>Confirm your request</Text>
+          <Pressable style={localStyles.backButton} onPress={() => setStep('details')}>
+            <Ionicons name="chevron-back" size={24} color={colors.white} />
+            <Text style={localStyles.backButtonLabel}>Back</Text>
           </Pressable>
+          <Text style={localStyles.headerTitle}>Confirm your request</Text>
           {progressIndicator}
         </View>
 
@@ -349,6 +350,11 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           )}
         </View>
 
+        <View style={localStyles.card}>
+          <Text style={localStyles.cardLabel}>Route preview</Text>
+          <RouteMapPreview address={addressPlace} toUni={toUni} />
+        </View>
+
         <View style={localStyles.infoCard}>
           <View style={localStyles.infoHeaderRow}>
             <Ionicons name="information-circle-outline" size={16} color={colors.white} />
@@ -362,12 +368,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         </View>
 
         <View style={localStyles.confirmActions}>
-          <Pressable onPress={() => setStep('details')} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Back</Text>
-          </Pressable>
           <Pressable
             onPress={submitBooking}
-            style={[localStyles.actionButton, { flex: 1 }, isSubmitting && localStyles.actionButtonDisabled]}
+            style={[localStyles.actionButton, isSubmitting && localStyles.actionButtonDisabled]}
             disabled={isSubmitting}
           >
             <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Submit request'}</Text>
@@ -382,10 +385,11 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     return (
       <View style={localStyles.pageContainer}>
         <View style={localStyles.fixedHeader}>
-          <Pressable style={localStyles.headerRow} onPress={onDone}>
-            <Ionicons name="chevron-back" size={22} color={colors.white} />
-            <Text style={localStyles.headerTitle}>Request a ride</Text>
+          <Pressable style={localStyles.backButton} onPress={onDone}>
+            <Ionicons name="chevron-back" size={24} color={colors.white} />
+            <Text style={localStyles.backButtonLabel}>Back</Text>
           </Pressable>
+          <Text style={localStyles.headerTitle}>Request a ride</Text>
           {progressIndicator}
         </View>
 
@@ -451,9 +455,6 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <Pressable onPress={goToDetails} style={localStyles.actionButton}>
               <Text style={styles.primaryButtonText}>Next</Text>
             </Pressable>
-            <Pressable onPress={onDone} style={localStyles.cancelLink}>
-              <Text style={localStyles.cancelLinkText}>Cancel</Text>
-            </Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
@@ -464,10 +465,11 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   return (
     <View style={localStyles.pageContainer}>
       <View style={localStyles.fixedHeader}>
-        <Pressable style={localStyles.headerRow} onPress={() => setStep('trip')}>
-          <Ionicons name="chevron-back" size={22} color={colors.white} />
-          <Text style={localStyles.headerTitle}>Trip details</Text>
+        <Pressable style={localStyles.backButton} onPress={() => setStep('trip')}>
+          <Ionicons name="chevron-back" size={24} color={colors.white} />
+          <Text style={localStyles.backButtonLabel}>Back</Text>
         </Pressable>
+        <Text style={localStyles.headerTitle}>Trip details</Text>
         {progressIndicator}
       </View>
 
@@ -544,9 +546,6 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           <Pressable onPress={goToConfirm} style={localStyles.actionButton}>
             <Text style={styles.primaryButtonText}>Next</Text>
           </Pressable>
-          <Pressable onPress={onDone} style={localStyles.cancelLink}>
-            <Text style={localStyles.cancelLinkText}>Cancel</Text>
-          </Pressable>
         </ScrollView>
 
         <DatePickerModal
@@ -615,15 +614,27 @@ const localStyles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
-  headerRow: {
+  backButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingVertical: 10,
+    paddingLeft: 10,
+    paddingRight: 20,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  backButtonLabel: {
+    fontFamily: 'Marcellus_400Regular',
+    fontSize: 17,
+    color: colors.white,
   },
   headerTitle: {
     fontFamily: 'Marcellus_400Regular',
     fontSize: 22,
     color: colors.white,
-    marginLeft: 2,
+    marginTop: 14,
   },
   progressBlock: {
     marginTop: 14,
@@ -778,14 +789,5 @@ const localStyles = StyleSheet.create({
   confirmActions: {
     flexDirection: 'row',
     gap: 12,
-  },
-  cancelLink: {
-    marginTop: 10,
-    alignItems: 'center',
-  },
-  cancelLinkText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 14,
-    fontWeight: '600',
   },
 });
