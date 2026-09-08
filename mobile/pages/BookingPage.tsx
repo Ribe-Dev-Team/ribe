@@ -32,17 +32,6 @@ type FieldName = 'address' | 'travelDate' | 'depTime' | 'arrTime' | 'detourTime'
 
 const BOOKING_DRAFT_KEY = 'ribe:bookingDraftV1';
 
-interface BookingDraft {
-  isDriving: boolean;
-  toUni: boolean;
-  address: string;
-  travelDate: string;
-  detourTime: number;
-  numSeats: number;
-  depTime: string;
-  arrTime: string;
-}
-
 function formatTravelDate(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -110,12 +99,12 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       try {
         const raw = await AsyncStorage.getItem(BOOKING_DRAFT_KEY);
         if (raw && isMounted) {
-          const draft: Partial<BookingDraft> = JSON.parse(raw);
+          const draft: Partial<Booking> = JSON.parse(raw);
           if (typeof draft.isDriving === 'boolean') setIsDriving(draft.isDriving);
           if (typeof draft.toUni === 'boolean') setToUni(draft.toUni);
           if (typeof draft.address === 'string') setAddress(draft.address);
           if (typeof draft.detourTime === 'number') setDetourTime(draft.detourTime);
-          if (typeof draft.numSeats === 'number') setNumSeats(draft.numSeats);
+          if (typeof draft.capacity === 'number') setNumSeats(draft.capacity);
           if (typeof draft.depTime === 'string') setDepTime(draft.depTime);
           if (typeof draft.arrTime === 'string') setArrTime(draft.arrTime);
           if (typeof draft.travelDate === 'string') {
@@ -137,7 +126,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   // Keep the draft up to date as the user fills in the form.
   useEffect(() => {
     if (!hydrated) return;
-    const draft: BookingDraft = { isDriving, toUni, address, travelDate, detourTime, numSeats, depTime, arrTime };
+    const draft: Booking = { isDriving, toUni, address, travelDate, detourTime, capacity: numSeats, depTime, arrTime };
     AsyncStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(draft)).catch((err) => {
       console.warn('Failed to save booking draft:', err);
     });
