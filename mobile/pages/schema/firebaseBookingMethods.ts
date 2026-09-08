@@ -2,34 +2,14 @@ import { collection, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestor
 import { db } from '../../firebaseConfig';
 import { Booking } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
-
-/* Time (24hr):
-  - hours: all from 00->19 + 20->23
-  - minutes: all from 00->59
-*/
-export const timePattern = /^(?:[01]\d|2[0-3]):(?:[0-5]\d)$/;
-/* Date:
-  - days: all from 01->09 + 10->29 + 30->31
-  - months all from 01->09 + 10->12
-  - years: all from 2020->2099
-*/
-export const datePattern = /^(?:[0][1-9]|[12]\d|3[01])-(?:0[1-9]|1[0-2])-(?:20[2-9]\d)$/;
-/* Match to specific invalid dates, namely
-  - 30th of Feb     (2)
-  - 29th Feb when years are not a multiple of 4 (3)
-  - 31st of Feb     (1)
-  - 31st April      (1)
-  - 31st June       (1)
-  - 31st September  (1)
-  - 31st November   (1)
-*/
-export const dateExclusions = /^(?:31-(?:02|04|06|09|11)-\d{4}|30-02-\d{4}|29-02-20(?:[02468][048]|[13579][26]))$/;
+import { timePattern, toMinutes } from '../../utility/times';
+import { parseDateAsStr, isFutureDate } from '../../utility/dates';
 
 // convert DD-MM-YYYY string to Firestore Timestamp
 const parseDateToTimestamp = (dateStr: string): Timestamp => {
-  const [day, month, year] = dateStr.trim().split('-').map(Number);
-  const asDate = new Date(year, month - 1, day, 0, 0, 0, 0);
-  return Timestamp.fromDate(asDate);
+  const asDate = parseDateAsStr(dateStr);
+  if (asDate !== undefined) return Timestamp.fromDate(asDate);
+  throw new Error(`The date ${dateStr} was not a valid date.`);
 };
 
 // Add request to DB
@@ -57,33 +37,17 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     throw new Error("date must be a Firestore Timestamp");
   } else if (Number.isNaN(req.date)) {
     throw new Error(`couldn't convert '${booking.travelDate}' into a Firestore date format`);
-  } else if (!datePattern.test(booking.travelDate) || dateExclusions.test(booking.travelDate)) {
-    throw new Error(`the date '${booking.travelDate}' is not a real date`);
-  } else if (new Date(req.date.toDate()).setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0)) {
-    // create new date objects to protect against mutation
-    // set hours, minutes, seconds and milliseconds to 0 so only date components are compared
+  } else if (isFutureDate(req.date.toDate())) {
     throw new Error(`a future date must be provided, not '${booking.travelDate}'`);
   }
 
   if (req.departureTime !== undefined && !timePattern.test(req.departureTime)) {
     throw new Error("departureTime must be in 'HH:mm' (24-hour) format");
-  }
-
-  if (req.arrivalTime !== undefined && !timePattern.test(req.arrivalTime)) {
+  } else if (req.arrivalTime !== undefined && !timePattern.test(req.arrivalTime)) {
     throw new Error("arrivalTime must be in 'HH:mm' (24-hour) format");
-  }
-
-  // range checking (time in bounds)
-  if (req.departureTime && req.arrivalTime) {
-    const [depHrs, depMins] = req.departureTime.split(":").map(Number);
-    const [arrHrs, arrMins] = req.arrivalTime.split(":").map(Number);
-
-    const departureMinutes = depHrs * 60 + depMins;
-    const arrivalMinutes = arrHrs * 60 + arrMins;
-
-    if (arrivalMinutes <= departureMinutes) {
-      throw new Error("arrivalTime must be later than departureTime");
-    }
+  } else if (toMinutes(req.arrivalTime) <= toMinutes(req.departureTime)) {
+    // range checking (time in bounds)
+    throw new Error("arrivalTime must be later than departureTime");
   }
 
   const docRef = await addDoc(collectionRef, req);
@@ -125,11 +89,7 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error("date must be a Firestore Timestamp");
   } else if (Number.isNaN(offer.date)) {
     throw new Error(`couldn't convert '${booking.travelDate}' into a Firestore date format`);
-  } else if (!datePattern.test(booking.travelDate) || dateExclusions.test(booking.travelDate)) {
-    throw new Error(`the date '${booking.travelDate}' is not a real date`);
-  } else if (new Date(offer.date.toDate()).setHours(0, 0, 0, 0) <= new Date().setHours(0, 0, 0, 0)) {
-    // create new date objects to protect against mutation
-    // set hours, minutes, seconds and milliseconds to 0 so only date components are compared
+  } else if (isFutureDate(offer.date.toDate())) {
     throw new Error(`a future date must be provided, not '${booking.travelDate}'`);
   }
 
@@ -143,26 +103,19 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
 
   if (offer.departureTime !== undefined && !timePattern.test(offer.departureTime)) {
     throw new Error("departureTime must be in 'HH:mm' (24-hour) format");
-  }
-
-  if (offer.arrivalTime !== undefined && !timePattern.test(offer.arrivalTime)) {
+  } else if (offer.arrivalTime !== undefined && !timePattern.test(offer.arrivalTime)) {
     throw new Error("arrivalTime must be in 'HH:mm' (24-hour) format");
   }
 
   // range checking (time in bounds + seats within reason)
-  if (offer.departureTime && offer.arrivalTime) {
-    const [depHrs, depMins] = offer.departureTime.split(":").map(Number);
-    const [arrHrs, arrMins] = offer.arrivalTime.split(":").map(Number);
+  const depMins = toMinutes(offer.departureTime);
+  const arrMins = toMinutes(offer.arrivalTime);
+  const timeDiff = arrMins - depMins;
 
-    const departureMinutes = depHrs * 60 + depMins;
-    const arrivalMinutes = arrHrs * 60 + arrMins;
-    const timeDiff = arrivalMinutes - departureMinutes;
-
-    if (arrivalMinutes <= departureMinutes) {
-      throw new Error("arrivalTime must be later than departureTime");
-    } else if (timeDiff < offer.maxDetourTime) {
-      throw new Error(`detour allowance of ${offer.maxDetourTime} (min) exceeds travel window of ${timeDiff} (min)`);
-    }
+  if (arrMins <= depMins) {
+    throw new Error("arrivalTime must be later than departureTime");
+  } else if (timeDiff < offer.maxDetourTime) {
+    throw new Error(`detour allowance of ${offer.maxDetourTime} (min) exceeds travel window of ${timeDiff} (min)`);
   }
 
   if (offer.seatCapacity < 1 || offer.seatCapacity > 12) {
@@ -175,11 +128,11 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
   return docRef.id;
 };
 
+
+// TODO: extract validation checks to separate file to reduce repetition in update and delete methods
+
 // export async function updateRideRequest(requestID: string, updates: Partial<RideRequest>): Promise<void> {
 //   validateRideRequest(updates);
-
-//   const docRef = doc(db, 'rideRequests', requestID);
-//   await docRef.update(updates);
 // }
 
 // export async function deleteRideRequest(requestID: string): Promise<void> {

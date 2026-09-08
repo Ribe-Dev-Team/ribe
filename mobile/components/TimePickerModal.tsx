@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../styles';
+import { isValid24Time, decomposeTime12h, convert12hTo24h, type sepTime12h } from '../utility/times';
 
 interface TimePickerModalProps {
   visible: boolean;
@@ -18,8 +19,6 @@ interface TimePickerModalProps {
   onSelect: (time: string) => void; // HH:mm (24-hour)
   onClose: () => void;
 }
-
-const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 const ITEM_HEIGHT = 44;
 const VISIBLE_ITEMS = 5;
@@ -44,21 +43,20 @@ function nearestMinuteIndex(minute: number): number {
 }
 
 function parseInitialTime(time?: string) {
-  if (time && timePattern.test(time)) {
-    const [hh, mm] = time.split(':').map(Number);
-    const periodIndex = hh >= 12 ? 1 : 0;
-    let hour12 = hh % 12;
-    if (hour12 === 0) hour12 = 12;
-    return { hourIndex: hour12 - 1, minuteIndex: nearestMinuteIndex(mm), periodIndex };
+  if (time && isValid24Time(time)) {
+    const t12 = decomposeTime12h(time);
+    return { hourIndex: t12.hrs - 1, minuteIndex: nearestMinuteIndex(t12.mins), periodIndex: t12.period };
   }
   return { hourIndex: 7, minuteIndex: 0, periodIndex: 0 }; // default 08:00 AM
 }
 
 function toTimeString(hourIndex: number, minuteIndex: number, periodIndex: number): string {
-  let hour = hourIndex + 1; // 1-12
-  if (periodIndex === 0 && hour === 12) hour = 0; // 12 AM -> 00
-  if (periodIndex === 1 && hour !== 12) hour += 12; // PM, except 12 PM stays 12
-  return `${String(hour).padStart(2, '0')}:${String(minuteValues[minuteIndex]).padStart(2, '0')}`;
+  const time12: sepTime12h = {
+    hrs: hourIndex + 1, // 1-12
+    mins: minuteValues[minuteIndex],
+    period: (periodIndex === 0) ? 'AM' : 'PM'
+  };
+  return convert12hTo24h(time12);
 }
 
 interface WheelColumnProps {

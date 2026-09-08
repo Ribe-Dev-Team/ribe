@@ -102,3 +102,4 @@ _build
 
 # Google Drive syncing (David)
 */desktop.ini
+*.ini

@@ -14,7 +14,9 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import styles, { colors } from '../styles';
 import { Booking } from './schema/booking.schema';
-import { addRideRequest, addRideOffer, datePattern, dateExclusions, timePattern } from './schema/firebaseBookingMethods';
+import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
+import { timePattern, toMinutes, formatTime12h } from '../utility/times';
+import { isFutureDate, formatDateToStr, parseDateAsStr } from '../utility/dates';
 import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
 import NumberStepper from '../components/NumberStepper';
@@ -32,40 +34,8 @@ type FieldName = 'address' | 'travelDate' | 'depTime' | 'arrTime' | 'detourTime'
 
 const BOOKING_DRAFT_KEY = 'ribe:bookingDraftV1';
 
-function formatTravelDate(date: Date): string {
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `${day}-${month}-${date.getFullYear()}`;
-}
-
-function parseTravelDate(value: string): Date | undefined {
-  if (!datePattern.test(value.trim())) return undefined;
-  const [day, month, year] = value.trim().split('-').map(Number);
-  const parsed = new Date(year, month - 1, day);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-}
-
 function toTitleCase(value: string): string {
   return value.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
-}
-
-function isFutureDate(date: Date): boolean {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return date > today;
-}
-
-function toMinutes(time: string): number {
-  const [hours, mins] = time.split(':').map(Number);
-  return hours * 60 + mins;
-}
-
-function formatTime12h(time: string): string {
-  if (!timePattern.test(time.trim())) return time;
-  const [hh, mm] = time.trim().split(':').map(Number);
-  const period = hh >= 12 ? 'PM' : 'AM';
-  const hour12 = hh % 12 === 0 ? 12 : hh % 12;
-  return `${hour12}:${String(mm).padStart(2, '0')} ${period}`;
 }
 
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
@@ -76,7 +46,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [addrErr, setAddrErr] = useState<string>('');
   const [addressPlace, setAddressPlace] = useState<ResolvedPlace | null>(null);
   const [travelDate, setTravelDate] = useState<string>(
-    initialDate && isFutureDate(initialDate) ? formatTravelDate(initialDate) : '',
+    initialDate && isFutureDate(initialDate) ? formatDateToStr(initialDate) : '',
   ); // Format: DD-MM-YYYY
   const [travelDateErr, setTravelDateErr] = useState<string>('');
   const [detourTime, setDetourTime] = useState<number>(0);
@@ -108,7 +78,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           if (typeof draft.depTime === 'string') setDepTime(draft.depTime);
           if (typeof draft.arrTime === 'string') setArrTime(draft.arrTime);
           if (typeof draft.travelDate === 'string') {
-            const parsed = parseTravelDate(draft.travelDate);
+            const parsed = parseDateAsStr(draft.travelDate);
             setTravelDate(parsed && isFutureDate(parsed) ? draft.travelDate : '');
           }
         }
@@ -173,17 +143,15 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     let valid = true;
 
     // travel date validation
-    if (!datePattern.test(travelDate.trim()) || dateExclusions.test(travelDate.trim())) {
-      setTravelDateErr('Enter valid date in DD-MM-YYYY format.');
+    const parsedDate = parseDateAsStr(travelDate);
+
+    if (!parsedDate) {
+      setTravelDateErr(`'${travelDate}' is not a valid date`);
       valid = false;
-    } else {
-      const [day, month, year] = travelDate.trim().split('-').map(Number);
-      const parsedDate = new Date(year, month - 1, day);
-      if (isNaN(parsedDate.getTime()) || parsedDate <= new Date()) {
-        setTravelDateErr('Date must be a valid future date.');
-        valid = false;
-      } else setTravelDateErr('');
-    }
+    } else if (!isFutureDate(parsedDate)) {
+      setTravelDateErr(`'${travelDate}' must be a future date`);
+      valid = false;
+    } else setTravelDateErr('');
 
     // detour time & seats validation
     if (!isDriving) {
@@ -264,7 +232,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         console.log('Ride request created with ID:', newRequestId);
         alert('Ride request successfully created!');
       }
-      await AsyncStorage.removeItem(BOOKING_DRAFT_KEY).catch(() => {});
+      await AsyncStorage.removeItem(BOOKING_DRAFT_KEY).catch(() => { });
       onDone();
     } catch (error) {
       console.error('Failed to create ride request/offer:', error);
@@ -304,67 +272,67 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         </View>
 
         <ScrollView contentContainerStyle={localStyles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={localStyles.card}>
-          <View style={localStyles.summaryRow}>
-            <Text style={localStyles.summaryLabel}>{toUni ? 'Pickup' : 'Destination'}</Text>
-            <Text style={localStyles.summaryValue} numberOfLines={1}>{address}</Text>
+          <View style={localStyles.card}>
+            <View style={localStyles.summaryRow}>
+              <Text style={localStyles.summaryLabel}>{toUni ? 'Pickup' : 'Destination'}</Text>
+              <Text style={localStyles.summaryValue} numberOfLines={1}>{address}</Text>
+            </View>
+            <View style={localStyles.summaryRow}>
+              <Text style={localStyles.summaryLabel}>Travel date</Text>
+              <Text style={localStyles.summaryValue}>{travelDate}</Text>
+            </View>
+            <View style={localStyles.summaryRow}>
+              <Text style={localStyles.summaryLabel}>Earliest departure</Text>
+              <Text style={localStyles.summaryValue}>{formatTime12h(depTime)}</Text>
+            </View>
+            <View style={localStyles.summaryRow}>
+              <Text style={localStyles.summaryLabel}>Latest arrival</Text>
+              <Text style={localStyles.summaryValue}>{formatTime12h(arrTime)}</Text>
+            </View>
+            <View style={localStyles.summaryRow}>
+              <Text style={localStyles.summaryLabel}>Role</Text>
+              <Text style={localStyles.summaryValue}>{isDriving ? 'Offering a ride' : 'Requesting a ride'}</Text>
+            </View>
+            {isDriving && (
+              <>
+                <View style={localStyles.summaryRow}>
+                  <Text style={localStyles.summaryLabel}>Max detour</Text>
+                  <Text style={localStyles.summaryValue}>{detourTime} min</Text>
+                </View>
+                <View style={[localStyles.summaryRow, { borderBottomWidth: 0 }]}>
+                  <Text style={localStyles.summaryLabel}>Seats offered</Text>
+                  <Text style={localStyles.summaryValue}>{numSeats}</Text>
+                </View>
+              </>
+            )}
           </View>
-          <View style={localStyles.summaryRow}>
-            <Text style={localStyles.summaryLabel}>Travel date</Text>
-            <Text style={localStyles.summaryValue}>{travelDate}</Text>
-          </View>
-          <View style={localStyles.summaryRow}>
-            <Text style={localStyles.summaryLabel}>Earliest departure</Text>
-            <Text style={localStyles.summaryValue}>{formatTime12h(depTime)}</Text>
-          </View>
-          <View style={localStyles.summaryRow}>
-            <Text style={localStyles.summaryLabel}>Latest arrival</Text>
-            <Text style={localStyles.summaryValue}>{formatTime12h(arrTime)}</Text>
-          </View>
-          <View style={localStyles.summaryRow}>
-            <Text style={localStyles.summaryLabel}>Role</Text>
-            <Text style={localStyles.summaryValue}>{isDriving ? 'Offering a ride' : 'Requesting a ride'}</Text>
-          </View>
-          {isDriving && (
-            <>
-              <View style={localStyles.summaryRow}>
-                <Text style={localStyles.summaryLabel}>Max detour</Text>
-                <Text style={localStyles.summaryValue}>{detourTime} min</Text>
-              </View>
-              <View style={[localStyles.summaryRow, { borderBottomWidth: 0 }]}>
-                <Text style={localStyles.summaryLabel}>Seats offered</Text>
-                <Text style={localStyles.summaryValue}>{numSeats}</Text>
-              </View>
-            </>
-          )}
-        </View>
 
-        <View style={localStyles.card}>
-          <Text style={localStyles.cardLabel}>Route preview</Text>
-          <RouteMapPreview address={addressPlace} toUni={toUni} />
-        </View>
-
-        <View style={localStyles.infoCard}>
-          <View style={localStyles.infoHeaderRow}>
-            <Ionicons name="information-circle-outline" size={16} color={colors.white} />
-            <Text style={localStyles.infoTitle}>What happens next</Text>
+          <View style={localStyles.card}>
+            <Text style={localStyles.cardLabel}>Route preview</Text>
+            <RouteMapPreview address={addressPlace} toUni={toUni} />
           </View>
-          <Text style={localStyles.infoText}>
-            {isDriving
-              ? "We'll match your offer with nearby ride requests. You'll be notified when a rider accepts."
-              : "We'll look for a driver heading your way. If a match is found, you'll have 12 hours to accept before nothing is booked."}
-          </Text>
-        </View>
 
-        <View style={localStyles.confirmActions}>
-          <Pressable
-            onPress={submitBooking}
-            style={[localStyles.actionButton, isSubmitting && localStyles.actionButtonDisabled]}
-            disabled={isSubmitting}
-          >
-            <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Submit request'}</Text>
-          </Pressable>
-        </View>
+          <View style={localStyles.infoCard}>
+            <View style={localStyles.infoHeaderRow}>
+              <Ionicons name="information-circle-outline" size={16} color={colors.white} />
+              <Text style={localStyles.infoTitle}>What happens next</Text>
+            </View>
+            <Text style={localStyles.infoText}>
+              {isDriving
+                ? "We'll match your offer with nearby ride requests. You'll be notified when a rider accepts."
+                : "We'll look for a driver heading your way. If a match is found, you'll have 12 hours to accept before nothing is booked."}
+            </Text>
+          </View>
+
+          <View style={localStyles.confirmActions}>
+            <Pressable
+              onPress={submitBooking}
+              style={[localStyles.actionButton, isSubmitting && localStyles.actionButtonDisabled]}
+              disabled={isSubmitting}
+            >
+              <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Submit request'}</Text>
+            </Pressable>
+          </View>
         </ScrollView>
       </View>
     );
@@ -383,69 +351,69 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         </View>
 
         <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <ScrollView
-            contentContainerStyle={localStyles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View style={localStyles.card}>
-              <Text style={localStyles.cardLabel}>I am...</Text>
-              <View style={localStyles.segmentRow}>
-                <Pressable
-                  onPress={() => setIsDriving(false)}
-                  style={[localStyles.segmentOption, !isDriving && localStyles.segmentOptionActive]}
-                >
-                  <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a ride</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setIsDriving(true)}
-                  style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive]}
-                >
-                  <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a ride</Text>
-                </Pressable>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+            <ScrollView
+              contentContainerStyle={localStyles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={localStyles.card}>
+                <Text style={localStyles.cardLabel}>I am...</Text>
+                <View style={localStyles.segmentRow}>
+                  <Pressable
+                    onPress={() => setIsDriving(false)}
+                    style={[localStyles.segmentOption, !isDriving && localStyles.segmentOptionActive]}
+                  >
+                    <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a ride</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setIsDriving(true)}
+                    style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive]}
+                  >
+                    <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a ride</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={[localStyles.cardLabel, { marginTop: 16 }]}>Direction</Text>
+                <View style={localStyles.segmentRow}>
+                  <Pressable
+                    onPress={() => setToUni(true)}
+                    style={[localStyles.segmentOption, toUni && localStyles.segmentOptionActive]}
+                  >
+                    <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To uni</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setToUni(false)}
+                    style={[localStyles.segmentOption, !toUni && localStyles.segmentOptionActive]}
+                  >
+                    <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From uni</Text>
+                  </Pressable>
+                </View>
               </View>
 
-              <Text style={[localStyles.cardLabel, { marginTop: 16 }]}>Direction</Text>
-              <View style={localStyles.segmentRow}>
-                <Pressable
-                  onPress={() => setToUni(true)}
-                  style={[localStyles.segmentOption, toUni && localStyles.segmentOptionActive]}
-                >
-                  <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To uni</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => setToUni(false)}
-                  style={[localStyles.segmentOption, !toUni && localStyles.segmentOptionActive]}
-                >
-                  <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From uni</Text>
-                </Pressable>
+              <View style={[localStyles.card, { zIndex: 5 }]}>
+                <Text style={localStyles.cardLabel}>Where</Text>
+                <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup address' : 'Destination address'}</Text>
+                <AddressAutocompleteInput
+                  inputStyle={[localStyles.fieldInput, focusedField === 'address' && localStyles.fieldInputFocused]}
+                  onBlur={() => setFocusedField(null)}
+                  onChangeText={(value) => setAddress(toTitleCase(value))}
+                  onFocus={() => setFocusedField('address')}
+                  onResolvedLocation={setAddressPlace}
+                  placeholder="123 Main St, Suburb"
+                  value={address}
+                />
+                {addrErr !== '' && <Text style={styles.errorText}>{addrErr}</Text>}
+
+                <Text style={[localStyles.fieldLabel, { marginTop: 16 }]}>Route preview</Text>
+                <RouteMapPreview address={addressPlace} toUni={toUni} />
               </View>
-            </View>
 
-            <View style={[localStyles.card, { zIndex: 5 }]}>
-              <Text style={localStyles.cardLabel}>Where</Text>
-              <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup address' : 'Destination address'}</Text>
-              <AddressAutocompleteInput
-                inputStyle={[localStyles.fieldInput, focusedField === 'address' && localStyles.fieldInputFocused]}
-                onBlur={() => setFocusedField(null)}
-                onChangeText={(value) => setAddress(toTitleCase(value))}
-                onFocus={() => setFocusedField('address')}
-                onResolvedLocation={setAddressPlace}
-                placeholder="123 Main St, Suburb"
-                value={address}
-              />
-              {addrErr !== '' && <Text style={styles.errorText}>{addrErr}</Text>}
-
-              <Text style={[localStyles.fieldLabel, { marginTop: 16 }]}>Route preview</Text>
-              <RouteMapPreview address={addressPlace} toUni={toUni} />
-            </View>
-
-            <Pressable onPress={goToDetails} style={localStyles.actionButton}>
-              <Text style={styles.primaryButtonText}>Next</Text>
-            </Pressable>
-          </ScrollView>
-        </KeyboardAvoidingView>
+              <Pressable onPress={goToDetails} style={localStyles.actionButton}>
+                <Text style={styles.primaryButtonText}>Next</Text>
+              </Pressable>
+            </ScrollView>
+          </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
       </View>
     );
@@ -463,124 +431,124 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       </View>
 
       <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView
-          contentContainerStyle={localStyles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={localStyles.card}>
-            <Text style={localStyles.cardLabel}>When</Text>
-            <Text style={localStyles.fieldLabel}>Travel date</Text>
-            <Pressable
-              onPress={() => {
-                setFocusedField('travelDate');
-                setActivePicker('date');
-              }}
-              style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'travelDate' && localStyles.fieldInputFocused]}
-            >
-              <Text style={travelDate ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
-                {travelDate || 'DD-MM-YYYY'}
-              </Text>
-              <Ionicons color="rgba(255,255,255,0.6)" name="calendar-outline" size={18} />
-            </Pressable>
-            {travelDateErr !== '' && <Text style={styles.errorText}>{travelDateErr}</Text>}
-
-            <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest departure</Text>
-            <Pressable
-              onPress={() => {
-                setFocusedField('depTime');
-                setActivePicker('dep');
-              }}
-              style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'depTime' && localStyles.fieldInputFocused]}
-            >
-              <Text style={depTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
-                {depTime ? formatTime12h(depTime) : 'Select time'}
-              </Text>
-              <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
-            </Pressable>
-            {depTimeErr !== '' && <Text style={styles.errorText}>{depTimeErr}</Text>}
-
-            <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest arrival</Text>
-            <Pressable
-              onPress={() => {
-                setFocusedField('arrTime');
-                setActivePicker('arr');
-              }}
-              style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'arrTime' && localStyles.fieldInputFocused]}
-            >
-              <Text style={arrTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
-                {arrTime ? formatTime12h(arrTime) : 'Select time'}
-              </Text>
-              <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
-            </Pressable>
-            {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
-            {arrTimeErr === '' && timeOrderWarning !== '' && <Text style={localStyles.warningText}>{timeOrderWarning}</Text>}
-          </View>
-
-          {isDriving && (
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={localStyles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <View style={localStyles.card}>
-              <Text style={localStyles.cardLabel}>Driver details</Text>
-              <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
-              <NumberStepper max={120} min={0} onChange={setDetourTime} step={5} style={localStyles.fieldInput} value={detourTime} />
-              {detourTimeErr !== '' && <Text style={styles.errorText}>{detourTimeErr}</Text>}
-              {detourTimeErr === '' && detourWarning !== '' && <Text style={localStyles.warningText}>{detourWarning}</Text>}
+              <Text style={localStyles.cardLabel}>When</Text>
+              <Text style={localStyles.fieldLabel}>Travel date</Text>
+              <Pressable
+                onPress={() => {
+                  setFocusedField('travelDate');
+                  setActivePicker('date');
+                }}
+                style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'travelDate' && localStyles.fieldInputFocused]}
+              >
+                <Text style={travelDate ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
+                  {travelDate || 'DD-MM-YYYY'}
+                </Text>
+                <Ionicons color="rgba(255,255,255,0.6)" name="calendar-outline" size={18} />
+              </Pressable>
+              {travelDateErr !== '' && <Text style={styles.errorText}>{travelDateErr}</Text>}
 
-              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
-              <NumberStepper max={12} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
-              {numSeatsErr !== '' && <Text style={styles.errorText}>{numSeatsErr}</Text>}
+              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest departure</Text>
+              <Pressable
+                onPress={() => {
+                  setFocusedField('depTime');
+                  setActivePicker('dep');
+                }}
+                style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'depTime' && localStyles.fieldInputFocused]}
+              >
+                <Text style={depTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
+                  {depTime ? formatTime12h(depTime) : 'Select time'}
+                </Text>
+                <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
+              </Pressable>
+              {depTimeErr !== '' && <Text style={styles.errorText}>{depTimeErr}</Text>}
+
+              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest arrival</Text>
+              <Pressable
+                onPress={() => {
+                  setFocusedField('arrTime');
+                  setActivePicker('arr');
+                }}
+                style={[localStyles.fieldInput, localStyles.pickerField, focusedField === 'arrTime' && localStyles.fieldInputFocused]}
+              >
+                <Text style={arrTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
+                  {arrTime ? formatTime12h(arrTime) : 'Select time'}
+                </Text>
+                <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
+              </Pressable>
+              {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
+              {arrTimeErr === '' && timeOrderWarning !== '' && <Text style={localStyles.warningText}>{timeOrderWarning}</Text>}
             </View>
-          )}
 
-          <Pressable onPress={goToConfirm} style={localStyles.actionButton}>
-            <Text style={styles.primaryButtonText}>Next</Text>
-          </Pressable>
-        </ScrollView>
+            {isDriving && (
+              <View style={localStyles.card}>
+                <Text style={localStyles.cardLabel}>Driver details</Text>
+                <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
+                <NumberStepper max={120} min={0} onChange={setDetourTime} step={5} style={localStyles.fieldInput} value={detourTime} />
+                {detourTimeErr !== '' && <Text style={styles.errorText}>{detourTimeErr}</Text>}
+                {detourTimeErr === '' && detourWarning !== '' && <Text style={localStyles.warningText}>{detourWarning}</Text>}
 
-        <DatePickerModal
-          initialDate={parseTravelDate(travelDate)}
-          onClose={() => {
-            setActivePicker(null);
-            setFocusedField(null);
-          }}
-          onSelect={(date) => {
-            setTravelDate(formatTravelDate(date));
-            setActivePicker(null);
-            setFocusedField(null);
-          }}
-          visible={activePicker === 'date'}
-        />
+                <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
+                <NumberStepper max={12} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
+                {numSeatsErr !== '' && <Text style={styles.errorText}>{numSeatsErr}</Text>}
+              </View>
+            )}
 
-        <TimePickerModal
-          initialTime={depTime}
-          label="Earliest departure"
-          onClose={() => {
-            setActivePicker(null);
-            setFocusedField(null);
-          }}
-          onSelect={(time) => {
-            setDepTime(time);
-            setActivePicker(null);
-            setFocusedField(null);
-          }}
-          visible={activePicker === 'dep'}
-        />
+            <Pressable onPress={goToConfirm} style={localStyles.actionButton}>
+              <Text style={styles.primaryButtonText}>Next</Text>
+            </Pressable>
+          </ScrollView>
 
-        <TimePickerModal
-          initialTime={arrTime}
-          label="Latest arrival"
-          onClose={() => {
-            setActivePicker(null);
-            setFocusedField(null);
-          }}
-          onSelect={(time) => {
-            setArrTime(time);
-            setActivePicker(null);
-            setFocusedField(null);
-          }}
-          visible={activePicker === 'arr'}
-        />
-      </KeyboardAvoidingView>
+          <DatePickerModal
+            initialDate={parseDateAsStr(travelDate)}
+            onClose={() => {
+              setActivePicker(null);
+              setFocusedField(null);
+            }}
+            onSelect={(date) => {
+              setTravelDate(formatDateToStr(date));
+              setActivePicker(null);
+              setFocusedField(null);
+            }}
+            visible={activePicker === 'date'}
+          />
+
+          <TimePickerModal
+            initialTime={depTime}
+            label="Earliest departure"
+            onClose={() => {
+              setActivePicker(null);
+              setFocusedField(null);
+            }}
+            onSelect={(time) => {
+              setDepTime(time);
+              setActivePicker(null);
+              setFocusedField(null);
+            }}
+            visible={activePicker === 'dep'}
+          />
+
+          <TimePickerModal
+            initialTime={arrTime}
+            label="Latest arrival"
+            onClose={() => {
+              setActivePicker(null);
+              setFocusedField(null);
+            }}
+            onSelect={(time) => {
+              setArrTime(time);
+              setActivePicker(null);
+              setFocusedField(null);
+            }}
+            visible={activePicker === 'arr'}
+          />
+        </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
     </View>
   );
