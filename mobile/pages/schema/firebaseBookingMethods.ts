@@ -37,7 +37,7 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     throw new Error("date must be a Firestore Timestamp");
   } else if (Number.isNaN(req.date)) {
     throw new Error(`couldn't convert '${booking.travelDate}' into a Firestore date format`);
-  } else if (isFutureDate(req.date.toDate())) {
+  } else if (!isFutureDate(req.date.toDate())) {
     throw new Error(`a future date must be provided, not '${booking.travelDate}'`);
   }
 
@@ -89,7 +89,7 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error("date must be a Firestore Timestamp");
   } else if (Number.isNaN(offer.date)) {
     throw new Error(`couldn't convert '${booking.travelDate}' into a Firestore date format`);
-  } else if (isFutureDate(offer.date.toDate())) {
+  } else if (!isFutureDate(offer.date.toDate())) {
     throw new Error(`a future date must be provided, not '${booking.travelDate}'`);
   }
 
