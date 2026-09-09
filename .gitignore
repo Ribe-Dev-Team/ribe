@@ -100,20 +100,6 @@ _build
 # build or Metro logs
 *.log
 
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Package manager logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# protect api keys in setting json
-settings-production.json
-settings.json
-
-# protect your mup.json settings
-mup.json
-mup.js
+# Google Drive syncing (David)
+*/desktop.ini
+*.ini

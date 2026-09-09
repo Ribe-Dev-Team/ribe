@@ -21,13 +21,13 @@ Our project aims to build a Minimum Viable Product (MVP): a ridesharing applicat
                 <a href="https://github.com/irisneerakal98-arch">
                 <img src="https://avatars.githubusercontent.com/u/266628203?v=4" width="100px;"/><br />
                 <sub><b style="font-size:18px;">Iris</b></sub></a>
-                <br><p>UI/UX and Frontend Lead</p></br>
+                <br><p>Backend Development Lead</p></br>
             </td>
             <td align="center" valign="top" width="14.28%">
                 <a href="https://github.com/ClarkY168">
                 <img src="https://avatars.githubusercontent.com/u/201672870?v=4" width="100px;" /><br />
                 <sub><b style="font-size:18px;">Clark</b></sub></a>
-                <br><p>Backend Development Lead</p></br>
+                <br><p>UI/UX and Frontend Lead</p></br>
             </td>
             <td align="center" valign="top" width="14.28%">
                 <a href="https://github.com/sourcecodemorsecode">

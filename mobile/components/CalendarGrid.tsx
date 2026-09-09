@@ -2,16 +2,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import styles from '../styles';
 import CalendarDayCell from './CalendarDayCell';
-
-interface CalendarGridProps {
-  month: Date;
-  days: Date[];
-  weekdays: string[];
-  selectedDate: Date;
-  getDateKey: (date: Date) => string;
-  getRideColors: (date: Date) => string[];
-  onSelectDate: (date: Date) => void;
-}
+import { CalendarGridProps } from './Calendar.schema';
 
 export default function CalendarGrid({
   month,

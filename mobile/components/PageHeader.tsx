@@ -9,3 +9,5 @@ export default function PageHeader() {
     </View>
   );
 }
+
+//TODO: text is hardcoded

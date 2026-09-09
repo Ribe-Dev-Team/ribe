@@ -1,12 +1,7 @@
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import styles from '../styles';
-
-interface CarouselControlsProps {
-  itemLabel: string;
-  onPrevious: () => void;
-  onNext: () => void;
-}
+import { CarouselControlsProps } from './Calendar.schema';
 
 export default function CarouselControls({ itemLabel: itemLabel, onPrevious, onNext }: CarouselControlsProps) {
   return (
