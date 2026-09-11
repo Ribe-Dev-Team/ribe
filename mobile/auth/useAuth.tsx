@@ -9,17 +9,16 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import type { UserProfileDraft } from '../pages/schema/user.schema';
+import {
+  isValidDob,
+  isValidEmail,
+  isValidName,
+  isValidPassword,
+  isValidPhoneNumber,
+} from '../pages/schema/user.validation';
 
-type UserProfileData = {
-  name?: string | null;
-  dob?: string | null;
-  phoneNumber?: string | null;
-  email?: string | null;
-  degree?: string | null;
-  bio?: string | null;
-  profilePhotoUrl?: string | null;
-  onboardingComplete?: boolean;
-};
+type UserProfileData = UserProfileDraft;
 
 type AuthContextType = {
   user: User | null;
@@ -67,87 +66,47 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-/* email mask: 5 parts,
-    1: '[^\s@]+', one or more characters that are not whitespace (\s) or the '@' symbol
-    2: '@', the '@' symbol
-    3: '[^\s@]+', same as (1)
-    4: '\.', the '.' character
-    5: '[^\s@]{2,}', same as (1) but minimum of 2 characters
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-/* email mask: 5 parts,
-    1: '[^\s@]+', one or more characters that are not whitespace (\s) or the '@' symbol
-    2: '@', the '@' symbol
-    3: '[^\s@]+', same as (1)
-    4: '\.', the '.' character
-    5: '[^\s@]{2,}', same as (1) but minimum of 2 characters
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-/* name mask:
-    1: '[A-Za-zÀ-ÖØ-öø-ÿ]+', one or more characters from an extended alphabet set - a name
-    2: '?:[ '-]', permit name spacer (space, apstrophe or hypen)
-    3: '(...)*', zero or more additional names after the first one
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-const namePattern = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/;
-/* phone number mask:
-    1: '\+?', optionally may begin with a '+'
-    2: '[0-9()\- ]', defines the character set of digits, round brackets, hypens and spaces
-    3: '{10,20}', the phone number should be 10 to 20 digits long
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-const phonePattern = /^\+?[0-9()\- ]{10,15}$/;
-/* password mask:
-    1: '(?=.*[a-z])', checks a lowercase character exists somewhere in the string
-    2: '(?=.*[A-Z])', checks an uppercase character exists somewhere in the string
-    3: '(?=.*\d)', checks a digit exists somewhere in the string
-    4: '.{8,}', checks the string has at least 8 characters
-  note: leading '^' and trailing '$' require that to be beginning and end of the string
-*/
-const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+const getAuthErrorMessage = (err: unknown) => {
+  const message = err instanceof Error ? err.message : 'Unable to complete that request right now.';
 
-// Helpers now expect pre-trimmed values
-const isValidEmail = (value: string) => emailPattern.test(value);
-const isValidName = (value: string) => value.length >= 2 && namePattern.test(value);
-const isValidPhoneNumber = (value: string) => {
-  const digitsOnly = value.replace(/\D/g, '');
-  return phonePattern.test(value) && digitsOnly.length >= 10 && digitsOnly.length <= 15;
-};
-const isValidDob = (value: string) => {
-  // 1. Check for DD/MM/YYYY format
-  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return false;
+  if (typeof err === 'object' && err && 'code' in err) {
+    const code = String((err as { code?: string }).code || '').toLowerCase();
 
-  // 2. Extract parts and safely create the Date object
-  const [day, month, year] = value.split('/').map(Number);
-  const date = new Date(year, month - 1, day); // Month is 0-indexed
+    if (code.includes('email-already-in-use')) {
+      return 'This email is already in use. Try logging in instead or use a different email.';
+    }
 
-  // 3. Prevent invalid dates rolling over (e.g., 31/02/2023 becoming March 3rd)
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return false;
+    if (code.includes('weak-password')) {
+      return 'Your password is too weak. Use at least 8 characters with upper and lower case letters and a number.';
+    }
+
+    if (code.includes('invalid-email')) {
+      return 'The email address is not valid. Please check it and try again.';
+    }
+
+    if (code.includes('network-request-failed')) {
+      return 'Connection issue. Please check your internet and try again.';
+    }
+
+    if (code.includes('too-many-requests')) {
+      return 'Too many attempts. Please wait a moment and try again.';
+    }
+
+    if (code.includes('wrong-password')) {
+      return 'Incorrect password. Please try again.';
+    }
+
+    if (code.includes('user-not-found')) {
+      return 'No account was found for this email. Create an account or check the email.';
+    }
   }
 
-  // 4. Calculate age
-  const today = new Date();
-  let age = today.getFullYear() - date.getFullYear();
-  const hasBirthdayPassed =
-    today.getMonth() > date.getMonth() ||
-    (today.getMonth() === date.getMonth() && today.getDate() >= date.getDate());
-
-  if (!hasBirthdayPassed) {
-    age -= 1;
+  if (message.toLowerCase().includes('password')) {
+    return 'Password must be at least 8 characters long and include uppercase, lowercase, and a number.';
   }
 
-  return age >= 18;
+  return message;
 };
-
-// We don't trim passwords because some users might intentionally use spaces in passphrases,
-// or we want the regex `!/\s/.test(value)` to strictly catch leading/trailing spaces as invalid.
-const isValidPassword = (value: string) => passwordPattern.test(value);
 
 const getFormValidationError = ({
   mode,
@@ -184,12 +143,12 @@ const getFormValidationError = ({
     return 'Password is required.';
   }
 
-  if (!isValidPassword(password)) {
-    return 'Password must be at least 8 characters long and include uppercase, lowercase, and a number.';
-  }
-
   if (mode !== 'signup') {
     return null;
+  }
+
+  if (!isValidPassword(password)) {
+    return 'Password must be at least 8 characters long and include uppercase, lowercase, and a number.';
   }
 
   if (!isValidName(trimmedName)) {
@@ -325,8 +284,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await signInWithEmailAndPassword(auth, trimmedEmail, password);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to sign in right now.';
-      setError(message);
+      setError(getAuthErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -379,8 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }));
       setNeedsProfileSetup(true);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to create an account right now.';
-      setError(message);
+      setError(getAuthErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
