@@ -8,10 +8,10 @@ on:
 
 jobs:
   test:
-    runs-on: [ubuntu-slim, macos-latest]
+    runs-on: ubuntu-slim
     strategy:
       matrix:
-        node-version: [18.X, 24.X]
+        node-version: [18.X, 20.X]
 
     steps:
       - name: Checkout repository
@@ -21,15 +21,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
         
-      - name: Run linting
+      - name: Run TypeScript check
         run: npx tsc --noEmit
 
       - name: Run tests (with coverage)
-        run: npm test -- --cverage --ci
+        run: npm test -- --coverage --ci
 
       - name: Upload HTML coverage report
         uses: actions/upload-artifact@v4
