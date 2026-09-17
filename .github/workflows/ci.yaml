@@ -8,10 +8,10 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18.X, 20.X]
+        node-version: [20.x, 22.x]
 
     steps:
       - name: Checkout repository
@@ -27,13 +27,13 @@ jobs:
         run: npm install
         
       - name: Run TypeScript check
-        run: npx tsc --noEmit
+        run: npx tsc --noEmit -p mobile
 
       - name: Run tests (with coverage)
         run: npm test -- --coverage --ci
 
       - name: Upload HTML coverage report
         uses: actions/upload-artifact@v4
-        with: 
+        with:
           name: html-coverage
-          path: coverage/lcov-report
+          path: mobile/coverage/lcov-report
