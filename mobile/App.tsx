@@ -26,7 +26,6 @@ import HomePage from './pages/HomePage';
 import CalendarPage, { Ride } from './pages/CalendarPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
-import OnboardingPage from './pages/OnboardingPage';
 import RideDetailPage from './pages/RideDetailPage';
 import DriverProfilePage from './pages/DriverProfilePage';
 import BookingPage from './pages/BookingPage';
@@ -145,8 +144,6 @@ function AppContent() {
     confirmPassword,
     setConfirmPassword,
     isFormValid,
-    needsProfileSetup,
-    completeProfileSetup,
     handleLogin,
     handleSignup,
     handleLogout,
@@ -248,17 +245,6 @@ function AppContent() {
         setPhoneNumber={setPhoneNumber}
         submitting={submitting}
         toggleMode={toggleMode}
-      />
-    );
-  }
-
-  if (needsProfileSetup) {
-    return (
-      <OnboardingPage
-        onComplete={async (data) => {
-          await completeProfileSetup(data);
-          changeTab('home');
-        }}
       />
     );
   }

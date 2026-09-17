@@ -114,7 +114,6 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
       >
         <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
           <View>
-            <Text style={localStyles.pageTitle}>Profile</Text>
 
             <View style={styles.profileCard}>
               {!isEditing ? (
@@ -210,24 +209,6 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                   </View>
                 </>
               )}
-
-              <View style={styles.profileInfoBlock}>
-                <Text style={styles.profileLabel}>On campus</Text>
-                <View style={localStyles.daysRow}>
-                  {weekdays.map((day) => {
-                    const active = campusDays.includes(day);
-                    return (
-                      <Pressable
-                        key={day}
-                        onPress={() => toggleCampusDay(day)}
-                        style={[localStyles.dayPill, active && localStyles.dayPillActive]}
-                      >
-                        <Text style={[localStyles.dayPillText, active && localStyles.dayPillTextActive]}>{day}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
 
               <View style={[styles.profileInfoBlock, localStyles.driverModeRow]}>
                 <View style={localStyles.driverModeCopy}>

@@ -20,6 +20,13 @@ import {
 
 type UserProfileData = UserProfileDraft;
 
+type ProfileExtras = {
+  profilePhotoBase64?: string;
+  profilePhotoMimeType?: string;
+  degree?: string;
+  bio?: string;
+};
+
 type AuthContextType = {
   user: User | null;
   profileData: UserProfileData | null;
@@ -46,21 +53,9 @@ type AuthContextType = {
   clearError: () => void;
 
   isFormValid: boolean;
-  needsProfileSetup: boolean;
-  completeProfileSetup: (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => Promise<void>;
-  updateProfileDetails: (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => Promise<void>;
+  updateProfileDetails: (data: ProfileExtras) => Promise<void>;
   handleLogin: () => Promise<void>;
-  handleSignup: () => Promise<void>;
+  handleSignup: (extra?: ProfileExtras) => Promise<void>;
   handleLogout: () => Promise<void>;
 };
 
@@ -181,7 +176,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
 
   // Form fields
   const [name, setName] = useState('');
@@ -290,7 +284,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSignup = async () => {
+  const handleSignup = async (extra?: ProfileExtras) => {
     // Clean inputs exactly once for the signup process
     const trimmedName = name.trim();
     const trimmedDob = dob.trim();
@@ -320,13 +314,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const currentUser = userCredential.user;
 
       await updateProfile(currentUser, { displayName: trimmedName });
-      
+
+      const trimmedDegree = extra?.degree?.trim() || null;
+      const trimmedBio = extra?.bio?.trim() || null;
+      const profilePhotoUrl = extra?.profilePhotoBase64
+        ? `data:${extra.profilePhotoMimeType || 'image/jpeg'};base64,${extra.profilePhotoBase64}`
+        : null;
+
+      // Profile details (photo/degree/bio) are gathered in the signup wizard itself now,
+      // so the account is created fully onboarded in one write instead of needing a
+      // separate post-signup setup screen.
       const profilePayload = {
         name: trimmedName,
         dob: trimmedDob,
         phoneNumber: trimmedPhone,
         email: trimmedEmail,
-        onboardingComplete: false,
+        degree: trimmedDegree,
+        bio: trimmedBio,
+        profilePhotoUrl,
+        onboardingComplete: true,
         createdAt: new Date().toISOString(),
       };
 
@@ -335,7 +341,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...(currentProfile ?? {}),
         ...profilePayload,
       }));
-      setNeedsProfileSetup(true);
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {
@@ -343,12 +348,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const saveProfileDetails = async (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => {
+  const saveProfileDetails = async (data: ProfileExtras) => {
     const currentUser = auth.currentUser ?? user;
 
     if (!currentUser) {
@@ -398,40 +398,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const completeProfileSetup = async (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => {
-    const currentUser = auth.currentUser ?? user;
-
-    if (!currentUser) {
-      setError('You need to sign in before completing profile setup.');
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-    setNeedsProfileSetup(false);
-
-    try {
-      await saveProfileDetails(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to save profile details right now.';
-      setError(message);
-      setNeedsProfileSetup(true);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const updateProfileDetails = async (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => {
+  const updateProfileDetails = async (data: ProfileExtras) => {
     await saveProfileDetails(data);
   };
 
@@ -445,7 +412,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setEmail('');
       setPassword('');
       setConfirmPassword('');
-      setNeedsProfileSetup(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to sign out right now.';
       setError(message);
@@ -483,9 +449,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setConfirmPassword,
 
     isFormValid,
-    needsProfileSetup,
     clearError,
-    completeProfileSetup,
     updateProfileDetails,
     handleLogin,
     handleSignup,
