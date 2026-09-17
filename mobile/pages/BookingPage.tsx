@@ -403,7 +403,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                   placeholder="123 Main St, Suburb"
                   value={address}
                 />
-                {addrErr !== '' && <Text style={styles.errorText}>{addrErr}</Text>}
+                {addrErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{addrErr}</Text>}
 
                 <Text style={[localStyles.fieldLabel, { marginTop: 16 }]}>Route preview</Text>
                 <RouteMapPreview address={addressPlace} toUni={toUni} />
@@ -452,7 +452,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 </Text>
                 <Ionicons color="rgba(255,255,255,0.6)" name="calendar-outline" size={18} />
               </Pressable>
-              {travelDateErr !== '' && <Text style={styles.errorText}>{travelDateErr}</Text>}
+              {travelDateErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{travelDateErr}</Text>}
 
               <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest departure</Text>
               <Pressable
@@ -467,7 +467,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 </Text>
                 <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
               </Pressable>
-              {depTimeErr !== '' && <Text style={styles.errorText}>{depTimeErr}</Text>}
+              {depTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{depTimeErr}</Text>}
 
               <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest arrival</Text>
               <Pressable
@@ -482,7 +482,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 </Text>
                 <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
               </Pressable>
-              {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
+              {arrTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{arrTimeErr}</Text>}
               {arrTimeErr === '' && timeOrderWarning !== '' && <Text style={localStyles.warningText}>{timeOrderWarning}</Text>}
             </View>
 
@@ -491,12 +491,12 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 <Text style={localStyles.cardLabel}>Driver details</Text>
                 <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
                 <NumberStepper max={120} min={0} onChange={setDetourTime} step={5} style={localStyles.fieldInput} value={detourTime} />
-                {detourTimeErr !== '' && <Text style={styles.errorText}>{detourTimeErr}</Text>}
+                {detourTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{detourTimeErr}</Text>}
                 {detourTimeErr === '' && detourWarning !== '' && <Text style={localStyles.warningText}>{detourWarning}</Text>}
 
                 <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
                 <NumberStepper max={12} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
-                {numSeatsErr !== '' && <Text style={styles.errorText}>{numSeatsErr}</Text>}
+                {numSeatsErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{numSeatsErr}</Text>}
               </View>
             )}
 

@@ -117,27 +117,10 @@ export default StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
   },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: '#2563eb',
-    borderRadius: 12,
-    marginTop: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  primaryButtonDisabled: {
-    backgroundColor: '#93c5fd',
-  },
   primaryButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  helperText: {
-    color: '#64748b',
-    fontSize: 13,
-    marginTop: 12,
-    textAlign: 'center',
   },
   editButton: {
     alignSelf: 'flex-end',
@@ -308,7 +291,7 @@ export default StyleSheet.create({
     marginTop: 10,
   },
   linkText: {
-    color: '#2563eb',
+    color: colors.mediumBlue,
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
@@ -317,6 +300,11 @@ export default StyleSheet.create({
     color: '#b91c1c',
     fontSize: 13,
     marginBottom: 8,
+  },
+  // Error text sits on dark blue cards in most of the app (booking, signup), where the
+  // default dark red above reads as nearly black - this lighter tint keeps it legible there.
+  errorTextOnDark: {
+    color: colors.pendingLight,
   },
   successContainer: {
     alignItems: 'center',

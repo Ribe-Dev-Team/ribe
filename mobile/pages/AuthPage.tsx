@@ -130,11 +130,10 @@ export default function AuthPage({
     date.setFullYear(date.getFullYear() - 18);
     return date;
   }, []);
-  const minDob = useMemo(() => {
-    const date = new Date();
-    date.setFullYear(date.getFullYear() - 120);
-    return date;
-  }, []);
+  // Year list in the picker starts from 1950 - old enough to cover any real signup, without
+  // an unbounded scroll back through every year since 1900.
+  const minDob = useMemo(() => new Date(1950, 0, 1), []);
+  const defaultDobView = useMemo(() => new Date(2000, 0, 1), []);
 
   const validateAboutStep = (): boolean => {
     let valid = true;
@@ -246,12 +245,12 @@ export default function AuthPage({
   if (mode === 'signup') {
     const stepTitle =
       signupStep === 'about'
-        ? 'About you'
+        ? 'About You'
         : signupStep === 'account'
-        ? 'Create your login'
+        ? 'Create Your Log-In'
         : signupStep === 'profile'
-        ? 'Set up your profile'
-        : 'Confirm & submit';
+        ? 'Set Up Your Profile'
+        : 'Confirm & Submit';
     const onBack =
       signupStep === 'about'
         ? toggleMode
@@ -298,7 +297,7 @@ export default function AuthPage({
                     style={[localStyles.fieldInput, focusedField === 'name' && localStyles.fieldInputFocused]}
                     value={name}
                   />
-                  {nameErr !== '' && <Text style={styles.errorText}>{nameErr}</Text>}
+                  {nameErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{nameErr}</Text>}
 
                   <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Date of birth</Text>
                   <PressableScale
@@ -310,7 +309,7 @@ export default function AuthPage({
                     </Text>
                     <Ionicons color="rgba(255,255,255,0.6)" name="calendar-outline" size={18} />
                   </PressableScale>
-                  {dobErr !== '' && <Text style={styles.errorText}>{dobErr}</Text>}
+                  {dobErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{dobErr}</Text>}
 
                   <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Phone number</Text>
                   <TextInput
@@ -327,7 +326,7 @@ export default function AuthPage({
                     style={[localStyles.fieldInput, focusedField === 'phone' && localStyles.fieldInputFocused]}
                     value={phoneNumber}
                   />
-                  {phoneErr !== '' && <Text style={styles.errorText}>{phoneErr}</Text>}
+                  {phoneErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{phoneErr}</Text>}
                 </View>
               )}
 
@@ -351,7 +350,7 @@ export default function AuthPage({
                     style={[localStyles.fieldInput, focusedField === 'email' && localStyles.fieldInputFocused]}
                     value={email}
                   />
-                  {emailErr !== '' && <Text style={styles.errorText}>{emailErr}</Text>}
+                  {emailErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{emailErr}</Text>}
 
                   <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Password</Text>
                   <TextInput
@@ -367,7 +366,7 @@ export default function AuthPage({
                     style={[localStyles.fieldInput, focusedField === 'password' && localStyles.fieldInputFocused]}
                     value={password}
                   />
-                  {passwordErr !== '' && <Text style={styles.errorText}>{passwordErr}</Text>}
+                  {passwordErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{passwordErr}</Text>}
 
                   <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Confirm password</Text>
                   <TextInput
@@ -383,7 +382,7 @@ export default function AuthPage({
                     style={[localStyles.fieldInput, focusedField === 'confirm' && localStyles.fieldInputFocused]}
                     value={confirmPassword}
                   />
-                  {confirmErr !== '' && <Text style={styles.errorText}>{confirmErr}</Text>}
+                  {confirmErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{confirmErr}</Text>}
                 </View>
               )}
 
@@ -404,7 +403,9 @@ export default function AuthPage({
                       </>
                     )}
                   </PressableScale>
-                  {photoErr !== '' && <Text style={[styles.errorText, localStyles.centerText]}>{photoErr}</Text>}
+                  {photoErr !== '' && (
+                    <Text style={[styles.errorText, styles.errorTextOnDark, localStyles.centerText]}>{photoErr}</Text>
+                  )}
 
                   <Text style={localStyles.fieldLabel}>Degree</Text>
                   <TextInput
@@ -470,12 +471,10 @@ export default function AuthPage({
                     )}
                   </View>
 
-                  {error ? <Text style={styles.errorText}>{error}</Text> : null}
+                  {error ? <Text style={[styles.errorText, styles.errorTextOnDark]}>{error}</Text> : null}
                 </>
               )}
-            </ScrollView>
 
-            <View style={localStyles.footer}>
               {signupStep === 'about' && (
                 <PressableScale onPress={goToAccountStep} style={localStyles.actionButton}>
                   <Text style={styles.primaryButtonText}>Next</Text>
@@ -500,13 +499,14 @@ export default function AuthPage({
                   {submitting ? (
                     <ActivityIndicator color={colors.white} />
                   ) : (
-                    <Text style={styles.primaryButtonText}>Create account</Text>
+                    <Text style={styles.primaryButtonText}>Create Account</Text>
                   )}
                 </PressableScale>
               )}
-            </View>
+            </ScrollView>
 
             <DatePickerModal
+              defaultViewDate={defaultDobView}
               initialDate={parseDobAsDate(dob)}
               maxDate={maxDob}
               minDate={minDob}
@@ -535,6 +535,7 @@ export default function AuthPage({
           <Text style={styles.title}>Ribe</Text>
           <Text style={styles.subtitle}>Sign in to continue</Text>
 
+          <Text style={styles.fieldLabel}>Email</Text>
           <TextInput
             autoCapitalize="none"
             autoCorrect={false}
@@ -550,6 +551,7 @@ export default function AuthPage({
             value={email}
           />
 
+          <Text style={styles.fieldLabel}>Password</Text>
           <TextInput
             onBlur={() => setFocusedField(null)}
             onChangeText={(value) => {
@@ -568,7 +570,7 @@ export default function AuthPage({
           <PressableScale
             disabled={submitting}
             onPress={handleLogin}
-            style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]}
+            style={[localStyles.actionButton, submitting && localStyles.actionButtonDisabled]}
           >
             {submitting ? (
               <ActivityIndicator color="#ffffff" />
@@ -580,10 +582,6 @@ export default function AuthPage({
           <PressableScale onPress={toggleMode} style={styles.linkButton}>
             <Text style={styles.linkText}>Need an account? Sign up</Text>
           </PressableScale>
-
-          <Text style={styles.helperText}>
-            Use a valid Firebase-authenticated email and password.
-          </Text>
         </View>
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
@@ -745,14 +743,11 @@ const localStyles = StyleSheet.create({
     fontSize: 15,
     color: 'rgba(255,255,255,0.4)',
   },
-  footer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
   actionButton: {
     alignItems: 'center',
     backgroundColor: colors.mediumBlue,
     borderRadius: 12,
+    marginTop: 8,
     paddingHorizontal: 16,
     paddingVertical: 14,
   },

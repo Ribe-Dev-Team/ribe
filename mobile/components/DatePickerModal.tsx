@@ -10,6 +10,8 @@ interface DatePickerModalProps {
   initialDate?: Date;
   minDate?: Date;
   maxDate?: Date;
+  /** Month/year to open the calendar on when no initialDate is set yet. Defaults to today. */
+  defaultViewDate?: Date;
   onSelect: (date: Date) => void;
   onClose: () => void;
 }
@@ -31,11 +33,19 @@ function getCalendarDays(month: Date) {
   );
 }
 
-export default function DatePickerModal({ visible, initialDate, minDate, maxDate, onSelect, onClose }: DatePickerModalProps) {
+export default function DatePickerModal({
+  visible,
+  initialDate,
+  minDate,
+  maxDate,
+  defaultViewDate,
+  onSelect,
+  onClose,
+}: DatePickerModalProps) {
   const floor = useMemo(() => startOfDay(minDate ?? new Date()), [minDate]);
   const ceiling = useMemo(() => (maxDate ? startOfDay(maxDate) : undefined), [maxDate]);
   const [viewMonth, setViewMonth] = useState(() => {
-    const base = initialDate ?? new Date();
+    const base = initialDate ?? defaultViewDate ?? new Date();
     return new Date(base.getFullYear(), base.getMonth(), 1);
   });
   const [pickerMode, setPickerMode] = useState<PickerMode>('days');

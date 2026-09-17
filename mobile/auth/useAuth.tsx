@@ -406,6 +406,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       await firebaseSignOut(auth);
+      setMode('login');
       setName('');
       setDob('');
       setPhoneNumber('');
