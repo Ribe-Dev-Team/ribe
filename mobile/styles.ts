@@ -14,10 +14,7 @@ export const colors = {
 
 export default StyleSheet.create({
   // App-specific
-  screen: { flex: 1, backgroundColor: colors.darkBlue, justifyContent: 'center', padding: 24 },
   card: { backgroundColor: colors.white, borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 4 },
-  title: { fontFamily: 'Marcellus_400Regular', fontSize: 32, color: colors.darkBlue, marginBottom: 8 },
-  subtitle: { fontFamily: 'Marcellus_400Regular', fontSize: 16, color: colors.darkBlue, marginBottom: 20 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, backgroundColor: colors.darkBlue },
   headerText: { fontFamily: 'Marcellus_400Regular', fontSize: 14, color: colors.white },
   logoutText: { color: colors.white, fontFamily: 'Marcellus_400Regular', fontSize: 14 },
@@ -107,15 +104,6 @@ export default StyleSheet.create({
     color: colors.white,
     fontSize: 15,
     marginTop: 12,
-  },
-  input: {
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
   },
   primaryButtonText: {
     color: '#ffffff',
@@ -271,12 +259,6 @@ export default StyleSheet.create({
     fontSize: 16,
     lineHeight: 22,
   },
-  fieldLabel: {
-    color: '#334155',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
   bioInput: {
     borderColor: '#cbd5e1',
     borderRadius: 12,
@@ -286,15 +268,6 @@ export default StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     minHeight: 110,
-  },
-  linkButton: {
-    marginTop: 10,
-  },
-  linkText: {
-    color: colors.mediumBlue,
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
   },
   errorText: {
     color: '#b91c1c',

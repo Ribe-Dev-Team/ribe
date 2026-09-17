@@ -243,14 +243,6 @@ export default function AuthPage({
   );
 
   if (mode === 'signup') {
-    const stepTitle =
-      signupStep === 'about'
-        ? 'About You'
-        : signupStep === 'account'
-        ? 'Create Your Log-In'
-        : signupStep === 'profile'
-        ? 'Set Up Your Profile'
-        : 'Confirm & Submit';
     const onBack =
       signupStep === 'about'
         ? toggleMode
@@ -259,6 +251,7 @@ export default function AuthPage({
         : signupStep === 'profile'
         ? () => setSignupStep('account')
         : () => setSignupStep('profile');
+    const backLabel = signupStep === 'about' ? 'Log-In' : 'Back';
 
     return (
       <View style={localStyles.pageContainer}>
@@ -266,9 +259,9 @@ export default function AuthPage({
         <View style={localStyles.fixedHeader}>
           <PressableScale style={localStyles.backButton} onPress={onBack}>
             <Ionicons name="chevron-back" size={24} color={colors.white} />
-            <Text style={localStyles.backButtonLabel}>Back</Text>
+            <Text style={localStyles.backButtonLabel}>{backLabel}</Text>
           </PressableScale>
-          <Text style={localStyles.headerTitle}>{stepTitle}</Text>
+          <Text style={localStyles.headerTitle}>Create New Account</Text>
           {signupProgress}
         </View>
 
@@ -525,66 +518,73 @@ export default function AuthPage({
   }
 
   return (
-    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-      <KeyboardAvoidingView
-        style={styles.screen}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <StatusBar barStyle="light-content" />
-        <View style={styles.card}>
-          <Text style={styles.title}>Ribe</Text>
-          <Text style={styles.subtitle}>Sign in to continue</Text>
+    <View style={localStyles.pageContainer}>
+      <StatusBar barStyle="light-content" />
 
-          <Text style={styles.fieldLabel}>Email</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            onBlur={() => setFocusedField(null)}
-            onChangeText={(value) => {
-              setEmail(value);
-              if (error) clearError();
-            }}
-            onFocus={() => setFocusedField('email')}
-            placeholder="Email"
-            style={[styles.input, focusedField === 'email' && localStyles.loginInputFocused]}
-            value={email}
-          />
-
-          <Text style={styles.fieldLabel}>Password</Text>
-          <TextInput
-            onBlur={() => setFocusedField(null)}
-            onChangeText={(value) => {
-              setPassword(value);
-              if (error) clearError();
-            }}
-            onFocus={() => setFocusedField('password')}
-            placeholder="Password"
-            secureTextEntry
-            style={[styles.input, focusedField === 'password' && localStyles.loginInputFocused]}
-            value={password}
-          />
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <PressableScale
-            disabled={submitting}
-            onPress={handleLogin}
-            style={[localStyles.actionButton, submitting && localStyles.actionButtonDisabled]}
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={localStyles.loginScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            {submitting ? (
-              <ActivityIndicator color="#ffffff" />
-            ) : (
-              <Text style={styles.primaryButtonText}>Log in</Text>
-            )}
-          </PressableScale>
+            <View style={localStyles.card}>
+              <Text style={localStyles.loginTitle}>Ribe</Text>
+              <Text style={localStyles.cardLabel}>Log-In</Text>
 
-          <PressableScale onPress={toggleMode} style={styles.linkButton}>
-            <Text style={styles.linkText}>Need an account? Sign up</Text>
-          </PressableScale>
-        </View>
-      </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
+              <Text style={localStyles.fieldLabel}>Email</Text>
+              <TextInput
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                onBlur={() => setFocusedField(null)}
+                onChangeText={(value) => {
+                  setEmail(value);
+                  if (error) clearError();
+                }}
+                onFocus={() => setFocusedField('email')}
+                placeholder="you@example.com"
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                style={[localStyles.fieldInput, focusedField === 'email' && localStyles.fieldInputFocused]}
+                value={email}
+              />
+
+              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Password</Text>
+              <TextInput
+                onBlur={() => setFocusedField(null)}
+                onChangeText={(value) => {
+                  setPassword(value);
+                  if (error) clearError();
+                }}
+                onFocus={() => setFocusedField('password')}
+                placeholder="Password"
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                secureTextEntry
+                style={[localStyles.fieldInput, focusedField === 'password' && localStyles.fieldInputFocused]}
+                value={password}
+              />
+              {error ? <Text style={[styles.errorText, styles.errorTextOnDark]}>{error}</Text> : null}
+            </View>
+
+            <PressableScale
+              disabled={submitting}
+              onPress={handleLogin}
+              style={[localStyles.actionButton, submitting && localStyles.actionButtonDisabled]}
+            >
+              {submitting ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Text style={styles.primaryButtonText}>Log in</Text>
+              )}
+            </PressableScale>
+
+            <PressableScale onPress={toggleMode} style={localStyles.switchModeLink}>
+              <Text style={localStyles.switchModeLinkText}>Need an account? Sign up</Text>
+            </PressableScale>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
+    </View>
   );
 }
 
@@ -604,6 +604,11 @@ const localStyles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     paddingBottom: 20,
+  },
+  loginScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 20,
   },
   backButton: {
     flexDirection: 'row',
@@ -661,6 +666,12 @@ const localStyles = StyleSheet.create({
     color: colors.white,
     marginBottom: 10,
   },
+  loginTitle: {
+    fontFamily: 'Marcellus_400Regular',
+    fontSize: 26,
+    color: colors.white,
+    marginBottom: 4,
+  },
   fieldLabel: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 12,
@@ -683,9 +694,15 @@ const localStyles = StyleSheet.create({
     borderWidth: 2,
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  loginInputFocused: {
-    borderColor: '#2563eb',
-    borderWidth: 2,
+  switchModeLink: {
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  switchModeLinkText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   bioInput: {
     minHeight: 100,
