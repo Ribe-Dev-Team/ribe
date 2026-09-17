@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, getDoc } from 'firebase/firestore';
 import { colors } from '../styles';
 import { RideCardProps } from '../components/RideCard';
+import { db } from '../firebaseConfig';
 
 interface DriverProfilePageProps {
   ride: RideCardProps;
   onBack: () => void;
 }
 
-interface MockDriverProfile {
+interface DriverProfileDetails {
   degree: string;
   year: string;
   bio: string;
@@ -17,39 +19,7 @@ interface MockDriverProfile {
   memberSince: string;
 }
 
-// Mock data - wiring to a real driver-profile lookup is follow-up work once the backend exists
-const driverProfiles: Record<string, MockDriverProfile> = {
-  'Marcus Vance': {
-    degree: 'Bachelor of Engineering',
-    year: '3rd year',
-    bio: 'Calm, reliable driver who enjoys helping students get to campus.',
-    ridesShared: 24,
-    memberSince: 'Mar 2025',
-  },
-  'Priya Nair': {
-    degree: 'Bachelor of Commerce',
-    year: '2nd year',
-    bio: 'Early riser, always on time. Happy to chat or drive in quiet.',
-    ridesShared: 41,
-    memberSince: 'Jan 2025',
-  },
-  'Sarah Kim': {
-    degree: 'Bachelor of Science',
-    year: '4th year',
-    bio: 'Music lover, keeps the car tidy. Prefers a quiet ride.',
-    ridesShared: 12,
-    memberSince: 'Jul 2025',
-  },
-  'Jordan Lee': {
-    degree: 'Bachelor of Arts',
-    year: '1st year',
-    bio: 'Friendly and chatty - great for a quick catch-up on the commute.',
-    ridesShared: 6,
-    memberSince: 'Feb 2026',
-  },
-};
-
-const fallbackProfile: MockDriverProfile = {
+const fallbackProfile: DriverProfileDetails = {
   degree: 'Monash student',
   year: '',
   bio: 'This driver has not added a bio yet.',
@@ -58,7 +28,49 @@ const fallbackProfile: MockDriverProfile = {
 };
 
 export default function DriverProfilePage({ ride, onBack }: DriverProfilePageProps) {
-  const profile = driverProfiles[ride.driver.name] ?? fallbackProfile;
+  const [profile, setProfile] = useState<DriverProfileDetails>(fallbackProfile);
+  const [loading, setLoading] = useState(Boolean(ride.driver.uid));
+
+  useEffect(() => {
+    if (!ride.driver.uid) {
+      setProfile(fallbackProfile);
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadProfile = async () => {
+      try {
+        const docSnap = await getDoc(doc(db, 'drivers', ride.driver.uid!));
+        if (docSnap.exists() && isMounted) {
+          const data = docSnap.data();
+          setProfile({
+            degree: data.degree ?? 'Monash student',
+            year: data.year ?? '',
+            bio: data.bio ?? 'This driver has not added a bio yet.',
+            ridesShared: Number(data.ridesShared ?? 0),
+            memberSince: data.memberSince ?? 'Recently',
+          });
+        } else if (isMounted) {
+          setProfile(fallbackProfile);
+        }
+      } catch {
+        if (isMounted) {
+          setProfile(fallbackProfile);
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [ride.driver.name, ride.driver.uid]);
+
   const [make, colorTrim] = ride.driver.vehicle.split(' - ');
 
   return (
@@ -79,7 +91,7 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
 
         <Text style={localStyles.name}>{ride.driver.name}</Text>
         <Text style={localStyles.subtitle}>
-          {profile.degree}{profile.year ? ` · ${profile.year} · at Monash` : ''}
+          {loading ? 'Loading driver profile...' : `${profile.degree}${profile.year ? ` · ${profile.year} · at Monash` : ''}`}
         </Text>
 
         <View style={localStyles.badgeRow}>

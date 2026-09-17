@@ -23,6 +23,7 @@ import NumberStepper from '../components/NumberStepper';
 import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import RouteMapPreview from '../components/RouteMapPreview';
 import { geocodeAddress, ResolvedPlace } from '../services/googlePlaces';
+import { useAuth } from '../auth/useAuth';
 
 interface BookingPageProps {
   onDone: () => void;
@@ -39,6 +40,7 @@ function toTitleCase(value: string): string {
 }
 
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>('trip');
   const [isDriving, setIsDriving] = useState<boolean>(false);
   const [toUni, setToUni] = useState<boolean>(true);
@@ -207,6 +209,8 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     try {
       // Build common booking data
       const commonData: Booking = {
+        userId: user?.uid,
+        status: 'pending',
         isDriving,
         toUni,
         address: address.trim(),
