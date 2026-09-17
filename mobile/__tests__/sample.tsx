@@ -28,10 +28,14 @@ function Example() {
 }
 
 test('examples of some things', async () => {
+  // this example relies on a real setTimeout firing; the global test setup
+  // switches to fake timers, so use real timers for this test only
+  jest.useRealTimers();
+
   const expectedUsername = 'Ada Lovelace';
 
   // construct page in testing environment
-  render(<Example />);
+  await render(<Example />);
 
   // perform actions related to the thing being tested (in this case, changing the username)
   fireEvent.changeText(screen.getByTestId('input'), expectedUsername);
