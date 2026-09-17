@@ -62,5 +62,6 @@ interface matchRequest {
 interface matchPairing {
   offerId: number,
   reqId: number,
-  score: number,
+  offerScore: number,
+  reqScore: number,
 };
