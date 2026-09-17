@@ -2,12 +2,13 @@
 
 module.exports = {
   preset: "jest-expo",
+  testEnvironment: "node",
   roots: [
     "<rootDir>/../tests",
     "<rootDir>"
   ],
   setupFilesAfterEnv: [
-    "<rootDir>/jest.setup.js"
+    "<rootDir>/jest.setup.ts"
   ],
   transform: {
     "^.+\\.(js|jsx|ts|tsx)$": "babel-jest"
@@ -22,20 +23,23 @@ module.exports = {
   ],
   moduleNameMapper: {
     // Firebase v9 modular mocks
-    "^firebase/auth$": "<rootDir>/../__mocks__/firebase/auth.ts",
-    "^firebase/firestore$": "<rootDir>/../__mocks__/firebase/firestore.ts",
+    "^firebase/auth$": "<rootDir>/__mocks__/firebase/auth.ts",
+    "^firebase/firestore$": "<rootDir>/__mocks__/firebase/firestore.ts",
+
+    // React native resolution
+    "^react-native$": "<rootDir>/mobile/node_modules/react-native",
 
     // Native module mocks
     "^@react-native-async-storage/async-storage$":
-      "<rootDir>/../__mocks__/@react-native-async-storage/async-storage.ts",
+      "<rootDir>/__mocks__/@react-native-async-storage/async-storage.ts",
     "^expo-image-picker$":
-      "<rootDir>/../__mocks__/expo-image-picker.ts",
+      "<rootDir>/__mocks__/expo-image-picker.ts",
 
     // Navigation mock (for page/tab hook)
-    "^@navigation$": "<rootDir>/../__mocks__/navigation.ts",
+    "^@navigation$": "<rootDir>/__mocks__/navigation.ts",
 
     // Path alias support
-    "^@/(.*)$": "<rootDir>/$1"
+    "^@/(.*)$": "<rootDir>/mobile/$1"
   },
 
   transformIgnorePatterns: [
@@ -44,7 +48,7 @@ module.exports = {
 
   // Makes snapshot testing stable even with auto-generated Firestore IDs
   snapshotSerializers: [
-    "<rootDir>/../tests/serialisers/firestoreIdSerialiser.js"
+    "<rootDir>/../tests/serializers/firestoreIdSerializer.js"
   ],
 
   // necessary for CI coverage reports
