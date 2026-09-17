@@ -2,7 +2,6 @@
 
 module.exports = {
   preset: "jest-expo",
-  testEnvironment: "node",
   roots: [
     "<rootDir>/../tests",
     "<rootDir>"
@@ -23,23 +22,20 @@ module.exports = {
   ],
   moduleNameMapper: {
     // Firebase v9 modular mocks
-    "^firebase/auth$": "<rootDir>/__mocks__/firebase/auth.ts",
-    "^firebase/firestore$": "<rootDir>/__mocks__/firebase/firestore.ts",
-
-    // React native resolution
-    "^react-native$": "<rootDir>/mobile/node_modules/react-native",
+    "^firebase/auth$": "<rootDir>/../__mocks__/firebase/auth.ts",
+    "^firebase/firestore$": "<rootDir>/../__mocks__/firebase/firestore.ts",
 
     // Native module mocks
     "^@react-native-async-storage/async-storage$":
-      "<rootDir>/__mocks__/@react-native-async-storage/async-storage.ts",
+      "<rootDir>/../__mocks__/@react-native-async-storage/async-storage.ts",
     "^expo-image-picker$":
-      "<rootDir>/__mocks__/expo-image-picker.ts",
+      "<rootDir>/../__mocks__/expo-image-picker.ts",
 
     // Navigation mock (for page/tab hook)
-    "^@navigation$": "<rootDir>/__mocks__/navigation.ts",
+    "^@navigation$": "<rootDir>/../__mocks__/navigation.ts",
 
     // Path alias support
-    "^@/(.*)$": "<rootDir>/mobile/$1"
+    "^@/(.*)$": "<rootDir>/$1"
   },
 
   transformIgnorePatterns: [
