@@ -35,8 +35,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(profileData?.profilePhotoUrl || null);
   const [profilePhotoBase64, setProfilePhotoBase64] = useState<string | null>(null);
   const [profilePhotoMimeType, setProfilePhotoMimeType] = useState<string | null>(null);
-  // Local-only for now - no backend field yet, follow-up work once profile schema supports it
-  const [driverMode, setDriverMode] = useState(false);
+  const isDriver = Boolean(profileData?.isDriver);
   const [campusDays, setCampusDays] = useState<string[]>([]);
 
   const toggleCampusDay = (day: string) => {
@@ -233,18 +232,17 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                 <View style={localStyles.driverModeCopy}>
                   <View style={localStyles.driverModeTitleRow}>
                     <Ionicons name="car-sport-outline" size={16} color={colors.white} />
-                    <Text style={localStyles.driverModeTitle}>Driver mode</Text>
+                    <Text style={localStyles.driverModeTitle}>Driver status</Text>
                   </View>
                   <Text style={localStyles.driverModeSubtitle}>
-                    {driverMode ? 'Honda Civic - 1ABC234' : 'Add your vehicle details to start driving'}
+                    {isDriver ? 'This user is also a driver' : 'Not currently marked as a driver'}
                   </Text>
                 </View>
-                <Switch
-                  value={driverMode}
-                  onValueChange={setDriverMode}
-                  trackColor={{ false: 'rgba(255,255,255,0.3)', true: colors.confirmed }}
-                  thumbColor={colors.white}
-                />
+                {isDriver ? (
+                  <View style={localStyles.driverBadge}>
+                    <Text style={localStyles.driverBadgeText}>Driver</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
 
@@ -327,6 +325,17 @@ const localStyles = StyleSheet.create({
   driverModeSubtitle: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 12,
+  },
+  driverBadge: {
+    backgroundColor: colors.confirmed,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  driverBadgeText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
   },
   charCount: {
     alignSelf: 'flex-end',

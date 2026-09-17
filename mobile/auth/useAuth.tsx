@@ -52,12 +52,24 @@ type AuthContextType = {
     profilePhotoMimeType?: string;
     degree?: string;
     bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
   }) => Promise<void>;
   updateProfileDetails: (data: {
     profilePhotoBase64?: string;
     profilePhotoMimeType?: string;
     degree?: string;
     bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
   }) => Promise<void>;
   handleLogin: () => Promise<void>;
   handleSignup: () => Promise<void>;
@@ -197,6 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!currentUser) {
         setProfileData(null);
+        setNeedsProfileSetup(false);
         setLoading(false);
         return;
       }
@@ -205,6 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profileDoc = await getDoc(doc(db, 'users', currentUser.uid));
         if (profileDoc.exists()) {
           const data = profileDoc.data() as UserProfileData;
+          const isComplete = data.onboardingComplete ?? false;
           setProfileData({
             name: data.name ?? currentUser.displayName ?? '',
             dob: data.dob ?? '',
@@ -213,8 +227,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             degree: data.degree ?? null,
             bio: data.bio ?? null,
             profilePhotoUrl: data.profilePhotoUrl ?? null,
-            onboardingComplete: data.onboardingComplete ?? false,
+            onboardingComplete: isComplete,
+            isDriver: data.isDriver ?? false,
+            vehicleMake: data.vehicleMake ?? null,
+            vehicleModel: data.vehicleModel ?? null,
+            vehicleColor: data.vehicleColor ?? null,
+            licensePlate: data.licensePlate ?? null,
+            seatsAvailable: data.seatsAvailable ?? null,
           });
+          setNeedsProfileSetup(!isComplete);
         } else {
           setProfileData({
             name: currentUser.displayName ?? '',
@@ -225,7 +246,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             bio: null,
             profilePhotoUrl: null,
             onboardingComplete: false,
+            isDriver: false,
+            vehicleMake: null,
+            vehicleModel: null,
+            vehicleColor: null,
+            licensePlate: null,
+            seatsAvailable: null,
           });
+          setNeedsProfileSetup(true);
         }
       } catch {
         setProfileData({
@@ -237,7 +265,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           bio: null,
           profilePhotoUrl: null,
           onboardingComplete: false,
+          isDriver: false,
+          vehicleMake: null,
+          vehicleModel: null,
+          vehicleColor: null,
+          licensePlate: null,
+          seatsAvailable: null,
         });
+        setNeedsProfileSetup(true);
       } finally {
         setLoading(false);
       }
@@ -348,6 +383,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profilePhotoMimeType?: string;
     degree?: string;
     bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
   }) => {
     const currentUser = auth.currentUser ?? user;
 
@@ -370,17 +411,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Clean inputs exactly once for saving to Firestore
       const trimmedDegree = data.degree?.trim() || null;
       const trimmedBio = data.bio?.trim() || null;
+      const isDriverValue = data.isDriver ?? false;
+      const vehicleMake = data.vehicleMake?.trim() || null;
+      const vehicleModel = data.vehicleModel?.trim() || null;
+      const vehicleColor = data.vehicleColor?.trim() || null;
+      const licensePlate = data.licensePlate?.trim() || null;
+      const seatsAvailable = typeof data.seatsAvailable === 'number' ? data.seatsAvailable : null;
 
+      const timestamp = new Date().toISOString();
       const profilePayload = {
         degree: trimmedDegree,
         bio: trimmedBio,
-        profilePhotoUrl, 
+        profilePhotoUrl,
+        isDriver: isDriverValue,
+        vehicleMake,
+        vehicleModel,
+        vehicleColor,
+        licensePlate,
+        seatsAvailable,
         onboardingComplete: true,
-        updatedAt: new Date().toISOString(),
+        updatedAt: timestamp,
       };
 
       await setDoc(doc(db, 'users', currentUser.uid), profilePayload, { merge: true });
-      
+
+      if (isDriverValue) {
+        const driverPayload = {
+          uid: currentUser.uid,
+          name: profileData?.name ?? currentUser.displayName ?? '',
+          dob: profileData?.dob ?? '',
+          profilePhotoUrl,
+          vehicleMake,
+          vehicleModel,
+          vehicleColor,
+          licensePlate,
+          seatsAvailable,
+          createdAt: profileData?.updatedAt ?? timestamp,
+          updatedAt: timestamp,
+        };
+
+        await setDoc(doc(db, 'drivers', currentUser.uid), driverPayload, { merge: true });
+      }
+
       setProfileData((currentProfile) => ({
         ...(currentProfile ?? {}),
         name: currentProfile?.name ?? currentUser.displayName ?? '',
@@ -389,6 +461,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: currentProfile?.email ?? currentUser.email ?? '',
         ...profilePayload,
       }));
+      setNeedsProfileSetup(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to save profile details right now.';
       setError(message);
@@ -403,6 +476,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profilePhotoMimeType?: string;
     degree?: string;
     bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
   }) => {
     const currentUser = auth.currentUser ?? user;
 
@@ -431,6 +510,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     profilePhotoMimeType?: string;
     degree?: string;
     bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
   }) => {
     await saveProfileDetails(data);
   };
