@@ -2,18 +2,11 @@ import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Platform,
-  Pressable,
   SafeAreaView,
   StatusBar,
-  Text,
-  TextInput,
   View,
-  TouchableWithoutFeedback,
-  Keyboard,
 } from 'react-native';
 import { useFonts, Marcellus_400Regular } from '@expo-google-fonts/marcellus';
 
@@ -143,7 +136,6 @@ function AppContent() {
     setPassword,
     confirmPassword,
     setConfirmPassword,
-    isFormValid,
     needsProfileSetup,
     completeProfileSetup,
     handleLogin,

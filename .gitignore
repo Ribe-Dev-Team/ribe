@@ -3,6 +3,10 @@ node_modules/
 backend/node_modules/
 mobile/node_modules/
 
+# Test coverage output
+coverage/
+mobile/coverage/
+
 # Mobile / Expo
 mobile/.expo/
 mobile/.expo-shared/
