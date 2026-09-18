@@ -2,7 +2,7 @@
 // Geocoding, Static Maps). Kept as plain REST calls - no native map SDK - so it works today in
 // Expo Go and can be reused as-is for trip-route previews later, without a dev-client migration.
 
-export const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
+export const GOOGLE_MAPS_API_KEY = process.env['EXPO_PUBLIC_GOOGLE_MAPS_API_KEY'] ?? '';
 
 export function isPlacesConfigured(): boolean {
   return GOOGLE_MAPS_API_KEY.length > 0;

@@ -45,7 +45,7 @@ function nearestMinuteIndex(minute: number): number {
 function parseInitialTime(time?: string) {
   if (time && isValid24Time(time)) {
     const t12 = decomposeTime12h(time);
-    return { hourIndex: t12.hrs - 1, minuteIndex: nearestMinuteIndex(t12.mins), periodIndex: t12.period };
+    return { hourIndex: t12.hrs - 1, minuteIndex: nearestMinuteIndex(t12.mins), periodIndex: t12.period === 'PM' ? 1 : 0 };
   }
   return { hourIndex: 7, minuteIndex: 0, periodIndex: 0 }; // default 08:00 AM
 }
