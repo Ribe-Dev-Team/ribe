@@ -119,87 +119,152 @@ function AppContent() {
     handleSignup,
     handleLogout,
   } = useAuth();
-
+  
   // Global persistent Firestore listeners for real-time notifications
-  // Global persistent Firestore listeners for real-time notifications
-useEffect(() => {
-  if (!user?.uid) {
-    setNotificationsList([]);
-    return;
-  }
-
-  const requestsQuery = query(collection(db, 'rideRequests'), where('userId', '==', user.uid));
-  const offersQuery = query(collection(db, 'rideOffers'), where('userId', '==', user.uid));
-
-  // Resolves destination address based on document fields
-  const getDestination = (data: any) =>
-    data.destinationAddress ||
-    data.destination ||
-    (data.toUni ? 'Monash University' : 'Home');
-
-  // Formats date into a clean string (e.g., "18 Sep")
-  const formatDate = (dateVal: any) => {
-    if (!dateVal) return 'today';
-    let d: Date;
-    if (dateVal?.toDate && typeof dateVal.toDate === 'function') {
-      d = dateVal.toDate();
-    } else if (dateVal instanceof Date) {
-      d = dateVal;
-    } else {
-      d = new Date(dateVal);
+  useEffect(() => {
+    if (!user?.uid) {
+      setNotificationsList([]);
+      return;
     }
-    if (isNaN(d.getTime())) return 'today';
-    return d.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' });
-  };
 
-  const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (
-        change.type === 'removed' ||
-        (change.type === 'modified' && change.doc.data().status === 'cancelled')
-      ) {
-        const data = change.doc.data();
-        const destination = getDestination(data);
-        const dateStr = formatDate(data.date);
-        const time = data.departureTime || 'scheduled time';
+    const requestsQuery = query(collection(db, 'rideRequests'), where('userId', '==', user.uid));
+    const offersQuery = query(collection(db, 'rideOffers'), where('userId', '==', user.uid));
 
-        const cancelNotif: NotificationItem = {
-          id: `cancel-req-${change.doc.id}-${Date.now()}`,
-          text: `Ride request to ${destination} on ${dateStr} at ${time} was cancelled.`,
-          type: 'cancellation',
-        };
-        setNotificationsList((prev) => [cancelNotif, ...prev]);
+    // Resolves destination address based on document fields
+    const getDestination = (data: any) =>
+      data.destinationAddress ||
+      data.destination ||
+      (data.toUni ? 'Monash University' : 'Home');
+
+    // Formats date into a clean string (e.g., "18 Sep")
+    const formatDate = (dateVal: any) => {
+      if (!dateVal) return 'today';
+      let d: Date;
+      if (dateVal?.toDate && typeof dateVal.toDate === 'function') {
+        d = dateVal.toDate();
+      } else if (dateVal instanceof Date) {
+        d = dateVal;
+      } else {
+        d = new Date(dateVal);
       }
-    });
-  });
+      if (isNaN(d.getTime())) return 'today';
+      return d.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' });
+    };
 
-  const unsubOffers = onSnapshot(offersQuery, (snapshot) => {
-    snapshot.docChanges().forEach((change) => {
-      if (
-        change.type === 'removed' ||
-        (change.type === 'modified' && change.doc.data().status === 'cancelled')
-      ) {
-        const data = change.doc.data();
-        const destination = getDestination(data);
-        const dateStr = formatDate(data.date);
-        const time = data.departureTime || 'scheduled time';
-
-        const cancelNotif: NotificationItem = {
-          id: `cancel-offer-${change.doc.id}-${Date.now()}`,
-          text: `Drive offer to ${destination} on ${dateStr} at ${time} was cancelled.`,
-          type: 'cancellation',
-        };
-        setNotificationsList((prev) => [cancelNotif, ...prev]);
+    // Checks if a given timestamp/date is today
+    const isToday = (dateVal: any) => {
+      if (!dateVal) return false;
+      let d: Date;
+      if (dateVal?.toDate && typeof dateVal.toDate === 'function') {
+        d = dateVal.toDate();
+      } else if (dateVal instanceof Date) {
+        d = dateVal;
+      } else {
+        d = new Date(dateVal);
       }
+      if (isNaN(d.getTime())) return false;
+
+      const today = new Date();
+      return (
+        d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate()
+      );
+    };
+
+    // Sync helper to combine active day-of reminders with existing cancellations
+    const syncNotifications = (
+      reqDocs: any[],
+      offerDocs: any[],
+      cancellations: NotificationItem[]
+    ) => {
+      const upcomingNotifs: NotificationItem[] = [];
+
+      // Check active requests scheduled for today
+      reqDocs.forEach((doc) => {
+        const data = doc.data();
+        if (data.status !== 'cancelled' && isToday(data.date)) {
+          upcomingNotifs.push({
+            id: `upcoming-req-${doc.id}`,
+            text: `Upcoming ride to ${getDestination(data)} today at ${data.departureTime || 'scheduled time'}.`,
+            type: 'upcoming',
+          });
+        }
+      });
+
+      // Check active offers scheduled for today
+      offerDocs.forEach((doc) => {
+        const data = doc.data();
+        if (data.status !== 'cancelled' && isToday(data.date)) {
+          upcomingNotifs.push({
+            id: `upcoming-offer-${doc.id}`,
+            text: `Upcoming drive to ${getDestination(data)} today at ${data.departureTime || 'scheduled time'}.`,
+            type: 'upcoming',
+          });
+        }
+      });
+
+      // Combine upcoming day-of reminders with accumulated cancellations (deduplicated)
+      setNotificationsList((prev) => {
+        const existingCancels = prev.filter((n) => n.type === 'cancellation');
+        const allCancels = [...cancellations, ...existingCancels].filter(
+          (item, index, self) => index === self.findIndex((t) => t.id === item.id)
+        );
+        return [...upcomingNotifs, ...allCancels];
+      });
+    };
+
+    let currentReqDocs: any[] = [];
+    let currentOfferDocs: any[] = [];
+    let pendingCancellations: NotificationItem[] = [];
+
+    // Listener for Ride Requests
+    const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
+      currentReqDocs = snapshot.docs;
+
+      snapshot.docChanges().forEach((change) => {
+        if (
+          change.type === 'removed' ||
+          (change.type === 'modified' && change.doc.data().status === 'cancelled')
+        ) {
+          const data = change.doc.data();
+          pendingCancellations.push({
+            id: `cancel-req-${change.doc.id}-${Date.now()}`,
+            text: `Ride request to ${getDestination(data)} on ${formatDate(data.date)} at ${data.departureTime || 'scheduled time'} was cancelled.`,
+            type: 'cancellation',
+          });
+        }
+      });
+
+      syncNotifications(currentReqDocs, currentOfferDocs, pendingCancellations);
     });
-  });
 
-  return () => {
-    unsubRequests();
-    unsubOffers();
-  };
-}, [user?.uid]);
+    // Listener for Ride Offers
+    const unsubOffers = onSnapshot(offersQuery, (snapshot) => {
+      currentOfferDocs = snapshot.docs;
 
+      snapshot.docChanges().forEach((change) => {
+        if (
+          change.type === 'removed' ||
+          (change.type === 'modified' && change.doc.data().status === 'cancelled')
+        ) {
+          const data = change.doc.data();
+          pendingCancellations.push({
+            id: `cancel-offer-${change.doc.id}-${Date.now()}`,
+            text: `Drive offer to ${getDestination(data)} on ${formatDate(data.date)} at ${data.departureTime || 'scheduled time'} was cancelled.`,
+            type: 'cancellation',
+          });
+        }
+      });
+
+      syncNotifications(currentReqDocs, currentOfferDocs, pendingCancellations);
+    });
+
+    return () => {
+      unsubRequests();
+      unsubOffers();
+    };
+  }, [user?.uid]);
   const changeTab = (tab: NavigationTab) => {
     setActiveTab(tab);
     setNavHidden(false);
