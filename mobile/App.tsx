@@ -97,6 +97,7 @@ function AppContent() {
   } | null>(null);
   const [viewingDriver, setViewingDriver] = useState<RideCardProps | null>(null);
   const [showBooking, setShowBooking] = useState(false);
+  const [bookingDate, setBookingDate] = useState<Date | null>(null);
   const lastScrollY = useRef(0);
 
   const changeTab = (tab: NavigationTab) => {
@@ -153,7 +154,15 @@ function AppContent() {
 
   const renderPage = () => {
     if (showBooking) {
-      return <BookingPage onDone={() => setShowBooking(false)} />;
+      return (
+        <BookingPage
+          initialDate={bookingDate ?? undefined}
+          onDone={() => {
+            setShowBooking(false);
+            setBookingDate(null);
+          }}
+        />
+      );
     }
     if (viewingDriver) {
       return <DriverProfilePage ride={viewingDriver} onBack={() => setViewingDriver(null)} />;
@@ -178,7 +187,10 @@ function AppContent() {
             onOpenRide={(ride, date) =>
               setSelectedRide({ ride, date, backLabel: 'Calendar', ...buildRideActions(ride.status, ride.driver) })
             }
-            onNewRide={() => setShowBooking(true)}
+            onNewRide={(date) => {
+              setBookingDate(date);
+              setShowBooking(true);
+            }}
           />
         );
       case 'rides':
