@@ -1,4 +1,4 @@
-import { Coord, Trip, MatchOffer, MatchRequest } from "./updated matching.schema";
+import { Coord, Trip, MatchOffer, MatchRequest } from "./matching.schema";
 
 export { calcDriverScore, calcPassengerScore };
 
