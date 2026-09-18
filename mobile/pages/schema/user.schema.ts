@@ -10,6 +10,12 @@ export interface UserProfile {
   bio: string | null;
   profilePhotoUrl: string | null;
   onboardingComplete: boolean;
+  isDriver: boolean;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  vehicleColor: string | null;
+  licensePlate: string | null;
+  seatsAvailable: number | null;
   role: UserRole;
   totalCO2SavedKg: number;
   activeBookings: string[];
@@ -27,4 +33,12 @@ export interface UserProfileDraft {
   bio?: string | null;
   profilePhotoUrl?: string | null;
   onboardingComplete?: boolean;
+  updatedAt?: string;
+  isDriver?: boolean;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
+  vehicleColor?: string | null;
+  licensePlate?: string | null;
+  seatsAvailable?: number | null;
+  driver?: boolean;
 }
