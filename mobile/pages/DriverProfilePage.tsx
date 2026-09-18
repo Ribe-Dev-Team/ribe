@@ -46,11 +46,11 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
         if (docSnap.exists() && isMounted) {
           const data = docSnap.data();
           setProfile({
-            degree: data.degree ?? 'Monash student',
-            year: data.year ?? '',
-            bio: data.bio ?? 'This driver has not added a bio yet.',
-            ridesShared: Number(data.ridesShared ?? 0),
-            memberSince: data.memberSince ?? 'Recently',
+            degree: data['degree'] ?? 'Monash student',
+            year: data['year'] ?? '',
+            bio: data['bio'] ?? 'This driver has not added a bio yet.',
+            ridesShared: Number(data['ridesShared'] ?? 0),
+            memberSince: data['memberSince'] ?? 'Recently',
           });
         } else if (isMounted) {
           setProfile(fallbackProfile);
