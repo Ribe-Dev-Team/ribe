@@ -337,7 +337,7 @@ export default function AuthPage({
         </View>
 
         <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <ScrollView
               contentContainerStyle={localStyles.scrollContent}
               keyboardShouldPersistTaps="handled"
@@ -700,7 +700,7 @@ export default function AuthPage({
       <StatusBar barStyle="light-content" />
 
       <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView
             contentContainerStyle={localStyles.loginScrollContent}
             keyboardShouldPersistTaps="handled"

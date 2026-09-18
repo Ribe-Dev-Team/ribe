@@ -352,7 +352,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         </View>
 
         <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <ScrollView
               contentContainerStyle={localStyles.scrollContent}
               keyboardShouldPersistTaps="handled"
@@ -432,7 +432,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       </View>
 
       <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView
             contentContainerStyle={localStyles.scrollContent}
             keyboardShouldPersistTaps="handled"
