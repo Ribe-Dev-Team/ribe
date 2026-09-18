@@ -45,9 +45,34 @@ type AuthContextType = {
 
   clearError: () => void;
 
-  updateProfileDetails: (data: ProfileExtras) => Promise<void>;
-  handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
-  handleSignup: (fields: SignupFields, extra?: ProfileExtras) => Promise<void>;
+  isFormValid: boolean;
+  needsProfileSetup: boolean;
+  completeProfileSetup: (data: {
+    profilePhotoBase64?: string;
+    profilePhotoMimeType?: string;
+    degree?: string;
+    bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
+  }) => Promise<void>;
+  updateProfileDetails: (data: {
+    profilePhotoBase64?: string;
+    profilePhotoMimeType?: string;
+    degree?: string;
+    bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
+  }) => Promise<void>;
+  handleLogin: () => Promise<void>;
+  handleSignup: () => Promise<void>;
   handleLogout: () => Promise<void>;
 };
 
@@ -108,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!currentUser) {
         setProfileData(null);
+        setNeedsProfileSetup(false);
         setLoading(false);
         return;
       }
@@ -133,6 +159,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             licensePlate: data.licensePlate ?? null,
             seatsAvailable: data.seatsAvailable ?? null,
           });
+          setNeedsProfileSetup(!isComplete);
         } else {
           setProfileData({
             name: currentUser.displayName ?? '',
@@ -150,6 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             licensePlate: null,
             seatsAvailable: null,
           });
+          setNeedsProfileSetup(true);
         }
       } catch {
         setProfileData({
@@ -168,6 +196,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           licensePlate: null,
           seatsAvailable: null,
         });
+        setNeedsProfileSetup(true);
       } finally {
         setLoading(false);
       }
@@ -303,7 +332,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const saveProfileDetails = async (data: ProfileExtras) => {
+  const saveProfileDetails = async (data: {
+    profilePhotoBase64?: string;
+    profilePhotoMimeType?: string;
+    degree?: string;
+    bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
+  }) => {
     const currentUser = auth.currentUser ?? user;
 
     if (!currentUser) {
@@ -375,6 +415,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: currentProfile?.email ?? currentUser.email ?? '',
         ...profilePayload,
       }));
+      setNeedsProfileSetup(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to save profile details right now.';
       setError(message);
@@ -384,7 +425,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateProfileDetails = async (data: ProfileExtras) => {
+  const completeProfileSetup = async (data: {
+    profilePhotoBase64?: string;
+    profilePhotoMimeType?: string;
+    degree?: string;
+    bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
+  }) => {
+    const currentUser = auth.currentUser ?? user;
+
+    if (!currentUser) {
+      setError('You need to sign in before completing profile setup.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    setNeedsProfileSetup(false);
+
+    try {
+      await saveProfileDetails(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to save profile details right now.';
+      setError(message);
+      setNeedsProfileSetup(true);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const updateProfileDetails = async (data: {
+    profilePhotoBase64?: string;
+    profilePhotoMimeType?: string;
+    degree?: string;
+    bio?: string;
+    isDriver?: boolean;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleColor?: string;
+    licensePlate?: string;
+    seatsAvailable?: number;
+  }) => {
     await saveProfileDetails(data);
   };
 
