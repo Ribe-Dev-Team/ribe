@@ -2,9 +2,9 @@ name: Run CI
 run-name: Applying CI to ${{ github.ref_name }} by @${{ github.actor }}
 on:
   push:
-    branches: [ "main", "feat*" ]
+    branches: [ "main", "feature-*/**" ]
   pull_request:
-    branches: [ "main", "feat*" ]
+    branches: [ "main", "feature-*/**" ]
 
 jobs:
   test:
