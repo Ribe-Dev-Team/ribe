@@ -108,3 +108,35 @@ export const getFormValidationError = ({
 
   return null;
 };
+
+export interface DriverFormValues {
+  isDriver: boolean;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleColor: string;
+  licensePlate: string;
+  seatsAvailable: string;
+}
+
+export const getDriverValidationError = ({
+  isDriver,
+  vehicleMake,
+  vehicleModel,
+  vehicleColor,
+  licensePlate,
+  seatsAvailable,
+}: DriverFormValues): string | null => {
+  if (!isDriver) {
+    return null;
+  }
+
+  if (!vehicleMake.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !licensePlate.trim()) {
+    return 'Please fill in all vehicle details.';
+  }
+
+  if (!Number.isInteger(Number(seatsAvailable)) || Number(seatsAvailable) < 1) {
+    return 'Please enter a valid number of seats available.';
+  }
+
+  return null;
+};

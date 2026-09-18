@@ -20,6 +20,7 @@ import styles, { colors } from '../styles';
 import DatePickerModal from '../components/DatePickerModal';
 import PressableScale from '../components/PressableScale';
 import {
+  getDriverValidationError,
   isValidDob,
   isValidEmail,
   isValidName,
@@ -244,23 +245,17 @@ export default function AuthPage({
   };
 
   const validateDriverStep = (): boolean => {
-    if (isDriver !== true) {
-      setDriverErr('');
-      return true;
-    }
+    const validationError = getDriverValidationError({
+      isDriver: isDriver === true,
+      vehicleMake,
+      vehicleModel,
+      vehicleColor,
+      licensePlate,
+      seatsAvailable,
+    });
 
-    if (!vehicleMake.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !licensePlate.trim()) {
-      setDriverErr('Please fill in all vehicle details.');
-      return false;
-    }
-
-    if (!Number.isInteger(Number(seatsAvailable)) || Number(seatsAvailable) < 1) {
-      setDriverErr('Please enter a valid number of seats available.');
-      return false;
-    }
-
-    setDriverErr('');
-    return true;
+    setDriverErr(validationError ?? '');
+    return validationError === null;
   };
 
   const goToDriverStep = () => {

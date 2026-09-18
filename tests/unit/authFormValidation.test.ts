@@ -1,4 +1,9 @@
-import { getFormValidationError, type AuthFormValues } from '@/pages/schema/user.validation';
+import {
+  getDriverValidationError,
+  getFormValidationError,
+  type AuthFormValues,
+  type DriverFormValues,
+} from '@/pages/schema/user.validation';
 
 const validSignup: AuthFormValues = {
   mode: 'signup',
@@ -118,6 +123,89 @@ describe('getFormValidationError - signup mode', () => {
         name: '  Anika Kamleshwaran  ',
         dob: '  01/01/1990  ',
         phoneNumber: '  0412345678  ',
+      }),
+    ).toBeNull();
+  });
+});
+
+const validDriver: DriverFormValues = {
+  isDriver: true,
+  vehicleMake: 'Honda',
+  vehicleModel: 'Civic',
+  vehicleColor: 'Silver',
+  licensePlate: '1ABC234',
+  seatsAvailable: '3',
+};
+
+describe('getDriverValidationError', () => {
+  it('accepts fully valid driver details', () => {
+    expect(getDriverValidationError(validDriver)).toBeNull();
+  });
+
+  it('skips vehicle validation entirely when the user is not a driver', () => {
+    expect(
+      getDriverValidationError({
+        ...validDriver,
+        isDriver: false,
+        vehicleMake: '',
+        vehicleModel: '',
+        vehicleColor: '',
+        licensePlate: '',
+        seatsAvailable: '',
+      }),
+    ).toBeNull();
+  });
+
+  it('requires a vehicle make when signing up as a driver', () => {
+    expect(getDriverValidationError({ ...validDriver, vehicleMake: '' })).toBe(
+      'Please fill in all vehicle details.',
+    );
+  });
+
+  it('requires a vehicle model when signing up as a driver', () => {
+    expect(getDriverValidationError({ ...validDriver, vehicleModel: '' })).toBe(
+      'Please fill in all vehicle details.',
+    );
+  });
+
+  it('requires a vehicle color when signing up as a driver', () => {
+    expect(getDriverValidationError({ ...validDriver, vehicleColor: '' })).toBe(
+      'Please fill in all vehicle details.',
+    );
+  });
+
+  it('requires a license plate when signing up as a driver', () => {
+    expect(getDriverValidationError({ ...validDriver, licensePlate: '' })).toBe(
+      'Please fill in all vehicle details.',
+    );
+  });
+
+  it('rejects a non-numeric seats available value', () => {
+    expect(getDriverValidationError({ ...validDriver, seatsAvailable: 'two' })).toBe(
+      'Please enter a valid number of seats available.',
+    );
+  });
+
+  it('rejects a seats available value below 1', () => {
+    expect(getDriverValidationError({ ...validDriver, seatsAvailable: '0' })).toBe(
+      'Please enter a valid number of seats available.',
+    );
+  });
+
+  it('rejects a fractional seats available value', () => {
+    expect(getDriverValidationError({ ...validDriver, seatsAvailable: '1.5' })).toBe(
+      'Please enter a valid number of seats available.',
+    );
+  });
+
+  it('trims whitespace before validating vehicle fields', () => {
+    expect(
+      getDriverValidationError({
+        ...validDriver,
+        vehicleMake: '  Honda  ',
+        vehicleModel: '  Civic  ',
+        vehicleColor: '  Silver  ',
+        licensePlate: '  1ABC234  ',
       }),
     ).toBeNull();
   });
