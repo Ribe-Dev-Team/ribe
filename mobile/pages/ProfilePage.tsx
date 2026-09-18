@@ -6,7 +6,6 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -32,8 +31,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(profileData?.profilePhotoUrl || null);
   const [profilePhotoBase64, setProfilePhotoBase64] = useState<string | null>(null);
   const [profilePhotoMimeType, setProfilePhotoMimeType] = useState<string | null>(null);
-  // Local-only for now - no backend field yet, follow-up work once profile schema supports it
-  const [driverMode, setDriverMode] = useState(false);
+  const isDriver = Boolean(profileData?.isDriver);
 
   const profileName = profileData?.name || user?.displayName || 'Your name';
   const profileEmail = profileData?.email || user?.email || 'No email added';
@@ -213,18 +211,21 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                   <View style={localStyles.driverModeCopy}>
                     <View style={localStyles.driverModeTitleRow}>
                       <Ionicons name="car-sport-outline" size={16} color={colors.white} />
-                      <Text style={localStyles.driverModeTitle}>Driver mode</Text>
+                      <Text style={localStyles.driverModeTitle}>Driver status</Text>
                     </View>
                     <Text style={localStyles.driverModeSubtitle}>
-                      {driverMode ? 'Honda Civic - 1ABC234' : 'Add your vehicle details to start driving'}
+                      {isDriver
+                        ? [profileData?.vehicleColor, profileData?.vehicleMake, profileData?.vehicleModel]
+                            .filter(Boolean)
+                            .join(' ') || 'Vehicle details on file'
+                        : 'Add your vehicle details during account setup to start driving'}
                     </Text>
                   </View>
-                  <Switch
-                    value={driverMode}
-                    onValueChange={setDriverMode}
-                    trackColor={{ false: 'rgba(255,255,255,0.3)', true: colors.confirmed }}
-                    thumbColor={colors.white}
-                  />
+                  {isDriver ? (
+                    <View style={localStyles.driverBadge}>
+                      <Text style={localStyles.driverBadgeText}>Driver</Text>
+                    </View>
+                  ) : null}
                 </View>
               )}
             </View>
@@ -259,28 +260,6 @@ const localStyles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.mediumBlue,
   },
-  daysRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  dayPill: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  dayPillActive: {
-    backgroundColor: colors.white,
-  },
-  dayPillText: {
-    color: colors.white,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  dayPillTextActive: {
-    color: colors.mediumBlue,
-  },
   driverModeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -304,6 +283,17 @@ const localStyles = StyleSheet.create({
   driverModeSubtitle: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 12,
+  },
+  driverBadge: {
+    backgroundColor: colors.confirmed,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  driverBadgeText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
   },
   charCount: {
     alignSelf: 'flex-end',

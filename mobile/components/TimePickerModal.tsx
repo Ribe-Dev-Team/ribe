@@ -45,7 +45,11 @@ function nearestMinuteIndex(minute: number): number {
 function parseInitialTime(time?: string) {
   if (time && isValid24Time(time)) {
     const t12 = decomposeTime12h(time);
-    return { hourIndex: t12.hrs - 1, minuteIndex: nearestMinuteIndex(t12.mins), periodIndex: t12.period === 'PM' ? 1 : 0 };
+    return {
+      hourIndex: t12.hrs - 1,
+      minuteIndex: nearestMinuteIndex(t12.mins),
+      periodIndex: t12.period === 'PM' ? 1 : 0,
+    };
   }
   return { hourIndex: 7, minuteIndex: 0, periodIndex: 0 }; // default 08:00 AM
 }
@@ -135,7 +139,7 @@ export default function TimePickerModal({ visible, label, initialTime, onSelect,
           touch responder on press-down and won't release it to the ScrollView wheels below,
           which silently breaks their drag-to-scroll gesture.
         */}
-        <Pressable onPress={onClose} style={StyleSheet.absoluteFillObject} />
+        <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
 
         <View style={localStyles.sheet}>
           <Text style={localStyles.title}>{label}</Text>

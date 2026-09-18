@@ -32,6 +32,12 @@ interface SignupProfileExtras {
   profilePhotoMimeType?: string;
   degree?: string;
   bio?: string;
+  isDriver?: boolean;
+  vehicleMake?: string;
+  vehicleModel?: string;
+  vehicleColor?: string;
+  licensePlate?: string;
+  seatsAvailable?: number;
 }
 
 interface AuthPageProps {
@@ -56,14 +62,27 @@ interface AuthPageProps {
   handleSignup: (extra?: SignupProfileExtras) => Promise<void>;
 }
 
-type SignupStep = 'about' | 'account' | 'profile' | 'confirm';
-type FieldName = 'name' | 'phone' | 'email' | 'password' | 'confirm' | 'degree' | 'bio';
+type SignupStep = 'about' | 'account' | 'profile' | 'driver' | 'confirm';
+type FieldName =
+  | 'name'
+  | 'phone'
+  | 'email'
+  | 'password'
+  | 'confirm'
+  | 'degree'
+  | 'bio'
+  | 'vehicleMake'
+  | 'vehicleModel'
+  | 'vehicleColor'
+  | 'licensePlate'
+  | 'seatsAvailable';
 
 const signupStepLabels: Record<SignupStep, string> = {
-  about: 'Step 1 of 4 · About you',
-  account: 'Step 2 of 4 · Account',
-  profile: 'Step 3 of 4 · Profile',
-  confirm: 'Step 4 of 4 · Confirm & submit',
+  about: 'Step 1 of 5 · About you',
+  account: 'Step 2 of 5 · Account',
+  profile: 'Step 3 of 5 · Profile',
+  driver: 'Step 4 of 5 · Driver details',
+  confirm: 'Step 5 of 5 · Confirm & submit',
 };
 
 // dob is stored/validated as DD/MM/YYYY (see isValidDob), unlike the DD-MM-YYYY
@@ -119,6 +138,14 @@ export default function AuthPage({
   const [profilePhotoBase64, setProfilePhotoBase64] = useState<string | null>(null);
   const [profilePhotoMimeType, setProfilePhotoMimeType] = useState<string | null>(null);
   const [photoErr, setPhotoErr] = useState('');
+
+  const [isDriver, setIsDriver] = useState<boolean | null>(null);
+  const [vehicleMake, setVehicleMake] = useState('');
+  const [vehicleModel, setVehicleModel] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('');
+  const [licensePlate, setLicensePlate] = useState('');
+  const [seatsAvailable, setSeatsAvailable] = useState('2');
+  const [driverErr, setDriverErr] = useState('');
 
   // Always land on the first step when (re-)entering signup mode.
   useEffect(() => {
@@ -216,12 +243,52 @@ export default function AuthPage({
     if (validateAccountStep()) setSignupStep('profile');
   };
 
+  const validateDriverStep = (): boolean => {
+    if (isDriver !== true) {
+      setDriverErr('');
+      return true;
+    }
+
+    if (!vehicleMake.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !licensePlate.trim()) {
+      setDriverErr('Please fill in all vehicle details.');
+      return false;
+    }
+
+    if (!Number.isInteger(Number(seatsAvailable)) || Number(seatsAvailable) < 1) {
+      setDriverErr('Please enter a valid number of seats available.');
+      return false;
+    }
+
+    setDriverErr('');
+    return true;
+  };
+
+  const goToDriverStep = () => {
+    if (error) clearError();
+    setSignupStep('driver');
+  };
+
+  const goToConfirmStep = () => {
+    if (error) clearError();
+    if (validateDriverStep()) setSignupStep('confirm');
+  };
+
   const submitSignup = () => {
     handleSignup({
       profilePhotoBase64: profilePhotoBase64 ?? undefined,
       profilePhotoMimeType: profilePhotoMimeType ?? undefined,
       degree: degree.trim() || undefined,
       bio: bio.trim() || undefined,
+      isDriver: isDriver ?? false,
+      ...(isDriver === true
+        ? {
+            vehicleMake: vehicleMake.trim(),
+            vehicleModel: vehicleModel.trim(),
+            vehicleColor: vehicleColor.trim(),
+            licensePlate: licensePlate.trim(),
+            seatsAvailable: Number(seatsAvailable),
+          }
+        : {}),
     });
   };
 
@@ -233,7 +300,14 @@ export default function AuthPage({
         <View
           style={[
             localStyles.progressSegment,
-            (signupStep === 'profile' || signupStep === 'confirm') && localStyles.progressSegmentActive,
+            (signupStep === 'profile' || signupStep === 'driver' || signupStep === 'confirm') &&
+              localStyles.progressSegmentActive,
+          ]}
+        />
+        <View
+          style={[
+            localStyles.progressSegment,
+            (signupStep === 'driver' || signupStep === 'confirm') && localStyles.progressSegmentActive,
           ]}
         />
         <View style={[localStyles.progressSegment, signupStep === 'confirm' && localStyles.progressSegmentActive]} />
@@ -250,7 +324,9 @@ export default function AuthPage({
         ? () => setSignupStep('about')
         : signupStep === 'profile'
         ? () => setSignupStep('account')
-        : () => setSignupStep('profile');
+        : signupStep === 'driver'
+        ? () => setSignupStep('profile')
+        : () => setSignupStep('driver');
     const backLabel = signupStep === 'about' ? 'Log-In' : 'Back';
 
     return (
@@ -428,6 +504,100 @@ export default function AuthPage({
                 </View>
               )}
 
+              {signupStep === 'driver' && (
+                <View style={localStyles.card}>
+                  <Text style={localStyles.cardLabel}>Driver details (optional)</Text>
+                  <Text style={localStyles.stepHelperText}>
+                    Are you planning to give rides? Add your vehicle details so passengers can book with you.
+                  </Text>
+
+                  <View style={localStyles.choiceRow}>
+                    <PressableScale
+                      onPress={() => setIsDriver(true)}
+                      style={[localStyles.choiceButton, isDriver === true && localStyles.choiceButtonActive]}
+                    >
+                      <Text style={[localStyles.choiceButtonText, isDriver === true && localStyles.choiceButtonTextActive]}>
+                        Yes, I'm a driver
+                      </Text>
+                    </PressableScale>
+                    <PressableScale
+                      onPress={() => setIsDriver(false)}
+                      style={[localStyles.choiceButton, isDriver === false && localStyles.choiceButtonActive]}
+                    >
+                      <Text style={[localStyles.choiceButtonText, isDriver === false && localStyles.choiceButtonTextActive]}>
+                        Not right now
+                      </Text>
+                    </PressableScale>
+                  </View>
+
+                  {isDriver === true && (
+                    <>
+                      <Text style={[localStyles.fieldLabel, { marginTop: 4 }]}>Vehicle make</Text>
+                      <TextInput
+                        autoCapitalize="words"
+                        onBlur={() => setFocusedField(null)}
+                        onChangeText={setVehicleMake}
+                        onFocus={() => setFocusedField('vehicleMake')}
+                        placeholder="Honda"
+                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        style={[localStyles.fieldInput, focusedField === 'vehicleMake' && localStyles.fieldInputFocused]}
+                        value={vehicleMake}
+                      />
+
+                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Vehicle model</Text>
+                      <TextInput
+                        autoCapitalize="words"
+                        onBlur={() => setFocusedField(null)}
+                        onChangeText={setVehicleModel}
+                        onFocus={() => setFocusedField('vehicleModel')}
+                        placeholder="Civic"
+                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        style={[localStyles.fieldInput, focusedField === 'vehicleModel' && localStyles.fieldInputFocused]}
+                        value={vehicleModel}
+                      />
+
+                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Vehicle color</Text>
+                      <TextInput
+                        autoCapitalize="words"
+                        onBlur={() => setFocusedField(null)}
+                        onChangeText={setVehicleColor}
+                        onFocus={() => setFocusedField('vehicleColor')}
+                        placeholder="Silver"
+                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        style={[localStyles.fieldInput, focusedField === 'vehicleColor' && localStyles.fieldInputFocused]}
+                        value={vehicleColor}
+                      />
+
+                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>License plate</Text>
+                      <TextInput
+                        autoCapitalize="characters"
+                        onBlur={() => setFocusedField(null)}
+                        onChangeText={setLicensePlate}
+                        onFocus={() => setFocusedField('licensePlate')}
+                        placeholder="1ABC234"
+                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        style={[localStyles.fieldInput, focusedField === 'licensePlate' && localStyles.fieldInputFocused]}
+                        value={licensePlate}
+                      />
+
+                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
+                      <TextInput
+                        keyboardType="number-pad"
+                        onBlur={() => setFocusedField(null)}
+                        onChangeText={setSeatsAvailable}
+                        onFocus={() => setFocusedField('seatsAvailable')}
+                        placeholder="2"
+                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        style={[localStyles.fieldInput, focusedField === 'seatsAvailable' && localStyles.fieldInputFocused]}
+                        value={seatsAvailable}
+                      />
+                    </>
+                  )}
+
+                  {driverErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{driverErr}</Text>}
+                </View>
+              )}
+
               {signupStep === 'confirm' && (
                 <>
                   <View style={localStyles.card}>
@@ -457,9 +627,17 @@ export default function AuthPage({
                       </View>
                     )}
                     {bio.trim() !== '' && (
-                      <View style={[localStyles.summaryRow, { borderBottomWidth: 0 }]}>
+                      <View style={[localStyles.summaryRow, isDriver !== true && { borderBottomWidth: 0 }]}>
                         <Text style={localStyles.summaryLabel}>Bio</Text>
                         <Text style={localStyles.summaryValue} numberOfLines={3}>{bio.trim()}</Text>
+                      </View>
+                    )}
+                    {isDriver === true && (
+                      <View style={[localStyles.summaryRow, { borderBottomWidth: 0 }]}>
+                        <Text style={localStyles.summaryLabel}>Vehicle</Text>
+                        <Text style={localStyles.summaryValue} numberOfLines={1}>
+                          {[vehicleColor, vehicleMake, vehicleModel].filter(Boolean).join(' ')} · {licensePlate}
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -479,7 +657,12 @@ export default function AuthPage({
                 </PressableScale>
               )}
               {signupStep === 'profile' && (
-                <PressableScale onPress={() => setSignupStep('confirm')} style={localStyles.actionButton}>
+                <PressableScale onPress={goToDriverStep} style={localStyles.actionButton}>
+                  <Text style={styles.primaryButtonText}>Next</Text>
+                </PressableScale>
+              )}
+              {signupStep === 'driver' && (
+                <PressableScale onPress={goToConfirmStep} style={localStyles.actionButton}>
                   <Text style={styles.primaryButtonText}>Next</Text>
                 </PressableScale>
               )}
@@ -706,6 +889,32 @@ const localStyles = StyleSheet.create({
   },
   bioInput: {
     minHeight: 100,
+  },
+  choiceRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  choiceButton: {
+    flex: 1,
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 12,
+  },
+  choiceButtonActive: {
+    borderColor: colors.white,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  choiceButtonText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  choiceButtonTextActive: {
+    color: colors.white,
   },
   stepHelperText: {
     color: 'rgba(255,255,255,0.7)',

@@ -7,7 +7,7 @@ export const isValidEmail = (value: string) => emailPattern.test(value.trim());
 export const isValidName = (value: string) => value.trim().length >= 2 && namePattern.test(value.trim());
 export const isValidPhoneNumber = (value: string) => {
   const digitsOnly = value.replace(/\D/g, '');
-  return phonePattern.test(value) && digitsOnly.length >= 10 && digitsOnly.length <= 15;
+  return phonePattern.test(value) && digitsOnly.length >= 9 && digitsOnly.length <= 11;
 };
 
 export const isValidDob = (value: string) => {

@@ -236,7 +236,8 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       onDone();
     } catch (error) {
       console.error('Failed to create ride request/offer:', error);
-      alert('Error submitting booking.');
+      const msg = error instanceof Error ? error.message : JSON.stringify(error);
+      alert(`Error submitting booking: ${msg}`);
     } finally {
       setIsSubmitting(false);
     }
