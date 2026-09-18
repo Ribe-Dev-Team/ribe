@@ -6,8 +6,9 @@ behind a one-method interface you swap for the real Distance Matrix later.
 
 ```bash
 npm install
-npm test                    # 33 tests
+npm test                    # 39 tests
 npx ts-node test/simulate.ts # SMART Goal 1 evidence run
+npx ts-node test/compare.ts  # greedy vs provisional bumping, side by side
 ```
 
 ## Files, and the tickets they close
@@ -19,38 +20,94 @@ npx ts-node test/simulate.ts # SMART Goal 1 evidence run
 | `src/filter.ts` | KEY-133, 134, 136, 137 — time, direction, bearing, corridor, pair list |
 | `src/route.ts` | KEY-138 — insertion positions and incremental feasibility |
 | `src/score.ts` | KEY-139 — `offerScore` / `reqScore` |
-| `src/match.ts` | KEY-41 — the matching loop |
+| `src/deferredAcceptance.ts` | KEY-41 — **the default matching loop**: provisional assignment with bumping |
+| `src/match.ts` | KEY-41 — one-shot greedy, kept as the comparison baseline |
 | `src/travelTime.ts` | the seam where Google Maps plugs in |
 
 ## The algorithm, in one paragraph
 
-Sequential greedy assignment with incremental feasibility. Riders are placed one
-at a time; after each placement the affected trip is re-evaluated, because adding
-a rider changes the detour experienced by **everyone already aboard**. A trip
-stops accepting riders when it is full, when the driver closes it, when the
-tightest rider's remaining slack runs out, or at the matching cutoff.
+**Provisional assignment with bumping**, not one-shot greedy — `runMatchingProvisional`
+in `src/deferredAcceptance.ts` is the default path. Riders propose to trips one at
+a time; a trip holding a rider hasn't committed to them, and if a cheaper insertion
+comes along later it drops the current holder back into the pool to try its next
+trip. `src/match.ts`'s one-shot greedy (place a rider, never revisit) is kept
+specifically as the comparison baseline — see "Why bumping, measured" below for
+why it isn't the default anymore.
 
 ## Why not Gale–Shapley
 
-We evaluated deferred acceptance (the Hospital/Residents variant, since drivers
-have capacity) and rejected it for two reasons.
+Ribe drivers do not rank riders. Once matched, they only ever **veto** (accept or
+decline what they're given) or **close** (set how many seats they'll take, or stop
+looking early). They never say "I prefer rider A over rider B" — there is no
+driver-side preference list for Gale-Shapley to resolve.
 
-Its stability guarantee assumes every party accepts their assignment. Ribe's
-drivers can decline — `rideMatch.status` has `driver_cancelled` and
-`driver_expired` precisely because they can — and the moment one does, the
-guarantee is void and the batch must be recomputed.
+That matters for stability, not just naming: a blocking pair requires **both**
+parties to strictly prefer each other over their current match. With drivers
+indifferent by construction, no driver ever strictly prefers one rider to
+another, so no blocking pair can exist — every feasible assignment is trivially
+stable. The guarantee is vacuous, not hard-won.
 
-More fundamentally, deferred acceptance requires **fixed** preference lists.
-Ridesharing preferences are route-dependent: once a driver collects rider A, the
-cost of rider B changes. Two riders on the same street also cost barely more
-together than one, which is a complementarity, and complementarities break the
-substitutability condition the stability proof relies on — with them, a stable
-matching need not exist at all.
+What survives from deferred acceptance is the **mechanism**, not the theory:
+provisional holds and bumping, used here as a search heuristic that measurably
+beats one-shot greedy (below), not as two-sided preference resolution. Do not
+call this Gale-Shapley in code, comments, or the report — call it provisional
+assignment, deferred assignment, or greedy with backtracking.
 
-So we claim **feasibility**, not stability, and we handle rejection natively.
+`offerScore` is affected by this too. It used to read as "driver preference" —
+it no longer is one. Reinterpret it as the **marginal cost of this insertion**:
+still worth tracking, because cheap insertions preserve capacity for later
+riders, which is exactly the lever bumping pulls on to raise match rate. There
+is also no soft preference layered on top of it any more — gender and luggage
+were removed earlier as hard gates, and quiet-ride affinity has been removed
+too, since it never actually influenced which rider a trip kept (the bump
+decision compares raw marginal minutes) and was cosmetic at best.
 
-The tradeoff is real and worth stating: greedy can lock an early pair that blocks
-a better global arrangement. `test/simulate.ts` is where you measure that cost.
+## Why bumping, measured
+
+Both algorithms run on identical batches, same seed, via `test/compare.ts`:
+
+```
+nReq nOff | greedy matched/rate/detour     | provisional matched/rate/detour
+  60   25 |  42    70%   0.45m            |  47    78%   3.27m
+ 100   40 |  81    81%   0.27m            |  83    83%   3.41m
+ 100   30 |  67    67%   0.16m            |  68    68%   3.31m
+  80   35 |  66    83%   0.22m            |  65    81%   3.17m
+ 120   50 | 102    85%   0.25m            | 109    91%   3.45m
+```
+
+Bumping wins match rate in most cases (up to +8 points) at the cost of roughly
+10x higher average rider detour — and it is not a strict win: at 80 requests /
+35 offers this particular seed comes out one match *behind* greedy, a reminder
+that this is a heuristic with no optimality guarantee in either direction. As a
+percentage of each rider's own direct trip, provisional's detour runs
+13.8%–15.6% against the <15% Goal 1 ceiling — comfortably under in most rows,
+but over it in one (100 requests / 30 offers). Report both numbers; this is a
+real trade, not a free win, and the ceiling is worth watching rather than
+assuming.
+
+Why bumping wins, worked example (see `test/deferredAcceptance.test.ts` for
+the runnable version, with exact numbers): riders A and B, drivers D1 and D2
+with one seat each. B can only reach D1; A can reach both, and D1 is also A's
+own best option. One-shot greedy sorts by combined score and takes the
+globally highest pair first — (A, D1) — locking D1 before B is ever considered.
+B has nowhere else to go: **one match**. Provisional assignment lets A propose
+to D1 first too, but when B proposes afterwards, D1 re-evaluates its best
+feasible occupant and finds B strictly cheaper (a smaller marginal detour) —
+so it bumps A back to the pool, where A lands on D2 on its next try:
+**two matches**.
+
+The mechanism, precisely: each unmatched rider proposes to whichever untried
+compatible trip scores best for **them** (`reqScore`, judged against the
+trip's confirmed baseline, never against who else is currently just holding a
+provisional spot). Each trip, on receiving a proposal, recomputes the best
+feasible subset of (currently held riders + this new proposer) — size bounded
+by seats, feasible meaning every rider's detour cap and arrival time still
+hold — preferring the largest matched count, tie-broken by lowest total
+marginal driver cost. Riders dropped return to the pool and try their next
+untried trip. It terminates because each (rider, trip) pair is inspected at
+most once. Confirmed riders — anyone already aboard when the run started — are
+fixed: always included, never bumped, because a human already accepted that
+trip.
 
 ## What a rider's "detour" means
 
@@ -138,6 +195,38 @@ in 2 — the UI would show a countdown the system can't honour. In practice, for
 any batch running less than ~14 hours before departure, the cutoff term is the
 one that binds.
 
+## Trip lifecycle across runs
+
+Confirming a match does **not** close a trip. `runMatching`/`runMatchingProvisional`
+are pure functions with no scheduler of their own, but the way they're meant to
+be called repeatedly matters: after both parties accept, the trip re-enters the
+pool as an input to the *next* run, still looking for more riders, via
+`offer.onBoard` — carried forward as **fixed, immovable** inputs (see "Why
+bumping, measured" above). A 4-seat trip with 2 confirmed riders goes back into
+the pool next run and can still pick up a 3rd and a 4th.
+
+A trip stops being offered new riders for one of four reasons, corresponding
+to `isAcceptingRiders` (route.ts) exactly:
+
+```
+full            seatsFilled >= seatsOffered
+driver locked   !acceptingMore   — a live toggle the driver controls, separate
+                                   from seatsFilled so match-rate stats can
+                                   tell "driver chose to stop" apart from
+                                   "ran out of seats"
+out of slack    minSlack <= insertionFloorMinutes — capacity is bounded by
+                                   consent, not just seats
+past cutoff     departure inside cfg.matchingCutoffMinutes
+```
+
+`offer.status` stays `'open'` through confirmation — it only becomes `'closed'`
+on the first two, `'locked'` on the last. This module doesn't decide *how often*
+to run; that's a scheduling decision independent of the algorithm (any
+frequency works with bumping), and running more often only gives an
+already-open, under-full trip more chances to fill before its cutoff. No
+scheduler, cutoff clock, or `batchKey` derivation lives in `src/` yet — that's
+still a caller-side concern.
+
 ## Wiring Firebase later
 
 Two adapters, roughly forty lines, and nothing in `src/` changes:
@@ -148,7 +237,7 @@ const requests = await db.collection('rideRequests')
   .where('batchKey', '==', key).where('status', '==', 'unassigned').get();
 
 // match — unchanged, pure
-const result = runMatching(key, requests, offers, departAt, new Date(), distanceMatrix);
+const result = runMatchingProvisional(key, requests, offers, departAt, new Date(), distanceMatrix);
 
 // write: one transaction per match, decrementing seatsAvailable inside it
 ```
@@ -168,7 +257,7 @@ const t = await buildGoogleTravelTimeMatrix(points, {
   fallback: new SyntheticTravelTime(), // optional: covers legs Google can't route
 });
 
-const result = runMatching(key, requests, offers, departAt, new Date(), t);
+const result = runMatchingProvisional(key, requests, offers, departAt, new Date(), t);
 ```
 
 It batches into `chunkSize x chunkSize` requests (default 10x10) to stay under
@@ -191,6 +280,7 @@ source file has a companion test file that exercises it directly:
 | `test/filter.test.ts` | `windowsOverlap` (KEY-133), `corridorDetourKm`, and `hardFilter`'s reject-reason ordering (KEY-137) |
 | `test/route.test.ts` | `evaluateRoute`'s waiting+riding detour math (the "last rider scores zero" bug) and `bestInsertion`'s re-check of every existing rider (KEY-138) |
 | `test/match.test.ts` | `runMatching` end to end — the greedy assignment loop, stats, `acceptDeadline` clamping |
+| `test/deferredAcceptance.test.ts` | `runMatchingProvisional` end to end — the worked bumping example (greedy strands a rider, provisional relocates them), confirmed riders never being bumped, capacity/detour caps still holding |
 | `test/travelTime.test.ts` | `SyntheticTravelTime` / the Google Distance Matrix client — batching, dedup, and fallback on failed legs |
 
 `test/fixtures.ts` is not a test file itself. It holds shared builders
@@ -201,15 +291,22 @@ re-derived per test.
 
 ### Manual testing
 
-Two ways to poke at the algorithm without writing a Jest test:
+Three ways to poke at the algorithm without writing a Jest test:
 
 1. **The simulate.ts evidence run** — `npx ts-node test/simulate.ts` builds a
    batch of synthetic riders/drivers on a fixed seed, runs `runMatching`, and
    prints match rate and detour stats. Good for eyeballing the effect of a
    config or weight change at realistic batch size, but it reports aggregates,
-   not individual pairings.
+   not individual pairings. (Still exercises the greedy baseline specifically —
+   swap in `runMatchingProvisional` to see the default path's numbers instead.)
 
-2. **A throwaway `ts-node` script for one scenario** — import the module and
+2. **The compare.ts head-to-head** — `npx ts-node test/compare.ts` runs both
+   `runMatching` and `runMatchingProvisional` on the same batches and prints
+   match rate and detour side by side. This is what produced the numbers in
+   "Why bumping, measured" above — rerun it after any scoring or weight change
+   to see whether the trade-off moved.
+
+3. **A throwaway `ts-node` script for one scenario** — import the module and
    the test fixtures directly to inspect a single pair or a handful of riders:
 
    ```ts
@@ -239,9 +336,26 @@ Two ways to poke at the algorithm without writing a Jest test:
 
 ## Known limitations
 
-- Greedy, so no global optimality guarantee. Measurable via `simulate.ts`.
-- Insertion search is exhaustive over positions. Fine to ~6 seats; beyond that
-  it needs a heuristic.
+- Provisional assignment is a heuristic, not an exhaustive search: a trip
+  found infeasible for a rider (or a rider it's already tried) is crossed off
+  for that rider for the rest of the run, even though it could in principle
+  loosen up later if the trip bumps someone else first. This bounds runtime
+  and gives the algorithm's termination argument, at the cost of occasionally
+  missing an arrangement an exhaustive search would find — see the "not a
+  strict win" result in "Why bumping, measured" above.
+- Within a trip, fixed (confirmed) riders keep their original relative pickup
+  order; only where new riders slot in among them is searched. Full
+  permutation search covers just the new riders being added in a given
+  proposal (bounded by seats, so ≤ 24 orderings at 4 seats) — reordering
+  confirmed riders relative to each other is deliberately out of scope, since
+  nothing about correctness requires reopening a route a human already
+  accepted.
+- One-shot greedy (`src/match.ts`) is still around specifically as the
+  comparison baseline, not because it's a viable alternative default — see
+  "Why bumping, measured". Its own known limitation: no global optimality
+  guarantee, since it never revisits an early placement.
+- Insertion search (`bestInsertion`, used by both algorithms) is exhaustive
+  over positions. Fine to ~6 seats; beyond that it needs a heuristic.
 - `SyntheticTravelTime` noise is one-sided (legs only ever get slower). Two-sided
   noise lets a detour come out faster than the direct route, which is
   geometrically impossible and produces negative detours in the statistics.

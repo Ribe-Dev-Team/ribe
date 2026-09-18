@@ -9,43 +9,36 @@ import { waypointOf } from './filter';
  * pairs with different detour budgets.
  *
  *   offerScore — the DRIVER's view. How little this rider disrupts the trip,
- *                as a fraction of the driver's own tolerance, nudged up when
- *                soft preferences align.
+ *                as a fraction of the driver's own remaining tolerance.
  *
  *   reqScore   — the RIDER's view. How little detour they absorb against their
  *                own cap, plus how comfortably they make their arrival time.
  *
  * Keeping the two separate matters: if both sides rank on the same quantity the
  * preference lists are mirror images and the two-sided model buys nothing.
+ *
+ * No soft preferences remain — gender and luggage were removed as hard gates
+ * (thin pool, match rate is the binding constraint) and quiet-ride affinity
+ * was removed too: it never influenced which rider a trip actually kept
+ * (`deferredAcceptance.ts`'s bump decision compares raw marginal minutes, not
+ * this score), so it was a cosmetic label, not a lever.
  */
 
 /**
- * All four weights are dimensionless multipliers in [0, 1], not raw minutes
- * or km. Each multiplies an already-normalised [0, 1] sub-score (see
- * detourScore/arrivalScore/disruptionScore/affinity below), so weights on
- * the same side are meant to sum to 1 — they redistribute share of a unitless
- * score, they do not carry units themselves.
+ * Dimensionless multipliers in [0, 1], not raw minutes or km. Each multiplies
+ * an already-normalised [0, 1] sub-score (see detourScore/arrivalScore below),
+ * so the two on the rider's side are meant to sum to 1 — they redistribute
+ * share of a unitless score, they do not carry units themselves.
  */
 export interface ScoreWeights {
   riderDetourWeight: number;
   riderArrivalWeight: number;
-  driverDisruptionWeight: number;
-  driverPreferenceWeight: number;
 }
 
 export const DEFAULT_WEIGHTS: ScoreWeights = {
   riderDetourWeight: 0.7,
   riderArrivalWeight: 0.3,
-  driverDisruptionWeight: 0.85,
-  driverPreferenceWeight: 0.15,
 };
-
-/** Soft preference alignment, 0 or 1. Boosts, never blocks — hard constraints
- *  are the filter's job. Quiet ride is the only preference left, and it is
- *  symmetric: both-chatty matches as well as both-quiet. */
-export function preferenceAffinity(req: MatchRequest, offer: MatchOffer): number {
-  return req.preferences.quietRide === offer.preferences.quietRide ? 1 : 0;
-}
 
 export interface ScoredPairing extends MatchPairing {
   req: MatchRequest;
@@ -89,17 +82,13 @@ export function scorePairing(
 
   // --- driver's view ------------------------------------------------------
   // Marginal cost of this rider against the driver's remaining tolerance.
-  // `remaining` is minutes; disruptionScore is the dimensionless [0, 1]
-  // ratio of marginal (minutes) over remaining (minutes).
+  // `remaining` is minutes; offerScore is the dimensionless [0, 1] complement
+  // of marginal (minutes) over remaining (minutes) — 1 when the insertion is
+  // free, 0 when it exactly exhausts what's left of the driver's own cap.
   const remaining = Math.max(1, offer.maxDetour - (offer.currTripDuration
     ? ev.driverAddedMinutes - marginal
     : 0));
-  const disruptionScore = clamp01(1 - marginal / remaining);
-  const affinity = preferenceAffinity(req, offer); // dimensionless, 0 or 1
-
-  // offerScore is dimensionless [0, 1] — a weighted blend of two [0, 1] scores.
-  const offerScore =
-    w.driverDisruptionWeight * disruptionScore + w.driverPreferenceWeight * affinity;
+  const offerScore = clamp01(1 - marginal / remaining);
 
   return {
     offerId: offer.offerId,
@@ -114,6 +103,6 @@ export function scorePairing(
   };
 }
 
-function clamp01(x: number): number {
+export function clamp01(x: number): number {
   return Math.max(0, Math.min(1, x));
 }

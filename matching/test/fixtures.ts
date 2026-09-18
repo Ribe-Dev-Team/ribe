@@ -1,10 +1,6 @@
-import { Coord, MatchOffer, MatchRequest, Preferences } from '../src/types';
+import { Coord, MatchOffer, MatchRequest } from '../src/types';
 
 export const CAMPUS: Coord = { lat: -37.9105, lon: 145.1362 }; // Monash Clayton
-
-export const PREFS: Preferences = {
-  quietRide: false,
-};
 
 export const at = (h: number, m = 0, day = 15) =>
   new Date(Date.UTC(2026, 8, day, h - 10, m)); // Melbourne (UTC+10)
@@ -17,7 +13,6 @@ export function makeRequest(p: Partial<MatchRequest> & { reqId: string; start: C
     travelWindow: { start: at(8), end: at(8, 45) },
     arriveBy: at(9),
     maxDetour: 10,
-    preferences: { ...PREFS },
     status: 'unassigned',
     ...p,
   } as MatchRequest;
@@ -34,7 +29,6 @@ export function makeOffer(p: Partial<MatchOffer> & { offerId: string; start: Coo
     seatsFilled: 0,
     acceptingMore: true,
     status: 'open',
-    preferences: { ...PREFS },
     onBoard: [],
     currTripDuration: 0,
     ...p,

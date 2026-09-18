@@ -27,6 +27,15 @@ export interface ProposedMatch {
   acceptDeadline: Date;
 }
 
+/** Shared by every algorithm in this module: never promise a match more time
+ *  to accept than the batch can actually honour before the trip locks. */
+export function computeAcceptDeadline(now: Date, departAt: Date, cfg: MatchingConfig): Date {
+  return new Date(Math.min(
+    now.getTime() + cfg.approvalWindowMinutes * 60_000,
+    departAt.getTime() - cfg.matchingCutoffMinutes * 60_000,
+  ));
+}
+
 export interface MatchRunResult {
   batchKey: string;
   matches: ProposedMatch[];
@@ -78,10 +87,7 @@ export function runMatching(
   }));
   const offerById = new Map(liveOffers.map((o) => [o.offerId, o]));
 
-  const acceptDeadline = new Date(Math.min(
-    now.getTime() + cfg.approvalWindowMinutes * 60_000,
-    departAt.getTime() - cfg.matchingCutoffMinutes * 60_000,
-  ));
+  const acceptDeadline = computeAcceptDeadline(now, departAt, cfg);
 
   const { rejected } = hardFilter(requests, liveOffers, cfg, departAt, now);
   const matches: ProposedMatch[] = [];

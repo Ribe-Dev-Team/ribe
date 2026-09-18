@@ -37,10 +37,6 @@ export interface TravelWindow {
   end: Date;
 }
 
-export interface Preferences {
-  quietRide: boolean;
-}
-
 export interface MatchRequest {
   reqId: string;
   riderId: string;
@@ -53,7 +49,6 @@ export interface MatchRequest {
   arriveBy: Date;
   /** Minutes of detour this rider consented to, over their own direct trip. */
   maxDetour: number;
-  preferences: Preferences;
   status: 'unassigned' | 'pending' | 'confirmed' | 'cancelled' | 'expired';
 }
 
@@ -75,7 +70,6 @@ export interface MatchOffer {
   acceptingMore: boolean;
 
   status: OfferStatus;
-  preferences: Preferences;
   /** Riders already on board, in pickup order. */
   onBoard: OnBoardRider[];
   /** Duration in minutes of the current committed route. */
