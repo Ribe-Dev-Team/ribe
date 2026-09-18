@@ -24,21 +24,52 @@ interface DashboardPageProps {
 
 type ViewMode = 'rider' | 'driver';
 
-const lanes: { status: RideStatus; title: string; description: string }[] = [
+interface LaneConfig {
+  status: RideStatus;
+  title: string;
+  description: string;
+  emptyText: string;
+}
+
+const RIDER_LANES: LaneConfig[] = [
   {
     status: 'confirmed',
     title: 'Upcoming Rides',
-    description: 'Your next confirmed trip.',
+    description: 'Your confirmed trips with matched drivers.',
+    emptyText: 'No upcoming rides scheduled.',
   },
   {
     status: 'awaiting',
     title: 'Awaiting Approval',
-    description: 'A driver has been matched - review and accept.',
+    description: 'A driver has been matched — review and accept.',
+    emptyText: 'No rides awaiting your approval.',
   },
   {
     status: 'pending',
-    title: 'Pending Rides',
-    description: 'Still searching for a driver.',
+    title: 'Pending Requests',
+    description: 'Still searching for an available driver.',
+    emptyText: 'No pending ride requests.',
+  },
+];
+
+const DRIVER_LANES: LaneConfig[] = [
+  {
+    status: 'confirmed',
+    title: 'Upcoming Drives',
+    description: 'Your confirmed trips with student passengers.',
+    emptyText: 'No upcoming drives scheduled.',
+  },
+  {
+    status: 'awaiting',
+    title: 'Rider Requests',
+    description: 'Students matched to your route — review and confirm.',
+    emptyText: 'No rider requests awaiting confirmation.',
+  },
+  {
+    status: 'pending',
+    title: 'Open Driving Offers',
+    description: 'Your active offers searching for student riders.',
+    emptyText: 'No open driving offers right now.',
   },
 ];
 
@@ -88,6 +119,7 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
   }, [user?.uid]);
 
   const dataset = mode === 'rider' ? riderRides : driverDrives;
+  const currentLanes = mode === 'rider' ? RIDER_LANES : DRIVER_LANES;
 
   return (
     <ScrollView
@@ -97,9 +129,20 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
       scrollEventThrottle={16}
     >
       <View style={localStyles.header}>
-        <Text style={localStyles.title}>Dashboard</Text>
+        <View style={localStyles.titleContainer}>
+          <Text style={localStyles.title}>
+            {'Dashboard'}
+          </Text>
+          <Text style={localStyles.subtitle}>
+            {mode === 'rider'
+              ? 'Track your ride requests and passenger trips.'
+              : 'Manage your driving offers and matched riders.'}
+          </Text>
+        </View>
         <View style={localStyles.toggle}>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Switch to rider view"
             style={[localStyles.toggleOption, mode === 'rider' && localStyles.toggleOptionActive]}
             onPress={() => setMode('rider')}
           >
@@ -108,6 +151,8 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Switch to driver view"
             style={[localStyles.toggleOption, mode === 'driver' && localStyles.toggleOptionActive]}
             onPress={() => setMode('driver')}
           >
@@ -120,7 +165,7 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
 
       {loading ? (
         <View style={localStyles.loadingState}><ActivityIndicator color={colors.white} size="small" /></View>
-      ) : lanes.map((lane) => {
+      ) : currentLanes.map((lane) => {
         const rides: RideCardProps[] = dataset
           .filter((r: RideCardProps) => r.status === lane.status)
           .sort((a: RideCardProps, b: RideCardProps) => a.date.getTime() - b.date.getTime());
@@ -129,7 +174,7 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
             <Text style={localStyles.laneTitle}>{lane.title}</Text>
             <Text style={localStyles.laneDescription}>{lane.description}</Text>
             {rides.length === 0 ? (
-              <Text style={localStyles.emptyText}>Nothing here right now.</Text>
+              <Text style={localStyles.emptyText}>{lane.emptyText}</Text>
             ) : (
               <ScrollView
                 horizontal
@@ -148,10 +193,34 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
                   >
                     <RideCard
                       {...ride}
-                      onAccept={() => Alert.alert('Ride accepted', `Trip with ${ride.driver.name} confirmed.`)}
-                      onDecline={() => Alert.alert('Ride declined', 'The driver has been notified.')}
-                      onEdit={() => Alert.alert('Edit ride request', 'Editing this request is coming soon.')}
-                      onCancel={() => Alert.alert('Ride canceled', 'This ride has been canceled.')}
+                      onAccept={() =>
+                        Alert.alert(
+                          mode === 'rider' ? 'Ride accepted' : 'Drive confirmed',
+                          mode === 'rider'
+                            ? `Trip with ${ride.driver.name} confirmed.`
+                            : 'Rider match confirmed for your drive.'
+                        )
+                      }
+                      onDecline={() =>
+                        Alert.alert(
+                          mode === 'rider' ? 'Ride declined' : 'Request declined',
+                          mode === 'rider' ? 'The driver has been notified.' : 'The rider has been notified.'
+                        )
+                      }
+                      onEdit={() =>
+                        Alert.alert(
+                          mode === 'rider' ? 'Edit ride request' : 'Edit driving offer',
+                          mode === 'rider'
+                            ? 'Editing this request is coming soon.'
+                            : 'Editing this drive offer is coming soon.'
+                        )
+                      }
+                      onCancel={() =>
+                        Alert.alert(
+                          mode === 'rider' ? 'Ride canceled' : 'Drive canceled',
+                          mode === 'rider' ? 'This ride has been canceled.' : 'This drive offer has been canceled.'
+                        )
+                      }
                       onSeeDetails={() => onSeeRideDetails(ride)}
                       onOpenDriverProfile={() => onOpenDriverProfile(ride)}
                     />
@@ -180,19 +249,31 @@ const localStyles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 20,
+    gap: 12,
+  },
+  titleContainer: {
+    flex: 1,
   },
   title: {
     fontFamily: 'Marcellus_400Regular',
-    fontSize: 28,
+    fontSize: 26,
     color: colors.white,
+  },
+  subtitle: {
+    color: colors.white,
+    opacity: 0.72,
+    fontSize: 13,
+    marginTop: 4,
+    lineHeight: 18,
   },
   toggle: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255,255,255,0.16)',
     borderRadius: 20,
     padding: 3,
+    marginTop: 2,
   },
   toggleOption: {
     paddingVertical: 6,
