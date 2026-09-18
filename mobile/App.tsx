@@ -125,21 +125,7 @@ function AppContent() {
     loading,
     submitting,
     error,
-    mode,
     clearError,
-    toggleMode,
-    name,
-    setName,
-    dob,
-    setDob,
-    phoneNumber,
-    setPhoneNumber,
-    email,
-    setEmail,
-    password,
-    setPassword,
-    confirmPassword,
-    setConfirmPassword,
     handleLogin,
     handleSignup,
     handleLogout,
@@ -237,24 +223,10 @@ function AppContent() {
     return (
       <AuthPage
         clearError={clearError}
-        confirmPassword={confirmPassword}
-        dob={dob}
-        email={email}
         error={error}
         handleLogin={handleLogin}
         handleSignup={handleSignup}
-        mode={mode}
-        name={name}
-        password={password}
-        phoneNumber={phoneNumber}
-        setConfirmPassword={setConfirmPassword}
-        setDob={setDob}
-        setEmail={setEmail}
-        setName={setName}
-        setPassword={setPassword}
-        setPhoneNumber={setPhoneNumber}
         submitting={submitting}
-        toggleMode={toggleMode}
       />
     );
   }

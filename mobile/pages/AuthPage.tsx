@@ -41,26 +41,21 @@ interface SignupProfileExtras {
   seatsAvailable?: number;
 }
 
-interface AuthPageProps {
-  mode: 'login' | 'signup';
-  submitting: boolean;
-  error: string | null;
+interface SignupFields {
   name: string;
   dob: string;
   phoneNumber: string;
   email: string;
   password: string;
   confirmPassword: string;
-  setName: (value: string) => void;
-  setDob: (value: string) => void;
-  setPhoneNumber: (value: string) => void;
-  setEmail: (value: string) => void;
-  setPassword: (value: string) => void;
-  setConfirmPassword: (value: string) => void;
+}
+
+interface AuthPageProps {
+  submitting: boolean;
+  error: string | null;
   clearError: () => void;
-  toggleMode: () => void;
-  handleLogin: () => Promise<void>;
-  handleSignup: (extra?: SignupProfileExtras) => Promise<void>;
+  handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
+  handleSignup: (fields: SignupFields, extra?: SignupProfileExtras) => Promise<void>;
 }
 
 type SignupStep = 'about' | 'account' | 'profile' | 'driver' | 'confirm';
@@ -103,26 +98,26 @@ function parseDobAsDate(value: string): Date | undefined {
 }
 
 export default function AuthPage({
-  mode,
   submitting,
   error,
-  name,
-  dob,
-  phoneNumber,
-  email,
-  password,
-  confirmPassword,
-  setName,
-  setDob,
-  setPhoneNumber,
-  setEmail,
-  setPassword,
-  setConfirmPassword,
   clearError,
-  toggleMode,
   handleLogin,
   handleSignup,
 }: AuthPageProps) {
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [name, setName] = useState('');
+  const [dob, setDob] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  const toggleMode = () => {
+    setMode((currentMode) => (currentMode === 'login' ? 'signup' : 'login'));
+    setConfirmPassword('');
+    if (error) clearError();
+  };
+
   const [signupStep, setSignupStep] = useState<SignupStep>('about');
   const [dobPickerVisible, setDobPickerVisible] = useState(false);
   const [focusedField, setFocusedField] = useState<FieldName | null>(null);
@@ -269,22 +264,25 @@ export default function AuthPage({
   };
 
   const submitSignup = () => {
-    handleSignup({
-      profilePhotoBase64: profilePhotoBase64 ?? undefined,
-      profilePhotoMimeType: profilePhotoMimeType ?? undefined,
-      degree: degree.trim() || undefined,
-      bio: bio.trim() || undefined,
-      isDriver: isDriver ?? false,
-      ...(isDriver === true
-        ? {
-            vehicleMake: vehicleMake.trim(),
-            vehicleModel: vehicleModel.trim(),
-            vehicleColor: vehicleColor.trim(),
-            licensePlate: licensePlate.trim(),
-            seatsAvailable: Number(seatsAvailable),
-          }
-        : {}),
-    });
+    handleSignup(
+      { name, dob, phoneNumber, email, password, confirmPassword },
+      {
+        profilePhotoBase64: profilePhotoBase64 ?? undefined,
+        profilePhotoMimeType: profilePhotoMimeType ?? undefined,
+        degree: degree.trim() || undefined,
+        bio: bio.trim() || undefined,
+        isDriver: isDriver ?? false,
+        ...(isDriver === true
+          ? {
+              vehicleMake: vehicleMake.trim(),
+              vehicleModel: vehicleModel.trim(),
+              vehicleColor: vehicleColor.trim(),
+              licensePlate: licensePlate.trim(),
+              seatsAvailable: Number(seatsAvailable),
+            }
+          : {}),
+      },
+    );
   };
 
   const signupProgress = (
@@ -746,7 +744,7 @@ export default function AuthPage({
 
             <PressableScale
               disabled={submitting}
-              onPress={handleLogin}
+              onPress={() => handleLogin({ email, password })}
               style={[localStyles.actionButton, submitting && localStyles.actionButtonDisabled]}
             >
               {submitting ? (

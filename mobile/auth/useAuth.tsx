@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -27,35 +27,27 @@ type ProfileExtras = {
   seatsAvailable?: number;
 };
 
+type SignupFields = {
+  name: string;
+  dob: string;
+  phoneNumber: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+};
+
 type AuthContextType = {
   user: User | null;
   profileData: UserProfileData | null;
   loading: boolean;
   submitting: boolean;
   error: string | null;
-  mode: 'login' | 'signup';
-  toggleMode: () => void;
-
-  // Form fields
-  name: string;
-  setName: (s: string) => void;
-  dob: string;
-  setDob: (s: string) => void;
-  phoneNumber: string;
-  setPhoneNumber: (s: string) => void;
-  email: string;
-  setEmail: (s: string) => void;
-  password: string;
-  setPassword: (s: string) => void;
-  confirmPassword: string;
-  setConfirmPassword: (s: string) => void;
 
   clearError: () => void;
 
-  isFormValid: boolean;
   updateProfileDetails: (data: ProfileExtras) => Promise<void>;
-  handleLogin: () => Promise<void>;
-  handleSignup: (extra?: ProfileExtras) => Promise<void>;
+  handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
+  handleSignup: (fields: SignupFields, extra?: ProfileExtras) => Promise<void>;
   handleLogout: () => Promise<void>;
 };
 
@@ -109,15 +101,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
-
-  // Form fields
-  const [name, setName] = useState('');
-  const [dob, setDob] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -193,31 +176,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const isFormValid = useMemo(() => {
-    return (
-      getFormValidationError({
-        mode,
-        name,
-        dob,
-        phoneNumber,
-        email,
-        password,
-        confirmPassword,
-      }) === null
-    );
-  }, [confirmPassword, dob, email, mode, name, password, phoneNumber]);
-
-  const handleLogin = async () => {
+  const handleLogin = async ({ email, password }: { email: string; password: string }) => {
     const trimmedEmail = email.trim();
 
     const validationError = getFormValidationError({
       mode: 'login',
-      name,
-      dob,
-      phoneNumber,
+      name: '',
+      dob: '',
+      phoneNumber: '',
       email: trimmedEmail,
       password,
-      confirmPassword,
+      confirmPassword: '',
     });
 
     if (validationError || submitting) {
@@ -237,12 +206,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSignup = async (extra?: ProfileExtras) => {
+  const handleSignup = async (fields: SignupFields, extra?: ProfileExtras) => {
     // Clean inputs exactly once for the signup process
-    const trimmedName = name.trim();
-    const trimmedDob = dob.trim();
-    const trimmedPhone = phoneNumber.trim();
-    const trimmedEmail = email.trim();
+    const trimmedName = fields.name.trim();
+    const trimmedDob = fields.dob.trim();
+    const trimmedPhone = fields.phoneNumber.trim();
+    const trimmedEmail = fields.email.trim();
 
     const validationError = getFormValidationError({
       mode: 'signup',
@@ -250,8 +219,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       dob: trimmedDob,
       phoneNumber: trimmedPhone,
       email: trimmedEmail,
-      password,
-      confirmPassword,
+      password: fields.password,
+      confirmPassword: fields.confirmPassword,
     });
 
     if (validationError || submitting) {
@@ -263,7 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, fields.password);
       const currentUser = userCredential.user;
 
       await updateProfile(currentUser, { displayName: trimmedName });
@@ -423,13 +392,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       await firebaseSignOut(auth);
-      setMode('login');
-      setName('');
-      setDob('');
-      setPhoneNumber('');
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to sign out right now.';
       setError(message);
@@ -438,35 +400,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearError = () => setError(null);
 
-  const toggleMode = () => {
-    setMode((currentMode) => (currentMode === 'login' ? 'signup' : 'login'));
-    setConfirmPassword('');
-    setError(null);
-  };
-
   const value = {
     user,
     profileData,
     loading,
     submitting,
     error,
-    mode,
-    toggleMode,
 
-    name,
-    setName,
-    dob,
-    setDob,
-    phoneNumber,
-    setPhoneNumber,
-    email,
-    setEmail,
-    password,
-    setPassword,
-    confirmPassword,
-    setConfirmPassword,
-
-    isFormValid,
     clearError,
     updateProfileDetails,
     handleLogin,
