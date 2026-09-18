@@ -19,6 +19,13 @@ import { waypointOf } from './filter';
  * preference lists are mirror images and the two-sided model buys nothing.
  */
 
+/**
+ * All four weights are dimensionless multipliers in [0, 1], not raw minutes
+ * or km. Each multiplies an already-normalised [0, 1] sub-score (see
+ * detourScore/arrivalScore/disruptionScore/affinity below), so weights on
+ * the same side are meant to sum to 1 — they redistribute share of a unitless
+ * score, they do not carry units themselves.
+ */
 export interface ScoreWeights {
   riderDetourWeight: number;
   riderArrivalWeight: number;
@@ -62,28 +69,35 @@ export function scorePairing(
   if (!insertion.feasible || !insertion.evaluation) return null;
 
   const ev = insertion.evaluation;
-  const riderDetour = insertion.newRiderDetour ?? 0;
-  const marginal = insertion.marginalDriverMinutes ?? 0;
+  const riderDetour = insertion.newRiderDetour ?? 0;       // minutes
+  const marginal = insertion.marginalDriverMinutes ?? 0;   // minutes
 
   // --- rider's view -------------------------------------------------------
-  // 1 when the detour is nil, 0 when it exactly consumes their cap.
+  // detourScore is dimensionless [0, 1]: riderDetour and req.maxDetour are
+  // both minutes, so the ratio cancels units. 1 when the detour is nil,
+  // 0 when it exactly consumes their cap.
   const detourScore = clamp01(1 - riderDetour / Math.max(1, req.maxDetour));
 
-  // How much buffer they keep before their arriveBy, saturating at 30 min.
+  // How much buffer they keep before their arriveBy, in minutes, saturating
+  // at 30 min. arrivalScore itself is dimensionless [0, 1].
   const bufferMin = (req.arriveBy.getTime() - ev.finalArrival.getTime()) / 60_000;
   const arrivalScore = clamp01(bufferMin / 30);
 
+  // reqScore is dimensionless [0, 1] — a weighted blend of two [0, 1] scores.
   const reqScore =
     w.riderDetourWeight * detourScore + w.riderArrivalWeight * arrivalScore;
 
   // --- driver's view ------------------------------------------------------
   // Marginal cost of this rider against the driver's remaining tolerance.
+  // `remaining` is minutes; disruptionScore is the dimensionless [0, 1]
+  // ratio of marginal (minutes) over remaining (minutes).
   const remaining = Math.max(1, offer.maxDetour - (offer.currTripDuration
     ? ev.driverAddedMinutes - marginal
     : 0));
   const disruptionScore = clamp01(1 - marginal / remaining);
-  const affinity = preferenceAffinity(req, offer);
+  const affinity = preferenceAffinity(req, offer); // dimensionless, 0 or 1
 
+  // offerScore is dimensionless [0, 1] — a weighted blend of two [0, 1] scores.
   const offerScore =
     w.driverDisruptionWeight * disruptionScore + w.driverPreferenceWeight * affinity;
 
