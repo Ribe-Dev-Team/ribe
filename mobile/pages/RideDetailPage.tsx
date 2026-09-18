@@ -73,11 +73,11 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 				if (driverDoc.exists()) {
 					const data = driverDoc.data();
 					setProfile({
-						initials: (data.name ?? ride.driver).split(' ').map((part: string) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
-						bio: data.bio ?? 'This driver has not added a bio yet.',
-						degree: data.degree ?? 'Monash student',
-						phone: data.phoneNumber ?? 'Phone not shared yet',
-						vehicle: [data.vehicleMake, data.vehicleModel].filter(Boolean).join(' ') || ride.vehicle || 'Vehicle details coming soon',
+						initials: (data["name"] ?? ride.driver).split(' ').map((part: string) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
+						bio: data["bio"] ?? 'This driver has not added a bio yet.',
+						degree: data["degree"] ?? 'Monash student',
+						phone: data["phoneNumber"] ?? 'Phone not shared yet',
+						vehicle: [data["vehicleMake"], data["vehicleModel"]].filter(Boolean).join(' ') || ride.vehicle || 'Vehicle details coming soon',
 					});
 					return;
 				}
