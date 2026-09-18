@@ -15,14 +15,15 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
-    "typescript": "~6.0.3"
+    "babel-preset-expo": "^54.0.0"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "jest"
   },
   "private": true,
   "overrides": {
