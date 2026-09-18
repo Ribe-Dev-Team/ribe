@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,6 +6,7 @@ import {
   NativeSyntheticEvent,
   SafeAreaView,
   StatusBar,
+  StyleSheet,
   View,
 } from 'react-native';
 import { useFonts, Marcellus_400Regular } from '@expo-google-fonts/marcellus';
@@ -21,6 +22,7 @@ import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import RideDetailPage from './pages/RideDetailPage';
 import DriverProfilePage from './pages/DriverProfilePage';
+import DriverRegistrationPage from './pages/DriverRegistrationPage';
 import BookingPage from './pages/BookingPage';
 
 // Adapts a rich Home/Dashboard ride card into the simpler shape RideDetailPage
@@ -90,7 +92,9 @@ function AppContent() {
   const [viewingDriver, setViewingDriver] = useState<RideCardProps | null>(null);
   const [showBooking, setShowBooking] = useState(false);
   const [bookingDate, setBookingDate] = useState<Date | null>(null);
+  const [showDriverRegistration, setShowDriverRegistration] = useState(false);
   const lastScrollY = useRef(0);
+  const wasLoggedIn = useRef(false);
 
   const changeTab = (tab: NavigationTab) => {
     setActiveTab(tab);
@@ -140,6 +144,15 @@ function AppContent() {
     handleSignup,
     handleLogout,
   } = useAuth();
+
+  // Always land on the home tab right after a fresh login/signup, rather than
+  // wherever the tab happened to be left (e.g. Profile, if that's where the user signed out).
+  useEffect(() => {
+    if (user && !wasLoggedIn.current) {
+      setActiveTab('home');
+    }
+    wasLoggedIn.current = !!user;
+  }, [user]);
 
   const renderPage = () => {
     if (showBooking) {
@@ -191,7 +204,12 @@ function AppContent() {
           />
         );
       case 'profile':
-        return <ProfilePage onLogout={handleLogout} />;
+        return (
+          <ProfilePage
+            onLogout={handleLogout}
+            onOpenDriverRegistration={() => setShowDriverRegistration(true)}
+          />
+        );
       default:
         return (
           <HomePage
@@ -248,10 +266,16 @@ function AppContent() {
 
       <View style={styles.contentContainer}>{renderPage()}</View>
 
+      {showDriverRegistration && (
+        <View style={StyleSheet.absoluteFill}>
+          <DriverRegistrationPage onDone={() => setShowDriverRegistration(false)} />
+        </View>
+      )}
+
       <AppNavigation
         activeTab={activeTab}
         onChange={changeTab}
-        hidden={navHidden || !!selectedRide || !!viewingDriver || showBooking}
+        hidden={navHidden || !!selectedRide || !!viewingDriver || showBooking || showDriverRegistration}
       />
     </SafeAreaView>
   );

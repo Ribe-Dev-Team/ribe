@@ -18,13 +18,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../auth/useAuth';
 import styles, { colors } from '../styles';
 import PressableScale from '../components/PressableScale';
-import { getDriverValidationError } from './schema/user.validation';
 
 interface ProfilePageProps {
   onLogout: () => void;
+  onOpenDriverRegistration: () => void;
 }
 
-export default function ProfilePage({ onLogout }: ProfilePageProps) {
+export default function ProfilePage({ onLogout, onOpenDriverRegistration }: ProfilePageProps) {
   const { user, profileData, submitting, updateProfileDetails } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [degree, setDegree] = useState(profileData?.degree || '');
@@ -33,16 +33,6 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
   const [profilePhotoBase64, setProfilePhotoBase64] = useState<string | null>(null);
   const [profilePhotoMimeType, setProfilePhotoMimeType] = useState<string | null>(null);
   const isDriver = Boolean(profileData?.isDriver);
-
-  const [isEditingDriver, setIsEditingDriver] = useState(false);
-  const [vehicleMake, setVehicleMake] = useState(profileData?.vehicleMake || '');
-  const [vehicleModel, setVehicleModel] = useState(profileData?.vehicleModel || '');
-  const [vehicleColor, setVehicleColor] = useState(profileData?.vehicleColor || '');
-  const [licensePlate, setLicensePlate] = useState(profileData?.licensePlate || '');
-  const [seatsAvailable, setSeatsAvailable] = useState(
-    profileData?.seatsAvailable != null ? String(profileData.seatsAvailable) : '2',
-  );
-  const [driverErr, setDriverErr] = useState('');
 
   const profileName = profileData?.name || user?.displayName || 'Your name';
   const profileEmail = profileData?.email || user?.email || 'No email added';
@@ -100,56 +90,10 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
     setIsEditing(false);
   };
 
-  const handleDriverSave = async () => {
-    if (submitting) {
-      return;
-    }
-
-    const validationError = getDriverValidationError({
-      isDriver: true,
-      vehicleMake,
-      vehicleModel,
-      vehicleColor,
-      licensePlate,
-      seatsAvailable,
-    });
-
-    if (validationError) {
-      setDriverErr(validationError);
-      return;
-    }
-
-    try {
-      await updateProfileDetails({
-        isDriver: true,
-        vehicleMake: vehicleMake.trim(),
-        vehicleModel: vehicleModel.trim(),
-        vehicleColor: vehicleColor.trim(),
-        licensePlate: licensePlate.trim(),
-        seatsAvailable: Number(seatsAvailable),
-      });
-      setDriverErr('');
-      setIsEditingDriver(false);
-    } catch {
-      // keep the form open so the user can retry after a failed save
-    }
-  };
-
-  const handleDriverCancel = () => {
-    setVehicleMake(profileData?.vehicleMake || '');
-    setVehicleModel(profileData?.vehicleModel || '');
-    setVehicleColor(profileData?.vehicleColor || '');
-    setLicensePlate(profileData?.licensePlate || '');
-    setSeatsAvailable(profileData?.seatsAvailable != null ? String(profileData.seatsAvailable) : '2');
-    setDriverErr('');
-    setIsEditingDriver(false);
-  };
-
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
     >
       <ScrollView
         contentContainerStyle={styles.profileScrollView}
@@ -160,7 +104,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
           <View>
 
             <View style={styles.profileCard}>
-              {!isEditing && !isEditingDriver && (
+              {!isEditing && (
                 <View style={localStyles.topActionsRow}>
                   <PressableScale onPress={onLogout} style={localStyles.signOutButton}>
                     <Ionicons name="log-out-outline" size={14} color={colors.white} />
@@ -230,13 +174,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                     <Text style={localStyles.charCount}>{bio.length} / 200</Text>
                   </View>
 
-                  <PressableScale
-                    onPress={() => {
-                      setIsEditing(false);
-                      setIsEditingDriver(true);
-                    }}
-                    style={localStyles.driverActionButton}
-                  >
+                  <PressableScale onPress={onOpenDriverRegistration} style={localStyles.driverActionButton}>
                     <Text style={localStyles.driverActionButtonText}>
                       {isDriver ? 'Update Driver Details' : 'Become A Driver'}
                     </Text>
@@ -253,7 +191,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                       style={[localStyles.saveButton, submitting && localStyles.saveButtonDisabled]}
                     >
                       {submitting ? (
-                        <ActivityIndicator color={colors.white} />
+                        <ActivityIndicator color={colors.darkBlue} />
                       ) : (
                         <Text style={localStyles.saveButtonText}>Save</Text>
                       )}
@@ -274,7 +212,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                 </>
               )}
 
-              {!isEditing && !isEditingDriver && (
+              {!isEditing && (
                 <View style={[styles.profileInfoBlock, localStyles.driverModeRow]}>
                   <View style={localStyles.driverModeCopy}>
                     <View style={localStyles.driverModeTitleRow}>
@@ -294,90 +232,6 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                       <Text style={localStyles.driverBadgeText}>Driver</Text>
                     </View>
                   ) : null}
-                </View>
-              )}
-
-              {isEditingDriver && (
-                <View style={[styles.profileInfoBlock, localStyles.driverFormCard]}>
-                  <View style={localStyles.driverModeTitleRow}>
-                    <Ionicons name="car-sport-outline" size={16} color={colors.white} />
-                    <Text style={localStyles.driverModeTitle}>
-                      {isDriver ? 'Update driver details' : 'Register as a driver'}
-                    </Text>
-                  </View>
-                  <Text style={localStyles.driverFormHelperText}>
-                    This is what passengers see when they book a ride with you, so make sure it's accurate.
-                  </Text>
-
-                  <Text style={[styles.profileLabel, localStyles.driverFieldSpacing]}>Vehicle make</Text>
-                  <TextInput
-                    autoCapitalize="words"
-                    onChangeText={setVehicleMake}
-                    placeholder="Honda"
-                    placeholderTextColor={colors.whiteA40}
-                    style={styles.editInput}
-                    value={vehicleMake}
-                  />
-
-                  <Text style={[styles.profileLabel, localStyles.driverFieldSpacing]}>Vehicle model</Text>
-                  <TextInput
-                    autoCapitalize="words"
-                    onChangeText={setVehicleModel}
-                    placeholder="Civic"
-                    placeholderTextColor={colors.whiteA40}
-                    style={styles.editInput}
-                    value={vehicleModel}
-                  />
-
-                  <Text style={[styles.profileLabel, localStyles.driverFieldSpacing]}>Vehicle color</Text>
-                  <TextInput
-                    autoCapitalize="words"
-                    onChangeText={setVehicleColor}
-                    placeholder="Silver"
-                    placeholderTextColor={colors.whiteA40}
-                    style={styles.editInput}
-                    value={vehicleColor}
-                  />
-
-                  <Text style={[styles.profileLabel, localStyles.driverFieldSpacing]}>License plate</Text>
-                  <TextInput
-                    autoCapitalize="characters"
-                    onChangeText={setLicensePlate}
-                    placeholder="1ABC234"
-                    placeholderTextColor={colors.whiteA40}
-                    style={styles.editInput}
-                    value={licensePlate}
-                  />
-
-                  <Text style={[styles.profileLabel, localStyles.driverFieldSpacing]}>Seats available</Text>
-                  <TextInput
-                    keyboardType="number-pad"
-                    onChangeText={setSeatsAvailable}
-                    placeholder="2"
-                    placeholderTextColor={colors.whiteA40}
-                    style={styles.editInput}
-                    value={seatsAvailable}
-                  />
-
-                  {driverErr !== '' && <Text style={[styles.errorText, localStyles.driverFieldSpacing]}>{driverErr}</Text>}
-
-                  <View style={styles.editActionsRow}>
-                    <PressableScale onPress={handleDriverCancel} style={styles.secondaryButton}>
-                      <Text style={styles.secondaryButtonText}>Cancel</Text>
-                    </PressableScale>
-
-                    <PressableScale
-                      disabled={submitting}
-                      onPress={handleDriverSave}
-                      style={[localStyles.saveButton, submitting && localStyles.saveButtonDisabled]}
-                    >
-                      {submitting ? (
-                        <ActivityIndicator color={colors.white} />
-                      ) : (
-                        <Text style={localStyles.saveButtonText}>Save</Text>
-                      )}
-                    </PressableScale>
-                  </View>
                 </View>
               )}
             </View>
@@ -463,22 +317,6 @@ const localStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  driverFormCard: {
-    borderWidth: 1,
-    borderColor: colors.whiteA25,
-    borderRadius: 14,
-    padding: 14,
-  },
-  driverFormHelperText: {
-    color: colors.whiteA70,
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 6,
-    marginBottom: 14,
-  },
-  driverFieldSpacing: {
-    marginTop: 12,
-  },
   charCount: {
     alignSelf: 'flex-end',
     color: colors.whiteA60,
@@ -487,14 +325,14 @@ const localStyles = StyleSheet.create({
   },
   saveButton: {
     alignItems: 'center',
-    backgroundColor: colors.darkBlue,
+    backgroundColor: colors.white,
     borderRadius: 12,
     flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
   saveButtonText: {
-    color: colors.white,
+    color: colors.darkBlue,
     fontSize: 16,
     fontWeight: '600',
   },
