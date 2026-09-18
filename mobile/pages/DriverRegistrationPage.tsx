@@ -78,7 +78,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
           <Text style={localStyles.backButtonLabel}>Back</Text>
         </PressableScale>
         <Text style={localStyles.headerTitle}>
-          {isDriver ? 'Update driver details' : 'Register as a driver'}
+          {isDriver ? 'Update Driver Details' : 'Driver Registration'}
         </Text>
       </View>
 
@@ -92,7 +92,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
             <View style={localStyles.card}>
               <View style={localStyles.cardTitleRow}>
                 <Ionicons name="car-sport-outline" size={16} color={colors.white} />
-                <Text style={localStyles.cardTitle}>Vehicle details</Text>
+                <Text style={localStyles.cardTitle}>Vehicle Details</Text>
               </View>
               <Text style={localStyles.helperText}>
                 This is what passengers see when they book a ride with you, so make sure it's accurate.
@@ -231,9 +231,7 @@ const localStyles = StyleSheet.create({
   },
   saveButton: {
     alignItems: 'center',
-    backgroundColor: colors.darkBlue,
-    borderWidth: 1,
-    borderColor: colors.whiteA25,
+    backgroundColor: colors.mediumBlue,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,

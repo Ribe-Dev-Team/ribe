@@ -71,7 +71,6 @@ const todaysDrives: RideCardProps[] = [
 const notifications = [
   { id: '1', text: 'Your ride with Marcus Vance is confirmed for 10:30 AM.' },
   { id: '2', text: 'A driver has been matched for your 1:15 PM request.' },
-  { id: '3', text: 'Reminder: rate your last trip with Priya Nair.' },
 ];
 
 function ridesDescription(count: number, noun: 'ride' | 'drive') {
