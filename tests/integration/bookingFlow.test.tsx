@@ -4,7 +4,7 @@
 // suite never makes a real (billed) network call to the Google Maps API.
 
 import * as React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, getDocs, query } from 'firebase/firestore';
 import * as firestoreMock from 'firebase/firestore';
@@ -49,6 +49,17 @@ async function seedDraft(draft: Record<string, unknown>) {
   await AsyncStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(draft));
 }
 
+// BookingPage restores its draft via an async AsyncStorage read with no visible loading state,
+// so there's nothing for findBy*/waitFor to key off while it's in flight. A short act()-wrapped
+// real delay (AsyncStorage's mock resolves in ~1ms) lets that resolve - and the resulting
+// setHydrated(true) update flush - before assertions run, avoiding an "outside of act()" warning.
+async function flushHydration() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+}
+
+
 beforeEach(() => {
   (global as any).alert = jest.fn();
 });
@@ -66,8 +77,9 @@ describe('BookingPage - rider requesting a ride', () => {
 
     const onDone = jest.fn();
     await render(<BookingPage onDone={onDone} />);
+    await flushHydration();
 
-    // wait for the draft restore effect to hydrate the address field
+    // the draft restore effect should have hydrated the address field
     await screen.findByDisplayValue('123 Main St');
 
     fireEvent.press(screen.getByText('Next')); // trip -> details
@@ -105,6 +117,7 @@ describe('BookingPage - driver offering a ride', () => {
 
     const onDone = jest.fn();
     await render(<BookingPage onDone={onDone} />);
+    await flushHydration();
 
     await screen.findByDisplayValue('456 Example Ave');
 
@@ -130,6 +143,7 @@ describe('BookingPage - trip step validation blocks incomplete submissions', () 
   test('does not advance past the trip step without an address', async () => {
     const onDone = jest.fn();
     await render(<BookingPage onDone={onDone} />);
+    await flushHydration();
 
     await screen.findByText('Request a ride');
     fireEvent.press(screen.getByText('Next'));
@@ -155,6 +169,7 @@ describe('BookingPage - Firestore write failure', () => {
 
     const onDone = jest.fn();
     await render(<BookingPage onDone={onDone} />);
+    await flushHydration();
 
     await screen.findByDisplayValue('123 Main St');
     fireEvent.press(screen.getByText('Next'));
