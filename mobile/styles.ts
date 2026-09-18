@@ -9,6 +9,7 @@ export const colors = {
   awaitingLight: '#FFF1A1',
   confirmed: '#37B157',
   confirmedLight: '#B9FFB0',
+  cancelled: '#B91C1C',
   white: '#FFFFFF',
 };
 

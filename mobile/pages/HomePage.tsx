@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
@@ -8,71 +10,24 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import { useAuth } from '../auth/useAuth';
 import RideCard, { RideCardProps } from '../components/RideCard';
+import { buildRideCard, FirestoreRideRecord } from '../services/rideData';
+import { deleteRideRequest, deleteRideOffer } from './schema/firebaseBookingMethods';
+import { NotificationItem } from '../App';
+import { db } from '../firebaseConfig';
 
 interface HomePageProps {
+  notificationsList: NotificationItem[];
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onOpenProfile: () => void;
   onNewRide: () => void;
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
 }
-
-// Mock data - wiring to real ride data is follow-up work once the backend endpoint exists
-const todaysRides: RideCardProps[] = [
-  {
-    status: 'confirmed',
-    date: new Date(2026, 6, 12),
-    pickup: { address: '12 Gambler Crescent', time: '10:30 AM' },
-    destination: { address: 'Monash University Clayton', eta: '11:15 AM' },
-    etaMinutes: 45,
-    cost: '$8.50',
-    co2SavedKg: 2.1,
-    driver: { name: 'Marcus Vance', vehicle: 'Honda Civic - Silver' },
-    plate: '1ABC234',
-    driverPhone: '0412345678',
-    pickupDateTime: new Date(Date.now() + 6 * 60 * 60 * 1000), // 6h away - within reveal window
-  },
-  {
-    status: 'confirmed',
-    date: new Date(2026, 6, 12),
-    pickup: { address: 'Monash University Clayton', time: '4:45 PM' },
-    destination: { address: '12 Gambler Crescent', eta: '5:30 PM' },
-    etaMinutes: 45,
-    cost: '$8.50',
-    co2SavedKg: 2.1,
-    driver: { name: 'Marcus Vance', vehicle: 'Honda Civic - Silver' },
-    plate: '1ABC234',
-    driverPhone: '0412345678',
-    pickupDateTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 2 days away - still masked
-  },
-];
-
-// TEST DATA ONLY: "Today's Drives" for the driver side of the rider/driver toggle plan.
-// RideCard's "driver" field is repurposed as passenger info here - a real driver-mode
-// card variant is follow-up work once that flow is designed.
-const todaysDrives: RideCardProps[] = [
-  {
-    status: 'confirmed',
-    date: new Date(2026, 6, 12),
-    pickup: { address: '12 Gambler Crescent', time: '10:30 AM' },
-    destination: { address: 'Monash University Clayton', eta: '11:15 AM' },
-    etaMinutes: 45,
-    cost: '$8.50',
-    co2SavedKg: 2.1,
-    driver: { name: 'Emily Chen (passenger)', vehicle: '1 passenger' },
-    plate: '1ABC234',
-  },
-];
-
-const notifications = [
-  { id: '1', text: 'Your ride with Marcus Vance is confirmed for 10:30 AM.' },
-  { id: '2', text: 'A driver has been matched for your 1:15 PM request.' },
-  { id: '3', text: 'Reminder: rate your last trip with Priya Nair.' },
-];
 
 function ridesDescription(count: number, noun: 'ride' | 'drive') {
   if (count === 0) return `No ${noun}s scheduled for today.`;
@@ -81,6 +36,7 @@ function ridesDescription(count: number, noun: 'ride' | 'drive') {
 }
 
 export default function HomePage({
+  notificationsList,
   onScroll,
   onOpenProfile,
   onNewRide,
@@ -90,6 +46,95 @@ export default function HomePage({
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'there';
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [todaysRides, setTodaysRides] = useState<RideCardProps[]>([]);
+  const [todaysDrives, setTodaysDrives] = useState<RideCardProps[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setTodaysRides([]);
+      setTodaysDrives([]);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+
+    const today = new Date();
+    const isToday = (d: Date) =>
+      d.getFullYear() === today.getFullYear() &&
+      d.getMonth() === today.getMonth() &&
+      d.getDate() === today.getDate();
+
+    const requestsQuery = query(
+      collection(db, 'rideRequests'),
+      where('userId', '==', user.uid)
+    );
+
+    const offersQuery = query(
+      collection(db, 'rideOffers'),
+      where('userId', '==', user.uid)
+    );
+
+    // Real-time listener for Requests
+    const unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
+      const fetchedRequests: RideCardProps[] = [];
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data() as FirestoreRideRecord;
+        if (data.status === 'cancelled') return;
+
+        const rideCard = buildRideCard(data, 'request', docSnap.id);
+        if (isToday(rideCard.date)) {
+          fetchedRequests.push(rideCard);
+        }
+      });
+      setTodaysRides(fetchedRequests);
+      setLoading(false);
+    });
+
+    // Real-time listener for Offers
+    const unsubscribeOffers = onSnapshot(offersQuery, (snapshot) => {
+      const fetchedOffers: RideCardProps[] = [];
+      snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data() as FirestoreRideRecord;
+        if (data.status === 'cancelled') return;
+
+        const driveCard = buildRideCard(data, 'offer', docSnap.id);
+        if (isToday(driveCard.date)) {
+          fetchedOffers.push(driveCard);
+        }
+      });
+      setTodaysDrives(fetchedOffers);
+      setLoading(false);
+    });
+
+    return () => {
+      unsubscribeRequests();
+      unsubscribeOffers();
+    };
+  }, [user?.uid]);
+
+  const handleCancelRequest = async (ride: RideCardProps) => {
+    try {
+      console.log('HomePage: cancel ride request - attempting', ride.id);
+      await deleteRideRequest(ride.id ?? '');
+      console.log('HomePage: cancel ride request - success', ride.id);
+      Alert.alert('Canceled', 'Ride request canceled.');
+    } catch (err) {
+      console.warn('Failed to cancel ride request:', err);
+    }
+  };
+
+  const handleCancelOffer = async (drive: RideCardProps) => {
+    try {
+      console.log('HomePage: cancel ride offer - attempting', drive.id);
+      await deleteRideOffer(drive.id ?? '');
+      console.log('HomePage: cancel ride offer - success', drive.id);
+      Alert.alert('Canceled', 'Ride offer canceled.');
+    } catch (err) {
+      console.warn('Failed to cancel ride offer:', err);
+    }
+  };
 
   return (
     <ScrollView
@@ -108,15 +153,25 @@ export default function HomePage({
               onPress={() => setNotificationsOpen((v) => !v)}
             >
               <Ionicons name="notifications-outline" size={22} color={colors.white} />
+              {notificationsList.length > 0 && <View style={localStyles.badgeDot} />}
             </TouchableOpacity>
             {notificationsOpen && (
               <View style={localStyles.notificationsDropdown}>
-                {notifications.map((item) => (
-                  <View key={item.id} style={localStyles.notificationRow}>
-                    <Ionicons name="ellipse" size={6} color={colors.mediumBlue} style={{ marginTop: 5 }} />
-                    <Text style={localStyles.notificationText}>{item.text}</Text>
-                  </View>
-                ))}
+                {notificationsList.length === 0 ? (
+                  <Text style={localStyles.emptyNotificationText}>No new notifications.</Text>
+                ) : (
+                  notificationsList.map((item) => (
+                    <View key={item.id} style={localStyles.notificationRow}>
+                      <Ionicons
+                        name={item.type === 'cancellation' ? 'alert-circle' : 'ellipse'}
+                        size={item.type === 'cancellation' ? 12 : 6}
+                        color={item.type === 'cancellation' ? '#E53E3E' : colors.mediumBlue}
+                        style={{ marginTop: item.type === 'cancellation' ? 2 : 5 }}
+                      />
+                      <Text style={localStyles.notificationText}>{item.text}</Text>
+                    </View>
+                  ))
+                )}
               </View>
             )}
           </View>
@@ -136,31 +191,49 @@ export default function HomePage({
 
       <Text style={localStyles.sectionHeading}>Today's Rides</Text>
       <Text style={localStyles.sectionDescription}>
-        {ridesDescription(todaysRides.length, 'ride')}
+        {loading ? 'Loading rides...' : ridesDescription(todaysRides.length, 'ride')}
       </Text>
 
-      {todaysRides.map((ride, index) => (
-        <RideCard
-          key={index}
-          {...ride}
-          onSeeDetails={() => onSeeRideDetails(ride)}
-          onOpenDriverProfile={() => onOpenDriverProfile(ride)}
-        />
-      ))}
+      {loading ? (
+        <View style={localStyles.loadingState}>
+          <ActivityIndicator color={colors.white} size="small" />
+        </View>
+      ) : todaysRides.length === 0 ? (
+        <Text style={localStyles.emptyState}>No rides scheduled yet.</Text>
+      ) : (
+        todaysRides.map((ride, index) => (
+          <RideCard
+            key={`${ride.date.toISOString()}-${index}`}
+            {...ride}
+            onSeeDetails={() => onSeeRideDetails(ride)}
+            onOpenDriverProfile={() => onOpenDriverProfile(ride)}
+            onCancel={() => handleCancelRequest(ride)}
+          />
+        ))
+      )}
 
       <Text style={localStyles.sectionHeading}>Today's Drives</Text>
       <Text style={localStyles.sectionDescription}>
-        {ridesDescription(todaysDrives.length, 'drive')}
+        {loading ? 'Loading drives...' : ridesDescription(todaysDrives.length, 'drive')}
       </Text>
 
-      {todaysDrives.map((drive, index) => (
-        <RideCard
-          key={index}
-          {...drive}
-          onSeeDetails={() => onSeeRideDetails(drive)}
-          onOpenDriverProfile={() => onOpenDriverProfile(drive)}
-        />
-      ))}
+      {loading ? (
+        <View style={localStyles.loadingState}>
+          <ActivityIndicator color={colors.white} size="small" />
+        </View>
+      ) : todaysDrives.length === 0 ? (
+        <Text style={localStyles.emptyState}>No drives scheduled yet.</Text>
+      ) : (
+        todaysDrives.map((drive, index) => (
+          <RideCard
+            key={`${drive.date.toISOString()}-${index}`}
+            {...drive}
+            onSeeDetails={() => onSeeRideDetails(drive)}
+            onOpenDriverProfile={() => onOpenDriverProfile(drive)}
+            onCancel={() => handleCancelOffer(drive)}
+          />
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -200,6 +273,15 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  badgeDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E53E3E',
+  },
   avatarButton: {
     width: 36,
     height: 36,
@@ -233,6 +315,12 @@ const localStyles = StyleSheet.create({
     color: colors.darkBlue,
     fontSize: 12,
     lineHeight: 17,
+  },
+  emptyNotificationText: {
+    color: colors.darkBlue,
+    fontSize: 12,
+    textAlign: 'center',
+    opacity: 0.6,
   },
   ctaRow: {
     flexDirection: 'row',
@@ -272,4 +360,14 @@ const localStyles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 16,
   },
-});
+  loadingState: {
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  emptyState: {
+    color: colors.white,
+    opacity: 0.7,
+    fontSize: 13,
+    marginBottom: 18,
+  },
+}); 

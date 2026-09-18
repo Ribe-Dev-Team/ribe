@@ -1,22 +1,36 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { doc, getDoc } from 'firebase/firestore';
+import { deleteRideRequest, deleteRideOffer } from './schema/firebaseBookingMethods';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import MapPreview from '../components/MapPreview';
+import { db } from '../firebaseConfig';
 
 interface RideDetailPageProps {
 	ride: Ride;
 	date: Date;
 	backLabel?: string;
 	onBack: () => void;
-	onAccept?: () => void;
-	onDecline?: () => void;
-	onCancel?: () => void;
+	onAccept?: () => Promise<void> | void;
+	onDecline?: () => Promise<void> | void;
+	onCancel?: () => Promise<void> | void;
 }
 
-const profiles: Record<string, { initials: string; bio: string; degree: string; phone: string }> = {
-	'Marcus Vance': { initials: 'MV', bio: 'Calm, reliable driver who enjoys helping students get to campus.', degree: 'Bachelor of Engineering', phone: '(03) 9905 2418' },
-	'Priya Nair': { initials: 'PN', bio: 'Early riser, always on time. Happy to chat or drive in quiet.', degree: 'Bachelor of Commerce', phone: '(03) 9905 7731' },
+type DriverProfileInfo = {
+	initials: string;
+	bio: string;
+	degree: string;
+	phone: string;
+	vehicle: string;
+};
+
+const fallbackDriverProfile: DriverProfileInfo = {
+	initials: 'DR',
+	bio: 'This driver profile is still being populated.',
+	degree: 'Monash student',
+	phone: 'Phone not shared yet',
+	vehicle: 'Vehicle details coming soon',
 };
 
 function formatDate(date: Date) {
@@ -28,10 +42,67 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel }: RideDetailPageProps) {
-	const profile = profiles[ride.driver];
+	const [profile, setProfile] = useState<DriverProfileInfo>(fallbackDriverProfile);
+	const [loadingProfile, setLoadingProfile] = useState(Boolean(ride.driverUid));
 	const isConfirmed = ride.status === 'confirmed';
 	const status = ride.status === 'confirmed' ? 'Confirmed ride' : ride.status === 'awaiting' ? 'Awaiting confirmation' : 'Pending ride';
 	const statusColor = ride.status === 'confirmed' ? colors.confirmed : ride.status === 'awaiting' ? colors.awaiting : colors.pending;
+
+	useEffect(() => {
+		let active = true;
+
+		const loadDriverProfile = async () => {
+			if (!ride.driverUid) {
+				if (active) {
+					setProfile({
+						initials: ride.driver.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
+						bio: 'Driver details are not available yet.',
+						degree: 'Monash student',
+						phone: 'Phone not shared yet',
+						vehicle: ride.vehicle || 'Vehicle details coming soon',
+					});
+					setLoadingProfile(false);
+				}
+				return;
+			}
+
+			try {
+				const driverDoc = await getDoc(doc(db, 'drivers', ride.driverUid));
+				if (!active) return;
+
+				if (driverDoc.exists()) {
+					const data = driverDoc.data();
+					setProfile({
+						initials: (data["name"] ?? ride.driver).split(' ').map((part: string) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
+						bio: data["bio"] ?? 'This driver has not added a bio yet.',
+						degree: data["degree"] ?? 'Monash student',
+						phone: data["phoneNumber"] ?? 'Phone not shared yet',
+						vehicle: [data["vehicleMake"], data["vehicleModel"]].filter(Boolean).join(' ') || ride.vehicle || 'Vehicle details coming soon',
+					});
+					return;
+				}
+			} catch (error) {
+				console.warn('Failed to load driver profile:', error);
+			}
+
+			if (active) {
+				setProfile({
+					initials: ride.driver.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
+					bio: 'Driver details are not available yet.',
+					degree: 'Monash student',
+					phone: 'Phone not shared yet',
+					vehicle: ride.vehicle || 'Vehicle details coming soon',
+				});
+			}
+			if (active) setLoadingProfile(false);
+		};
+
+		loadDriverProfile();
+
+		return () => {
+			active = false;
+		};
+	}, [ride.driver, ride.driverUid, ride.vehicle]);
 
 	return (
 		<ScrollView contentContainerStyle={styles.detailScreen} showsVerticalScrollIndicator={false}>
@@ -49,9 +120,15 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 				<View style={styles.locationRow}><Text style={[styles.locationDot, { color: colors.pending }]}>●</Text><View><Text style={styles.locationLabel}>Drop-off spot</Text><Text style={styles.locationText}>{ride.destination}</Text></View></View>
 			</Section>
 
-			{isConfirmed && profile ? <Section title="Your driver"><View style={styles.personRow}><View style={styles.avatar}><Text style={styles.avatarText}>{profile.initials}</Text></View><View style={styles.personCopy}><Text style={styles.personName}>{ride.driver}</Text><Text style={styles.personBio}>{profile.bio}</Text></View></View><Text style={styles.infoLine}>Degree  ·  {profile.degree}</Text><Text style={styles.infoLine}>Contact  ·  {profile.phone}</Text></Section> : <Section title="Your driver"><Text style={styles.mutedDetail}>A driver will appear here once your ride is confirmed.</Text></Section>}
+			{isConfirmed ? (
+				<Section title="Your driver">
+					<View style={styles.personRow}><View style={styles.avatar}><Text style={styles.avatarText}>{loadingProfile ? '...' : profile.initials}</Text></View><View style={styles.personCopy}><Text style={styles.personName}>{ride.driver}</Text><Text style={styles.personBio}>{loadingProfile ? 'Loading driver details...' : profile.bio}</Text></View></View>
+					<Text style={styles.infoLine}>Degree  ·  {loadingProfile ? 'Loading...' : profile.degree}</Text>
+					<Text style={styles.infoLine}>Contact  ·  {loadingProfile ? 'Loading...' : profile.phone}</Text>
+				</Section>
+			) : <Section title="Your driver"><Text style={styles.mutedDetail}>A driver will appear here once your ride is confirmed.</Text></Section>}
 
-			{isConfirmed && <Section title="Driver's car"><View style={styles.carRow}><Text style={styles.carIcon}>▣</Text><View><Text style={styles.personName}>Honda Civic</Text><Text style={styles.infoLine}>Silver  ·  1ABC 234</Text></View></View></Section>}
+			{isConfirmed && <Section title="Driver's car"><View style={styles.carRow}><Text style={styles.carIcon}>▣</Text><View><Text style={styles.personName}>{loadingProfile ? 'Loading vehicle...' : profile.vehicle}</Text><Text style={styles.infoLine}>{ride.vehicle || 'Vehicle details coming soon'}</Text></View></View></Section>}
 			{isConfirmed && <Section title="Other riders"><View style={styles.personRow}><View style={styles.avatar}><Text style={styles.avatarText}>EP</Text></View><View><Text style={styles.personName}>Elena Park</Text><Text style={styles.personBio}>Monash student, studying design.</Text></View></View></Section>}
 
 			<View style={styles.savingsPanel}><Text style={styles.savingsKicker}>CO2 SAVINGS</Text><Text style={styles.savingsValue}>2.4 kg saved</Text><Text style={styles.savingsText}>Sharing this ride keeps another car off the road.</Text></View>
@@ -80,32 +157,54 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 				</View>
 			)}
 
-			{(isConfirmed || ride.status === 'pending') && onCancel && (
-				<Pressable
-					onPress={() =>
-						ride.status === 'pending'
-							? Alert.alert(
-								'Cancel this ride request?',
-								'Are you sure you want to cancel this ride request?',
-								[
-									{ text: 'Keep Request', style: 'cancel' },
-									{ text: 'Cancel Request', style: 'destructive', onPress: onCancel },
-								],
-							)
-							: Alert.alert(
-								'Cancel this ride?',
-								'Are you sure you want to cancel this confirmed ride?',
-								[
-									{ text: 'Keep Ride', style: 'cancel' },
-									{ text: 'Cancel Ride', style: 'destructive', onPress: onCancel },
-								],
-							)
-					}
-					style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
-				>
-					<Text style={styles.dangerButtonText}>{ride.status === 'pending' ? 'Cancel pending ride' : 'Cancel ride'}</Text>
-				</Pressable>
-			)}
+						{(isConfirmed || ride.status === 'pending') && (
+								<Pressable
+									onPress={() => {
+										const confirmTitle = ride.status === 'pending' ? 'Cancel this ride request?' : 'Cancel this ride?';
+										const confirmMsg =
+											ride.status === 'pending'
+												? 'Are you sure you want to cancel this ride request?'
+												: 'Are you sure you want to cancel this confirmed ride?';
+										Alert.alert(confirmTitle, confirmMsg, [
+											{ text: 'Keep', style: 'cancel' },
+											{
+												text: ride.status === 'pending' ? 'Cancel Request' : 'Cancel Ride',
+												style: 'destructive',
+												onPress: async () => {
+													try {
+														if (onCancel) {
+															console.log('RideDetailPage: delegating cancel to onCancel prop');
+															await onCancel();
+															return;
+														}
+														// fallback: attempt to delete directly if id/kind available
+														if (!('id' in ride) || !ride.id || !('kind' in ride) || !ride.kind) {
+															Alert.alert('Unable to cancel', 'Cannot determine which ride to cancel.');
+															return;
+														}
+														console.log('RideDetailPage: attempting direct delete', ride.id, ride.kind);
+														if (ride.kind === 'request') {
+															await deleteRideRequest(ride.id);
+														} else {
+															await deleteRideOffer(ride.id);
+														}
+														console.log('RideDetailPage: delete successful', ride.id);
+														Alert.alert('Ride canceled', 'This ride has been canceled.');
+														if (onBack) onBack();
+													} catch (err) {
+														console.warn('RideDetailPage: failed to cancel', err);
+														const msg = err instanceof Error ? err.message : String(err);
+														Alert.alert('Error', `Failed to cancel ride: ${msg}`);
+													}
+												},
+											},
+										]);
+									}}
+									style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
+								>
+									<Text style={styles.dangerButtonText}>{ride.status === 'pending' ? 'Cancel pending ride' : 'Cancel ride'}</Text>
+								</Pressable>
+						)}
 		</ScrollView>
 	);
 }

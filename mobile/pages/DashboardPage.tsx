@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -12,6 +13,8 @@ import {
 } from 'react-native';
 import { colors } from '../styles';
 import RideCard, { RideCardProps, RideStatus } from '../components/RideCard';
+import { useAuth } from '../auth/useAuth';
+import { fetchUserRides } from '../services/rideData';
 
 interface DashboardPageProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -20,109 +23,6 @@ interface DashboardPageProps {
 }
 
 type ViewMode = 'rider' | 'driver';
-
-// Mock data - wiring to real ride data is follow-up work once the backend endpoint exists
-const riderRides: RideCardProps[] = [
-  {
-    status: 'confirmed',
-    date: new Date(2026, 6, 12),
-    pickup: { address: '12 Gambler Crescent', time: '10:30 AM' },
-    destination: { address: 'Monash University Clayton', eta: '11:15 AM' },
-    etaMinutes: 45,
-    cost: '$8.50',
-    co2SavedKg: 2.1,
-    driver: { name: 'Marcus Vance', vehicle: 'Honda Civic - Silver' },
-    plate: '1ABC234',
-    driverPhone: '0412345678',
-    pickupDateTime: new Date(Date.now() + 6 * 60 * 60 * 1000), // 6h away - within reveal window
-  },
-  {
-    status: 'confirmed',
-    date: new Date(2026, 6, 15),
-    pickup: { address: '12 Gambler Crescent', time: '9:00 AM' },
-    destination: { address: 'Monash University Clayton', eta: '9:35 AM' },
-    etaMinutes: 35,
-    cost: '$8.00',
-    co2SavedKg: 2.0,
-    driver: { name: 'Priya Nair', vehicle: 'Toyota Corolla - White' },
-    plate: '2XYZ987',
-    driverPhone: '0423456789',
-    pickupDateTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 2 days away - still masked
-  },
-  {
-    status: 'awaiting',
-    date: new Date(2026, 6, 12),
-    pickup: { address: 'Clayton Station Bus Interchange', time: '1:15 PM' },
-    destination: { address: '45 Wellington Road', eta: '1:45 PM' },
-    etaMinutes: 30,
-    cost: '$6.00',
-    co2SavedKg: 1.4,
-    driver: { name: 'Sarah Kim', vehicle: 'Mazda 3 - Blue' },
-    plate: '3DEF567',
-    matchedAt: new Date(Date.now() - 3 * 60 * 60 * 1000), // matched 3h ago
-  },
-  {
-    status: 'awaiting',
-    date: new Date(2026, 6, 14),
-    pickup: { address: '12 Gambler Crescent', time: '11:00 AM' },
-    destination: { address: 'Chadstone Shopping Centre', eta: '11:25 AM' },
-    etaMinutes: 25,
-    cost: '$5.00',
-    co2SavedKg: 1.0,
-    driver: { name: 'Jordan Lee', vehicle: 'Hyundai i30 - Grey' },
-    plate: '9GHK102',
-    matchedAt: new Date(Date.now() - 30 * 60 * 1000), // matched 30 min ago
-  },
-  {
-    status: 'pending',
-    date: new Date(2026, 6, 12),
-    pickup: { address: 'Monash University Clayton', time: '3:00 PM' },
-    destination: { address: '12 Gambler Crescent', eta: '3:30 PM' },
-    etaMinutes: 30,
-    cost: 'Est. $7.00',
-    co2SavedKg: 0,
-    driver: { name: 'Searching for driver', vehicle: 'Matching system in progress' },
-    plate: '—',
-  },
-  {
-    status: 'pending',
-    date: new Date(2026, 6, 16),
-    pickup: { address: '12 Gambler Crescent', time: '8:15 AM' },
-    destination: { address: 'Monash University Clayton', eta: '8:50 AM' },
-    etaMinutes: 35,
-    cost: 'Est. $8.00',
-    co2SavedKg: 0,
-    driver: { name: 'Searching for driver', vehicle: 'Matching system in progress' },
-    plate: '—',
-  },
-];
-
-// TEST DATA ONLY: driver side of the rider/driver toggle. RideCard's "driver" field
-// is repurposed to show passenger info here - a real driver-mode card is follow-up work.
-const driverDrives: RideCardProps[] = [
-  {
-    status: 'confirmed',
-    date: new Date(2026, 6, 12),
-    pickup: { address: '8 Rosewood Street', time: '8:00 AM' },
-    destination: { address: 'Monash University Clayton', eta: '8:35 AM' },
-    etaMinutes: 35,
-    cost: '$7.00',
-    co2SavedKg: 1.8,
-    driver: { name: 'Emily Chen (passenger)', vehicle: '1 passenger confirmed' },
-    plate: '1ABC234',
-  },
-  {
-    status: 'awaiting',
-    date: new Date(2026, 6, 12),
-    pickup: { address: 'Huntingdale Station', time: '2:30 PM' },
-    destination: { address: 'Chadstone Shopping Centre', eta: '2:50 PM' },
-    etaMinutes: 20,
-    cost: '$5.50',
-    co2SavedKg: 1.1,
-    driver: { name: 'A rider has been matched', vehicle: '1 passenger waiting' },
-    plate: '—',
-  },
-];
 
 const lanes: { status: RideStatus; title: string; description: string }[] = [
   {
@@ -145,10 +45,49 @@ const lanes: { status: RideStatus; title: string; description: string }[] = [
 const CARD_GAP = 12;
 
 export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriverProfile }: DashboardPageProps) {
+  const { user } = useAuth();
   const [mode, setMode] = useState<ViewMode>('rider');
-  const dataset = mode === 'rider' ? riderRides : driverDrives;
+  const [riderRides, setRiderRides] = useState<RideCardProps[]>([]);
+  const [driverDrives, setDriverDrives] = useState<RideCardProps[]>([]);
+  const [loading, setLoading] = useState(true);
   const { width } = useWindowDimensions();
   const cardWidth = (width - 48) * 0.85; // 48 = page's horizontal padding; 85% leaves a peek of the next card
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setRiderRides([]);
+      setDriverDrives([]);
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadRides = async () => {
+      try {
+        const { requests, offers } = await fetchUserRides(user.uid);
+        if (!isMounted) return;
+        setRiderRides(requests);
+        setDriverDrives(offers);
+      } catch (error) {
+        console.warn('Failed to load dashboard rides:', error);
+        if (isMounted) {
+          setRiderRides([]);
+          setDriverDrives([]);
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadRides();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.uid]);
+
+  const dataset = mode === 'rider' ? riderRides : driverDrives;
 
   return (
     <ScrollView
@@ -179,10 +118,12 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
         </View>
       </View>
 
-      {lanes.map((lane) => {
-        const rides = dataset
-          .filter((r) => r.status === lane.status)
-          .sort((a, b) => a.date.getTime() - b.date.getTime());
+      {loading ? (
+        <View style={localStyles.loadingState}><ActivityIndicator color={colors.white} size="small" /></View>
+      ) : lanes.map((lane) => {
+        const rides: RideCardProps[] = dataset
+          .filter((r: RideCardProps) => r.status === lane.status)
+          .sort((a: RideCardProps, b: RideCardProps) => a.date.getTime() - b.date.getTime());
         return (
           <View key={lane.status} style={localStyles.lane}>
             <Text style={localStyles.laneTitle}>{lane.title}</Text>
@@ -199,7 +140,7 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
               >
                 {rides.map((ride, index) => (
                   <View
-                    key={index}
+                    key={`${ride.date.toISOString()}-${index}`}
                     style={{
                       width: cardWidth,
                       marginRight: index === rides.length - 1 ? 0 : CARD_GAP,
@@ -284,6 +225,10 @@ const localStyles = StyleSheet.create({
     opacity: 0.75,
     fontSize: 13,
     marginBottom: 12,
+  },
+  loadingState: {
+    paddingVertical: 18,
+    alignItems: 'center',
   },
   emptyText: {
     color: colors.white,

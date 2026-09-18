@@ -1,13 +1,16 @@
-import React, { useMemo, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import styles, { colors } from '../styles';
 import CalendarGrid from '../components/CalendarGrid';
 import PageHeader from '../components/PageHeader';
 import CarouselControls from '../components/CarouselControls';
 import NewRideButton from '../components/NewRideButton';
 import CalendarRideRow from '../components/CalendarRideRow';
+import { useAuth } from '../auth/useAuth';
+import { RideCardProps } from '../components/RideCard';
+import { fetchUserRides } from '../services/rideData';
 
-export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
+export type RideStatus = 'pending' | 'awaiting' | 'confirmed' | 'cancelled';
 
 //TODO: link to real data
 //TODO: make the +New Ride button hover over the whole page
@@ -16,12 +19,16 @@ export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
 
 export interface Ride {
   status: RideStatus;
+  date?: Date;
   time: string;
   duration?: string;
   start: string;
   destination: string;
   driver: string;
+  driverUid?: string;
   vehicle: string;
+  id?: string;
+  kind?: 'request' | 'offer';
 }
 
 const monthNames = [
@@ -29,16 +36,6 @@ const monthNames = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const rides: Record<string, Ride[]> = {
-  '2026-08-16': [
-    { status: 'confirmed', time: '10:30 AM', duration: '45 min', start: '12 Gambler Crescent', destination: 'Monash University Clayton', driver: 'Marcus Vance', vehicle: 'Honda Civic · Silver' },
-    { status: 'awaiting', time: '1:15 PM', start: 'Clayton Station Bus Interchange', destination: '45 Wellington Road', driver: 'Pending Driver', vehicle: 'Matching system in progress...' },
-    { status: 'pending', time: '3:00 PM - 4:30 PM', duration: 'Flexible window', start: 'Monash University Clayton', destination: '12 Gambler Crescent', driver: 'Unassigned', vehicle: 'Time window awaiting driver claim' },
-  ],
-  '2026-08-05': [{ status: 'confirmed', time: '10:30 AM', duration: '45 min', start: '12 Gambler Crescent', destination: 'Monash University Clayton', driver: 'Marcus Vance', vehicle: 'Honda Civic · Silver' }],
-  '2026-08-12': [{ status: 'awaiting', time: '1:15 PM', start: 'Clayton Station Bus Interchange', destination: '45 Wellington Road', driver: 'Pending Driver', vehicle: 'Matching system in progress...' }],
-  '2026-08-19': [{ status: 'pending', time: '3:00 PM - 4:30 PM', duration: 'Flexible window', start: 'Monash University Clayton', destination: '12 Gambler Crescent', driver: 'Unassigned', vehicle: 'Time window awaiting driver claim' }],
-};
 
 function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -66,10 +63,77 @@ interface CalendarPageProps {
 const today = new Date();
 
 export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProps) {
+  const { user } = useAuth();
   const [month, setMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDate, setSelectedDate] = useState(today);
+  const [rides, setRides] = useState<Record<string, Ride[]>>({});
+  const [loading, setLoading] = useState(true);
   const calendarDays = useMemo(() => getCalendarDays(month), [month]);
   const selectedRides = rides[dateKey(selectedDate)] ?? [];
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setRides({});
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadCalendarRides = async () => {
+      try {
+        const { requests, offers } = await fetchUserRides(user.uid);
+        if (!isMounted) return;
+
+        const allTrips: Ride[] = [
+          ...requests.map((ride: RideCardProps) => ({
+            status: ride.status,
+            date: ride.date,
+            time: ride.pickup.time,
+            duration: `${ride.etaMinutes} min`,
+            start: ride.pickup.address,
+            destination: ride.destination.address,
+            driver: ride.driver.name,
+            driverUid: ride.driver.uid,
+            vehicle: ride.driver.vehicle,
+            id: ride.id,
+            kind: ride.kind,
+          })),
+          ...offers.map((ride: RideCardProps) => ({
+            status: ride.status,
+            date: ride.date,
+            time: ride.pickup.time,
+            duration: `${ride.etaMinutes} min`,
+            start: ride.pickup.address,
+            destination: ride.destination.address,
+            driver: ride.driver.name,
+            driverUid: ride.driver.uid,
+            vehicle: ride.driver.vehicle,
+            id: ride.id,
+            kind: ride.kind,
+          })),
+        ];
+
+        const grouped: Record<string, Ride[]> = {};
+        allTrips.forEach((ride) => {
+          const key = dateKey(ride.date ? new Date(ride.date) : selectedDate);
+          grouped[key] = grouped[key] ? [...grouped[key], ride] : [ride];
+        });
+
+        setRides(grouped);
+      } catch (error) {
+        console.warn('Failed to load calendar trips:', error);
+        if (isMounted) setRides({});
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadCalendarRides();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.uid, selectedDate]);
 
   const changeMonth = (amount: number) => {
     setMonth((current) => new Date(current.getFullYear(), current.getMonth() + amount, 1));
@@ -102,9 +166,13 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
         <Text style={styles.ridesHeading}>Rides on {monthNames[selectedDate.getMonth()]} {selectedDate.getDate()}</Text>
         <NewRideButton onPress={() => onNewRide(selectedDate)} />
       </View>
-      {selectedRides.length ? selectedRides.map((ride) => {
+      {loading ? (
+        <View style={{ paddingVertical: 18, alignItems: 'center' }}>
+          <ActivityIndicator color={colors.white} size="small" />
+        </View>
+      ) : selectedRides.length ? selectedRides.map((ride) => {
         const detail = statusDetails[ride.status];
-        return <CalendarRideRow key={ride.status} onPress={() => onOpenRide(ride, selectedDate)} ride={ride} statusColor={detail.color} statusLabel={detail.label} />;
+        return <CalendarRideRow key={`${ride.status}-${ride.start}-${ride.time}`} onPress={() => onOpenRide(ride, selectedDate)} ride={ride} statusColor={detail.color} statusLabel={detail.label} />;
       }) : <Text style={styles.emptyRides}>No rides scheduled for this day.</Text>}
     </ScrollView>
   );

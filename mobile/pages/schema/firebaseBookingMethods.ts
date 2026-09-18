@@ -1,4 +1,5 @@
-import { collection, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, Timestamp, deleteDoc, getDoc } from 'firebase/firestore';
+import { auth } from '../../firebaseConfig';
 import { db } from '../../firebaseConfig';
 import { Booking } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
@@ -16,15 +17,30 @@ const parseDateToTimestamp = (dateStr: string): Timestamp => {
 export const addRideRequest = async (booking: Booking): Promise<string> => {
   const collectionRef = collection(db, 'rideRequests');
 
+  if (!booking.userId) {
+    throw new Error('A user must be signed in to create a ride request.');
+  }
+
   const req: Omit<RideRequest, 'requestID'> = {
+    userId: booking.userId,
+    status: booking.status ?? 'pending',
     toUni: booking.toUni,
     address: booking.address.trim(),
     date: parseDateToTimestamp(booking.travelDate),
     departureTime: booking.depTime.trim(),
     arrivalTime: booking.arrTime.trim(),
+    createdAt: new Date().toISOString(),
   };
 
   // existence & type checking
+  if (typeof req.userId !== 'string' || !req.userId.trim()) {
+    throw new Error('userId must be a non-empty string');
+  }
+
+  if (req.status !== 'pending' && req.status !== 'awaiting' && req.status !== 'confirmed') {
+    throw new Error('status must be pending, awaiting, or confirmed');
+  }
+
   if (req.toUni !== undefined && typeof req.toUni !== "boolean") {
     throw new Error("toUni must be a boolean");
   }
@@ -64,9 +80,15 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error("Number of available seats needs to be specified for ride offers");
   }
 
+  if (!booking.userId) {
+    throw new Error('A user must be signed in to create a ride offer.');
+  }
+
   const collectionRef = collection(db, 'rideOffers');
 
   const offer: Omit<RideOffer, 'offerID'> = {
+    userId: booking.userId,
+    status: booking.status ?? 'pending',
     toUni: booking.toUni,
     address: booking.address.trim(),
     date: parseDateToTimestamp(booking.travelDate),
@@ -74,9 +96,18 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     arrivalTime: booking.arrTime.trim(),
     maxDetourTime: booking.detourTime,
     seatCapacity: booking.capacity,
+    createdAt: new Date().toISOString(),
   };
 
   // existence & type checking
+  if (typeof offer.userId !== 'string' || !offer.userId.trim()) {
+    throw new Error('userId must be a non-empty string');
+  }
+
+  if (offer.status !== 'pending' && offer.status !== 'awaiting' && offer.status !== 'confirmed') {
+    throw new Error('status must be pending, awaiting, or confirmed');
+  }
+
   if (offer.toUni !== undefined && typeof offer.toUni !== "boolean") {
     throw new Error("toUni must be a boolean");
   }
@@ -139,3 +170,69 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
 //   const docRef = doc(db, 'rideRequests', requestID);
 //   await docRef.delete();
 // }
+
+export async function deleteRideRequest(requestID: string): Promise<void> {
+  if (!requestID || typeof requestID !== 'string') throw new Error('requestID must be provided');
+  const docRef = doc(db, 'rideRequests', requestID);
+  console.log('deleteRideRequest: attempting to delete', requestID);
+  try {
+    const before = await getDoc(docRef);
+    console.log('deleteRideRequest: exists before delete?', before.exists());
+    console.log('deleteRideRequest: before data', before.data());
+    try {
+      console.log('deleteRideRequest: auth uid', auth.currentUser?.uid);
+    } catch (e) {
+      console.warn('deleteRideRequest: failed to read auth currentUser', e);
+    }
+  } catch (err) {
+    console.warn('deleteRideRequest: failed to read before-delete state', err);
+  }
+
+  try {
+    await deleteDoc(docRef);
+    console.log('deleteRideRequest: deleteDoc() returned for', requestID);
+  } catch (err) {
+    console.warn('deleteRideRequest: deleteDoc failed', err);
+    throw err;
+  }
+
+  try {
+    const after = await getDoc(docRef);
+    console.log('deleteRideRequest: exists after delete?', after.exists());
+  } catch (err) {
+    console.warn('deleteRideRequest: failed to read after-delete state', err);
+  }
+}
+
+export async function deleteRideOffer(offerID: string): Promise<void> {
+  if (!offerID || typeof offerID !== 'string') throw new Error('offerID must be provided');
+  const docRef = doc(db, 'rideOffers', offerID);
+  console.log('deleteRideOffer: attempting to delete', offerID);
+  try {
+    const before = await getDoc(docRef);
+    console.log('deleteRideOffer: exists before delete?', before.exists());
+    console.log('deleteRideOffer: before data', before.data());
+    try {
+      console.log('deleteRideOffer: auth uid', auth.currentUser?.uid);
+    } catch (e) {
+      console.warn('deleteRideOffer: failed to read auth currentUser', e);
+    }
+  } catch (err) {
+    console.warn('deleteRideOffer: failed to read before-delete state', err);
+  }
+
+  try {
+    await deleteDoc(docRef);
+    console.log('deleteRideOffer: deleteDoc() returned for', offerID);
+  } catch (err) {
+    console.warn('deleteRideOffer: deleteDoc failed', err);
+    throw err;
+  }
+
+  try {
+    const after = await getDoc(docRef);
+    console.log('deleteRideOffer: exists after delete?', after.exists());
+  } catch (err) {
+    console.warn('deleteRideOffer: failed to read after-delete state', err);
+  }
+}
