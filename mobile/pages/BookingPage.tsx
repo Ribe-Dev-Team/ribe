@@ -15,8 +15,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import styles, { colors } from '../styles';
 import { Booking } from './schema/booking.schema';
 import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
-import { timePattern, toMinutes, formatTime12h } from '../utility/times';
+import { formatTime12h } from '../utility/times';
 import { isFutureDate, formatDateToStr, parseDateAsStr } from '../utility/dates';
+import { validateTripStep as validateTripStepFields, validateDetailsStep as validateDetailsStepFields, getTimeOrderWarning, getDetourWarning } from './validation/bookingValidation';
 import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
 import NumberStepper from '../components/NumberStepper';
@@ -116,77 +117,24 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
-  const depMinutes = timePattern.test(depTime.trim()) ? toMinutes(depTime.trim()) : null;
-  const arrMinutes = timePattern.test(arrTime.trim()) ? toMinutes(arrTime.trim()) : null;
-  const timeOrderWarning =
-    depMinutes !== null && arrMinutes !== null && arrMinutes <= depMinutes
-      ? 'Arrival time must be later than departure time.'
-      : '';
-  const detourWarning =
-    isDriving && detourTime > 0 && depMinutes !== null && arrMinutes !== null && arrMinutes - depMinutes < detourTime
-      ? `Detour of ${detourTime} min exceeds your ${arrMinutes - depMinutes} min travel window.`
-      : '';
+  const timeOrderWarning = getTimeOrderWarning(depTime, arrTime);
+  const detourWarning = getDetourWarning(isDriving, detourTime, depTime, arrTime);
 
   const validateTripStep = (): boolean => {
-    let valid = true;
-
-    // address validation
-    if (!address.trim()) {
-      setAddrErr('Address is required.');
-      valid = false;
-    } else setAddrErr('');
-
-    return valid;
+    const { addrErr } = validateTripStepFields(address);
+    setAddrErr(addrErr);
+    return addrErr === '';
   };
 
   const validateDetailsStep = (): boolean => {
-    let valid = true;
-
-    // travel date validation
-    const parsedDate = parseDateAsStr(travelDate);
-
-    if (!parsedDate) {
-      setTravelDateErr(`'${travelDate}' is not a valid date`);
-      valid = false;
-    } else if (!isFutureDate(parsedDate)) {
-      setTravelDateErr(`'${travelDate}' must be a future date`);
-      valid = false;
-    } else setTravelDateErr('');
-
-    // detour time & seats validation
-    if (!isDriving) {
-      setDetourTimeErr('');
-      setDetourTime(0);
-      setNumSeatsErr('');
-    } else {
-      if (detourTime <= 0) {
-        setDetourTimeErr("Maximum detour time required");
-      } else setDetourTimeErr('');
-
-      if (numSeats < 1) {
-        setNumSeatsErr("Ride offers require at least one available seat");
-      } else if (numSeats > 12) {
-        setNumSeatsErr("Too many seats offered. Max 12.");
-      } else setNumSeatsErr('');
-    }
-
-    // departure time validation
-    if (!timePattern.test(depTime.trim())) {
-      setDepTimeErr('Departure time must be HH:mm (24-hr).');
-      valid = false;
-    } else setDepTimeErr('');
-
-    // arrival time validation
-    if (!timePattern.test(arrTime.trim())) {
-      setArrTimeErr('Arrival time must be HH:mm (24-hr).');
-      valid = false;
-    } else setArrTimeErr('');
-
-    // arrival-after-departure and detour-vs-window sanity checks (surfaced inline as the user types)
-    if (timeOrderWarning || detourWarning) valid = false;
-
-    // return valid if no issues found, otherwise return false
-    return valid;
+    const result = validateDetailsStepFields({ travelDate, isDriving, detourTime, numSeats, depTime, arrTime });
+    setTravelDateErr(result.travelDateErr);
+    setDetourTimeErr(result.detourTimeErr);
+    setNumSeatsErr(result.numSeatsErr);
+    setDepTimeErr(result.depTimeErr);
+    setArrTimeErr(result.arrTimeErr);
+    if (result.resetDetourTime) setDetourTime(0);
+    return result.valid;
   };
 
   const goToDetails = () => {
