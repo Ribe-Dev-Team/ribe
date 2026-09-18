@@ -6,7 +6,7 @@ behind a one-method interface you swap for the real Distance Matrix later.
 
 ```bash
 npm install
-npm test                    # 35 tests
+npm test                    # 33 tests
 npx ts-node test/simulate.ts # SMART Goal 1 evidence run
 ```
 
@@ -176,6 +176,66 @@ Google's per-request element cap, dedupes repeated points first (campus shows up
 constantly), and leaves out legs Google returns a non-OK status for — those fall
 back to `fallback` if given, or throw lazily on lookup, only if the matching run
 actually needed that leg. No API calls happen inside the matching loop itself.
+
+## Testing
+
+### Automated suite
+
+`npm test` runs Jest through `ts-jest` (see `jest.config.js`: `testMatch: ['**/test/**/*.test.ts']`,
+no separate build step — TypeScript is compiled in-memory per test run). Each
+source file has a companion test file that exercises it directly:
+
+| Test file | Exercises |
+|---|---|
+| `test/geo.test.ts` | `haversineKm`, `bearingDegrees`, `bearingDifference` (KEY-135) — including the 350°/10° wraparound case |
+| `test/filter.test.ts` | `windowsOverlap` (KEY-133), `corridorDetourKm`, and `hardFilter`'s reject-reason ordering (KEY-137) |
+| `test/route.test.ts` | `evaluateRoute`'s waiting+riding detour math (the "last rider scores zero" bug) and `bestInsertion`'s re-check of every existing rider (KEY-138) |
+| `test/match.test.ts` | `runMatching` end to end — the greedy assignment loop, stats, `acceptDeadline` clamping |
+| `test/travelTime.test.ts` | `SyntheticTravelTime` / the Google Distance Matrix client — batching, dedup, and fallback on failed legs |
+
+`test/fixtures.ts` is not a test file itself. It holds shared builders
+(`makeRequest`, `makeOffer`, `ring`, `at`, `CAMPUS`) that every test file
+imports, so scenarios are built the same way everywhere and date handling
+(`at()` assumes Melbourne, UTC+10) lives in one place instead of being
+re-derived per test.
+
+### Manual testing
+
+Two ways to poke at the algorithm without writing a Jest test:
+
+1. **The simulate.ts evidence run** — `npx ts-node test/simulate.ts` builds a
+   batch of synthetic riders/drivers on a fixed seed, runs `runMatching`, and
+   prints match rate and detour stats. Good for eyeballing the effect of a
+   config or weight change at realistic batch size, but it reports aggregates,
+   not individual pairings.
+
+2. **A throwaway `ts-node` script for one scenario** — import the module and
+   the test fixtures directly to inspect a single pair or a handful of riders:
+
+   ```ts
+   // scratch.ts — not committed, just for a one-off check
+   import { runMatching } from './src/match';
+   import { SyntheticTravelTime } from './src/travelTime';
+   import { DEFAULT_CONFIG } from './src/types';
+   import { makeRequest, makeOffer, at, CAMPUS } from './test/fixtures';
+
+   const req = makeRequest({ reqId: 'r1', start: { lat: CAMPUS.lat + 0.05, lon: CAMPUS.lon } });
+   const offer = makeOffer({ offerId: 'o1', start: { lat: CAMPUS.lat + 0.1, lon: CAMPUS.lon } });
+
+   const result = runMatching(
+     'test-batch', [req], [offer], at(8), at(0),
+     new SyntheticTravelTime({ seed: 1 }), DEFAULT_CONFIG,
+   );
+   console.log(result.matches, result.rejected);
+   ```
+
+   ```bash
+   npx ts-node scratch.ts
+   ```
+
+   Run it the same way `simulate.ts` is run. Delete the scratch file when
+   done — it is not part of the suite, and `fixtures.ts` is under `test/`
+   precisely so throwaway scripts and real tests can share the same builders.
 
 ## Known limitations
 
