@@ -1,6 +1,6 @@
 export interface Booking {
     userId?: string,
-    status?: 'pending' | 'awaiting' | 'confirmed',
+    status?: 'pending' | 'awaiting' | 'confirmed' | 'cancelled',
     isDriving: boolean,
     toUni: boolean,
     address: string,

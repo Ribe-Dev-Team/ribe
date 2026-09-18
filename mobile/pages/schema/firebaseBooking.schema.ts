@@ -3,7 +3,7 @@ import { Timestamp } from "firebase/firestore";
 export interface RideRequest {
   requestID: string;
   userId: string;
-  status: 'pending' | 'awaiting' | 'confirmed';
+  status: 'pending' | 'awaiting' | 'confirmed' | 'cancelled';
   toUni: boolean;
   address: string;
   date: Timestamp;
@@ -15,7 +15,7 @@ export interface RideRequest {
 export interface RideOffer {
   offerID: string;
   userId: string;
-  status: 'pending' | 'awaiting' | 'confirmed';
+  status: 'pending' | 'awaiting' | 'confirmed' | 'cancelled';
   toUni: boolean;
   address: string;
   date: Timestamp;
