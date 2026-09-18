@@ -67,7 +67,32 @@ function calcDrivingTimeScore(d: matchOffer, p: matchRequest, newTrip: trip): nu
 }
 
 // calculate how much slack time this passenger consumes (from [0, 1])
-function calcSlackScore(d: matchOffer, p: matchRequest, newTrip: trip): number { }
+function calcSlackScore(d: matchOffer, p: matchRequest, newTrip: trip): number {
+    if (d.end == UNI) {
+        // trip to uni - calculate from arrival (last waypoint)
+        const l_ind = d.currTrip.waypoints.length - 1;
+        const currUni = d.currTrip.waypoints[l_ind];
+        const currSlack = currUni.latest.valueOf() - currUni.earliest.valueOf(); // ms
+
+        const newUni = newTrip.waypoints[l_ind + 1];
+        const newSlack = newUni.latest.valueOf() - newUni.earliest.valueOf(); // ms
+
+        return newSlack / currSlack;
+    } else if (d.start == UNI) {
+        // trip from uni - calculate from depature (first waypoint)
+        const currUni = d.currTrip.waypoints[0];
+        const currSlack = currUni.latest.valueOf() - currUni.earliest.valueOf(); // ms
+
+        const newUni = newTrip.waypoints[0 + 1];
+        const newSlack = newUni.latest.valueOf() - newUni.earliest.valueOf(); // ms
+
+        return newSlack / currSlack;
+    } else {
+        throw new Error("Ride Offer was not to or from uni: "
+            + `start=(${d.start.lat},${d.start.lon}) | end=(${d.end.lat},${d.end.lon})`
+        );
+    }
+}
 
 // calculate how much buffer arrival time this passenger gets (from [0, 1])
 function calcOnTimeScore(d: matchOffer, p: matchRequest, newTrip: trip): number { }
