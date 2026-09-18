@@ -1,4 +1,4 @@
-import { windowsOverlap, genderCompatible, hardFilter, corridorDetourKm } from '../src/filter';
+import { windowsOverlap, hardFilter, corridorDetourKm } from '../src/filter';
 import { DEFAULT_CONFIG } from '../src/types';
 import { CAMPUS, at, makeOffer, makeRequest, ring } from './fixtures';
 
@@ -19,21 +19,6 @@ describe('time windows (KEY-133)', () => {
     const r = makeRequest({ reqId: 'r', start: near, travelWindow: { start: at(8), end: at(8, 30) } });
     const o = makeOffer({ offerId: 'o', start: near, travelWindow: { start: at(8, 30), end: at(9) } });
     expect(windowsOverlap(r, o)).toBe(true);
-  });
-});
-
-describe('gender preference is mutual', () => {
-  it("honours the rider's preference", () => {
-    const r = makeRequest({ reqId: 'r', start: near, riderGender: 'F',
-      preferences: { genderPreference: 'WOMEN_ONLY', quietRide: false, luggage: false } });
-    expect(genderCompatible(r, makeOffer({ offerId: 'o', start: near, driverGender: 'M' }))).toBe(false);
-    expect(genderCompatible(r, makeOffer({ offerId: 'o', start: near, driverGender: 'F' }))).toBe(true);
-  });
-  it("honours the driver's preference too", () => {
-    const r = makeRequest({ reqId: 'r', start: near, riderGender: 'M' });
-    const o = makeOffer({ offerId: 'o', start: near, driverGender: 'F',
-      preferences: { genderPreference: 'WOMEN_ONLY', quietRide: false, luggage: false } });
-    expect(genderCompatible(r, o)).toBe(false);
   });
 });
 

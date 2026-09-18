@@ -33,19 +33,11 @@ export const DEFAULT_WEIGHTS: ScoreWeights = {
   driverPreferenceWeight: 0.15,
 };
 
-/** Soft preference alignment in [0, 1]. Boosts, never blocks — hard constraints
- *  are the filter's job. */
+/** Soft preference alignment, 0 or 1. Boosts, never blocks — hard constraints
+ *  are the filter's job. Quiet ride is the only preference left, and it is
+ *  symmetric: both-chatty matches as well as both-quiet. */
 export function preferenceAffinity(req: MatchRequest, offer: MatchOffer): number {
-  let matched = 0;
-  let total = 0;
-
-  total += 1;
-  if (req.preferences.quietRide === offer.preferences.quietRide) matched += 1;
-
-  total += 1;
-  if (!req.preferences.luggage || offer.preferences.luggage) matched += 1;
-
-  return total === 0 ? 1 : matched / total;
+  return req.preferences.quietRide === offer.preferences.quietRide ? 1 : 0;
 }
 
 export interface ScoredPairing extends MatchPairing {

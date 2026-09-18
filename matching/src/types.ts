@@ -38,9 +38,7 @@ export interface TravelWindow {
 }
 
 export interface Preferences {
-  genderPreference: 'ANY' | 'WOMEN_ONLY' | 'MEN_ONLY';
   quietRide: boolean;
-  luggage: boolean;
 }
 
 export interface MatchRequest {
@@ -56,7 +54,6 @@ export interface MatchRequest {
   /** Minutes of detour this rider consented to, over their own direct trip. */
   maxDetour: number;
   preferences: Preferences;
-  riderGender?: 'F' | 'M' | 'X';
   status: 'unassigned' | 'pending' | 'confirmed' | 'cancelled' | 'expired';
 }
 
@@ -78,7 +75,6 @@ export interface MatchOffer {
   acceptingMore: boolean;
 
   status: OfferStatus;
-  driverGender?: 'F' | 'M' | 'X';
   preferences: Preferences;
   /** Riders already on board, in pickup order. */
   onBoard: OnBoardRider[];
@@ -126,8 +122,6 @@ export type RejectReason =
   | 'TIME_WINDOW'
   | 'BEARING'
   | 'CORRIDOR'
-  | 'GENDER_PREF'
-  | 'LUGGAGE'
   | 'NO_FEASIBLE_INSERTION'
   | 'RIDER_DETOUR_CAP'
   | 'DRIVER_DETOUR_CAP'

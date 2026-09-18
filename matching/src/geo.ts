@@ -37,3 +37,4 @@ export function bearingDifference(b1: number, b2: number): number {
   const raw = Math.abs(b1 - b2) % 360;
   return raw > 180 ? 360 - raw : raw;
 }
+ 

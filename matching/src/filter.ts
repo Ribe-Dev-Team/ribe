@@ -22,17 +22,6 @@ export function directionsCompatible(req: MatchRequest, offer: MatchOffer): bool
   return req.direction === offer.direction;
 }
 
-/** Gender preference is MUTUAL. Checking only the rider's side is the classic bug. */
-export function genderCompatible(req: MatchRequest, offer: MatchOffer): boolean {
-  const r = req.preferences.genderPreference;
-  const o = offer.preferences.genderPreference;
-  if (r === 'WOMEN_ONLY' && offer.driverGender !== 'F') return false;
-  if (r === 'MEN_ONLY'   && offer.driverGender !== 'M') return false;
-  if (o === 'WOMEN_ONLY' && req.riderGender   !== 'F') return false;
-  if (o === 'MEN_ONLY'   && req.riderGender   !== 'M') return false;
-  return true;
-}
-
 /**
  * KEY-136. Bearing gate.
  *
@@ -118,10 +107,6 @@ export function hardFilter(
       if (req.riderId === offer.driverId) { reject(offer, req, 'SAME_PERSON'); continue; }
       if (!directionsCompatible(req, offer)) { reject(offer, req, 'DIRECTION'); continue; }
       if (!windowsOverlap(req, offer))       { reject(offer, req, 'TIME_WINDOW'); continue; }
-      if (!genderCompatible(req, offer))     { reject(offer, req, 'GENDER_PREF'); continue; }
-      if (req.preferences.luggage && !offer.preferences.luggage) {
-        reject(offer, req, 'LUGGAGE'); continue;
-      }
       if (!bearingCompatible(req, offer, cfg)) { reject(offer, req, 'BEARING'); continue; }
 
       const detourKm = corridorDetourKm(req, offer);

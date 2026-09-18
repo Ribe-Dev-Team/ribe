@@ -3,7 +3,7 @@ import { Coord, MatchOffer, MatchRequest, Preferences } from '../src/types';
 export const CAMPUS: Coord = { lat: -37.9105, lon: 145.1362 }; // Monash Clayton
 
 export const PREFS: Preferences = {
-  genderPreference: 'ANY', quietRide: false, luggage: false,
+  quietRide: false,
 };
 
 export const at = (h: number, m = 0, day = 15) =>
