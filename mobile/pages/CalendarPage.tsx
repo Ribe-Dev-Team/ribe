@@ -60,7 +60,7 @@ const statusDetails: Record<RideStatus, { label: string; color: string }> = {
 
 interface CalendarPageProps {
   onOpenRide: (ride: Ride, date: Date) => void;
-  onNewRide: () => void;
+  onNewRide: (date: Date) => void;
 }
 
 const today = new Date();
@@ -100,7 +100,7 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
 
       <View style={styles.ridesHeadingRow}>
         <Text style={styles.ridesHeading}>Rides on {monthNames[selectedDate.getMonth()]} {selectedDate.getDate()}</Text>
-        <NewRideButton onPress={onNewRide} />
+        <NewRideButton onPress={() => onNewRide(selectedDate)} />
       </View>
       {selectedRides.length ? selectedRides.map((ride) => {
         const detail = statusDetails[ride.status];

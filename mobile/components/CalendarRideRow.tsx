@@ -2,14 +2,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles, { colors } from '../styles';
-import type { Ride } from '../pages/CalendarPage';
-
-interface CalendarRideRowProps {
-  ride: Ride;
-  statusLabel: string;
-  statusColor: string;
-  onPress: () => void;
-}
+import { CalendarRideRowProps } from './Calendar.schema';
 
 export default function CalendarRideRow({ ride, statusLabel, statusColor, onPress }: CalendarRideRowProps) {
   return (

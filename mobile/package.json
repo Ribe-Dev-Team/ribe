@@ -25,5 +25,9 @@
     "lint": "expo lint",
     "test": "jest"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "postcss": "^8.5.28",
+    "uuid": "^11.1.1"
+  }
 }

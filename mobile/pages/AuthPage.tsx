@@ -57,6 +57,7 @@ export default function AuthPage({
   handleLogin,
   handleSignup,
 }: AuthPageProps) {
+  //TODO: Should refactor hooks into this function rather than passing them all as parameters
   return (
     <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
       <KeyboardAvoidingView
