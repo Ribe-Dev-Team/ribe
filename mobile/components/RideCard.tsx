@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   stopConnector: {
     width: 1,
     height: 12,
-    backgroundColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: colors.whiteA35,
     marginLeft: 6,
     marginVertical: 2,
   },
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   infoNote: {
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: colors.whiteA14,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -468,7 +468,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.28)',
+    backgroundColor: colors.whiteA28,
     marginVertical: 10,
   },
   footerRow: {
@@ -492,7 +492,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.whiteA20,
   },
   driverName: {
     color: colors.white,
@@ -546,7 +546,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: colors.whiteA50,
     marginTop: 18,
     width: '100%',
   },
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
   },
   cancelIconButton: {
     backgroundColor: colors.pending,
@@ -586,7 +586,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
     borderRadius: 14,
     paddingVertical: 9,
   },
@@ -612,7 +612,7 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.blackA50,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.whiteA20,
     marginBottom: 10,
   },
   modalDriverName: {
@@ -669,7 +669,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.5)',
+    borderColor: colors.whiteA50,
   },
   declineText: {
     color: colors.white,

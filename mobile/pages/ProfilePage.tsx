@@ -208,7 +208,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                       autoCapitalize="words"
                       onChangeText={setDegree}
                       placeholder="Bachelor of Science in Computer Science"
-                      placeholderTextColor="rgba(255,255,255,0.4)"
+                      placeholderTextColor={colors.whiteA40}
                       style={styles.editInput}
                       value={degree}
                     />
@@ -222,7 +222,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                       numberOfLines={4}
                       onChangeText={setBio}
                       placeholder="Write a short bio about yourself..."
-                      placeholderTextColor="rgba(255,255,255,0.4)"
+                      placeholderTextColor={colors.whiteA40}
                       style={styles.editBioInput}
                       textAlignVertical="top"
                       value={bio}
@@ -253,7 +253,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                       style={[localStyles.saveButton, submitting && localStyles.saveButtonDisabled]}
                     >
                       {submitting ? (
-                        <ActivityIndicator color="#ffffff" />
+                        <ActivityIndicator color={colors.white} />
                       ) : (
                         <Text style={localStyles.saveButtonText}>Save</Text>
                       )}
@@ -314,7 +314,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                     autoCapitalize="words"
                     onChangeText={setVehicleMake}
                     placeholder="Honda"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={styles.editInput}
                     value={vehicleMake}
                   />
@@ -324,7 +324,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                     autoCapitalize="words"
                     onChangeText={setVehicleModel}
                     placeholder="Civic"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={styles.editInput}
                     value={vehicleModel}
                   />
@@ -334,7 +334,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                     autoCapitalize="words"
                     onChangeText={setVehicleColor}
                     placeholder="Silver"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={styles.editInput}
                     value={vehicleColor}
                   />
@@ -344,7 +344,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                     autoCapitalize="characters"
                     onChangeText={setLicensePlate}
                     placeholder="1ABC234"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={styles.editInput}
                     value={licensePlate}
                   />
@@ -354,7 +354,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                     keyboardType="number-pad"
                     onChangeText={setSeatsAvailable}
                     placeholder="2"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={styles.editInput}
                     value={seatsAvailable}
                   />
@@ -372,7 +372,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                       style={[localStyles.saveButton, submitting && localStyles.saveButtonDisabled]}
                     >
                       {submitting ? (
-                        <ActivityIndicator color="#ffffff" />
+                        <ActivityIndicator color={colors.white} />
                       ) : (
                         <Text style={localStyles.saveButtonText}>Save</Text>
                       )}
@@ -433,7 +433,7 @@ const localStyles = StyleSheet.create({
     fontWeight: '600',
   },
   driverModeSubtitle: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
   },
   driverBadge: {
@@ -448,14 +448,14 @@ const localStyles = StyleSheet.create({
     fontWeight: '700',
   },
   driverActionButton: {
-    alignSelf: 'flex-center',
+    alignSelf: 'center',
     marginTop: 10,
     marginBottom: 6,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: colors.whiteA25,
     backgroundColor: colors.darkBlue,
   },
   driverActionButtonText: {
@@ -465,12 +465,12 @@ const localStyles = StyleSheet.create({
   },
   driverFormCard: {
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: colors.whiteA25,
     borderRadius: 14,
     padding: 14,
   },
   driverFormHelperText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
     lineHeight: 17,
     marginTop: 6,
@@ -481,7 +481,7 @@ const localStyles = StyleSheet.create({
   },
   charCount: {
     alignSelf: 'flex-end',
-    color: 'rgba(255,255,255,0.6)',
+    color: colors.whiteA60,
     fontSize: 11,
     marginTop: 4,
   },

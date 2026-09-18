@@ -65,7 +65,7 @@ const localStyles = StyleSheet.create({
     width: '100%',
     height: 150,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.whiteA08,
   },
   legendRow: {
     marginTop: 10,
@@ -90,7 +90,7 @@ const localStyles = StyleSheet.create({
   placeholder: {
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: colors.whiteA20,
     borderStyle: 'dashed',
     padding: 16,
     alignItems: 'center',
@@ -98,7 +98,7 @@ const localStyles = StyleSheet.create({
     minHeight: 100,
   },
   placeholderText: {
-    color: 'rgba(255,255,255,0.6)',
+    color: colors.whiteA60,
     fontSize: 13,
     textAlign: 'center',
   },

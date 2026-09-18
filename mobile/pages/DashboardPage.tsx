@@ -249,7 +249,7 @@ const localStyles = StyleSheet.create({
   },
   toggle: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
     borderRadius: 20,
     padding: 3,
   },

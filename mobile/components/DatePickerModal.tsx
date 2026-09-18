@@ -187,7 +187,7 @@ export default function DatePickerModal({
 const localStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(6,32,54,0.6)',
+    backgroundColor: colors.navyA60,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -211,7 +211,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
   },
   monthLabelButton: {
     flexDirection: 'row',
@@ -249,17 +249,17 @@ const localStyles = StyleSheet.create({
     borderRadius: 12,
   },
   dayCellSelected: {
-    backgroundColor: 'rgba(145, 211, 249, 0.68)',
+    backgroundColor: colors.skyBlueA68,
   },
   dayText: {
     color: colors.white,
     fontSize: 14,
   },
   dayTextMuted: {
-    color: 'rgba(255,255,255,0.35)',
+    color: colors.whiteA35,
   },
   dayTextDisabled: {
-    color: 'rgba(255,255,255,0.2)',
+    color: colors.whiteA20,
   },
   dayTextSelected: {
     fontWeight: '700',
@@ -274,7 +274,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 12,
   },
   yearRowSelected: {
-    backgroundColor: 'rgba(145, 211, 249, 0.68)',
+    backgroundColor: colors.skyBlueA68,
   },
   yearRowText: {
     color: colors.white,
@@ -289,7 +289,7 @@ const localStyles = StyleSheet.create({
     paddingVertical: 10,
   },
   closeButtonText: {
-    color: 'rgba(255,255,255,0.75)',
+    color: colors.whiteA75,
     fontSize: 14,
     fontWeight: '600',
   },

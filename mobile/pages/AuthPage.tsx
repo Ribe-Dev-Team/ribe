@@ -357,7 +357,7 @@ export default function AuthPage({
                     }}
                     onFocus={() => setFocusedField('name')}
                     placeholder="Jane Doe"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={[localStyles.fieldInput, focusedField === 'name' && localStyles.fieldInputFocused]}
                     value={name}
                   />
@@ -371,7 +371,7 @@ export default function AuthPage({
                     <Text style={dob ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
                       {dob || 'DD/MM/YYYY'}
                     </Text>
-                    <Ionicons color="rgba(255,255,255,0.6)" name="calendar-outline" size={18} />
+                    <Ionicons color={colors.whiteA60} name="calendar-outline" size={18} />
                   </PressableScale>
                   {dobErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{dobErr}</Text>}
 
@@ -386,7 +386,7 @@ export default function AuthPage({
                     }}
                     onFocus={() => setFocusedField('phone')}
                     placeholder="04XX XXX XXX"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={[localStyles.fieldInput, focusedField === 'phone' && localStyles.fieldInputFocused]}
                     value={phoneNumber}
                   />
@@ -410,7 +410,7 @@ export default function AuthPage({
                     }}
                     onFocus={() => setFocusedField('email')}
                     placeholder="you@example.com"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={[localStyles.fieldInput, focusedField === 'email' && localStyles.fieldInputFocused]}
                     value={email}
                   />
@@ -425,7 +425,7 @@ export default function AuthPage({
                     }}
                     onFocus={() => setFocusedField('password')}
                     placeholder="Password"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     secureTextEntry
                     style={[localStyles.fieldInput, focusedField === 'password' && localStyles.fieldInputFocused]}
                     value={password}
@@ -441,7 +441,7 @@ export default function AuthPage({
                     }}
                     onFocus={() => setFocusedField('confirm')}
                     placeholder="Confirm password"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     secureTextEntry
                     style={[localStyles.fieldInput, focusedField === 'confirm' && localStyles.fieldInputFocused]}
                     value={confirmPassword}
@@ -462,7 +462,7 @@ export default function AuthPage({
                       <Image source={{ uri: profilePhotoUri }} style={localStyles.avatarImage} />
                     ) : (
                       <>
-                        <Ionicons color="rgba(255,255,255,0.7)" name="camera-outline" size={26} />
+                        <Ionicons color={colors.whiteA70} name="camera-outline" size={26} />
                         <Text style={localStyles.avatarButtonText}>Add photo</Text>
                       </>
                     )}
@@ -478,7 +478,7 @@ export default function AuthPage({
                     onChangeText={setDegree}
                     onFocus={() => setFocusedField('degree')}
                     placeholder="Bachelor of Science in Computer Science"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={[localStyles.fieldInput, focusedField === 'degree' && localStyles.fieldInputFocused]}
                     value={degree}
                   />
@@ -491,7 +491,7 @@ export default function AuthPage({
                     onChangeText={setBio}
                     onFocus={() => setFocusedField('bio')}
                     placeholder="Write a short bio about yourself..."
-                    placeholderTextColor="rgba(255,255,255,0.4)"
+                    placeholderTextColor={colors.whiteA40}
                     style={[localStyles.fieldInput, localStyles.bioInput, focusedField === 'bio' && localStyles.fieldInputFocused]}
                     textAlignVertical="top"
                     value={bio}
@@ -534,7 +534,7 @@ export default function AuthPage({
                         onChangeText={setVehicleMake}
                         onFocus={() => setFocusedField('vehicleMake')}
                         placeholder="Honda"
-                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        placeholderTextColor={colors.whiteA40}
                         style={[localStyles.fieldInput, focusedField === 'vehicleMake' && localStyles.fieldInputFocused]}
                         value={vehicleMake}
                       />
@@ -546,7 +546,7 @@ export default function AuthPage({
                         onChangeText={setVehicleModel}
                         onFocus={() => setFocusedField('vehicleModel')}
                         placeholder="Civic"
-                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        placeholderTextColor={colors.whiteA40}
                         style={[localStyles.fieldInput, focusedField === 'vehicleModel' && localStyles.fieldInputFocused]}
                         value={vehicleModel}
                       />
@@ -558,7 +558,7 @@ export default function AuthPage({
                         onChangeText={setVehicleColor}
                         onFocus={() => setFocusedField('vehicleColor')}
                         placeholder="Silver"
-                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        placeholderTextColor={colors.whiteA40}
                         style={[localStyles.fieldInput, focusedField === 'vehicleColor' && localStyles.fieldInputFocused]}
                         value={vehicleColor}
                       />
@@ -570,7 +570,7 @@ export default function AuthPage({
                         onChangeText={setLicensePlate}
                         onFocus={() => setFocusedField('licensePlate')}
                         placeholder="1ABC234"
-                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        placeholderTextColor={colors.whiteA40}
                         style={[localStyles.fieldInput, focusedField === 'licensePlate' && localStyles.fieldInputFocused]}
                         value={licensePlate}
                       />
@@ -582,7 +582,7 @@ export default function AuthPage({
                         onChangeText={setSeatsAvailable}
                         onFocus={() => setFocusedField('seatsAvailable')}
                         placeholder="2"
-                        placeholderTextColor="rgba(255,255,255,0.4)"
+                        placeholderTextColor={colors.whiteA40}
                         style={[localStyles.fieldInput, focusedField === 'seatsAvailable' && localStyles.fieldInputFocused]}
                         value={seatsAvailable}
                       />
@@ -722,7 +722,7 @@ export default function AuthPage({
                 }}
                 onFocus={() => setFocusedField('email')}
                 placeholder="you@example.com"
-                placeholderTextColor="rgba(255,255,255,0.4)"
+                placeholderTextColor={colors.whiteA40}
                 style={[localStyles.fieldInput, focusedField === 'email' && localStyles.fieldInputFocused]}
                 value={email}
               />
@@ -736,7 +736,7 @@ export default function AuthPage({
                 }}
                 onFocus={() => setFocusedField('password')}
                 placeholder="Password"
-                placeholderTextColor="rgba(255,255,255,0.4)"
+                placeholderTextColor={colors.whiteA40}
                 secureTextEntry
                 style={[localStyles.fieldInput, focusedField === 'password' && localStyles.fieldInputFocused]}
                 value={password}
@@ -777,7 +777,7 @@ const localStyles = StyleSheet.create({
     paddingBottom: 12,
     backgroundColor: colors.darkBlue,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomColor: colors.whiteA08,
   },
   scrollContent: {
     padding: 20,
@@ -797,7 +797,7 @@ const localStyles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 20,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
   },
   backButtonLabel: {
     fontFamily: 'Marcellus_400Regular',
@@ -821,14 +821,14 @@ const localStyles = StyleSheet.create({
     flex: 1,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: colors.whiteA18,
   },
   progressSegmentActive: {
     backgroundColor: colors.white,
   },
   progressLabel: {
     marginTop: 8,
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -851,33 +851,33 @@ const localStyles = StyleSheet.create({
     marginBottom: 4,
   },
   fieldLabel: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     marginBottom: 6,
   },
   fieldInput: {
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: colors.whiteA30,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     color: colors.white,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: colors.whiteA10,
   },
   fieldInputFocused: {
     borderColor: colors.white,
     borderWidth: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: colors.whiteA18,
   },
   switchModeLink: {
     marginTop: 14,
     alignItems: 'center',
   },
   switchModeLinkText: {
-    color: 'rgba(255,255,255,0.85)',
+    color: colors.whiteA85,
     fontSize: 14,
     fontWeight: '600',
     textDecorationLine: 'underline',
@@ -895,16 +895,16 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: colors.whiteA30,
+    backgroundColor: colors.whiteA10,
     paddingVertical: 12,
   },
   choiceButtonActive: {
     borderColor: colors.white,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: colors.whiteA22,
   },
   choiceButtonText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -912,7 +912,7 @@ const localStyles = StyleSheet.create({
     color: colors.white,
   },
   stepHelperText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 16,
@@ -929,8 +929,8 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: colors.whiteA30,
+    backgroundColor: colors.whiteA10,
     overflow: 'hidden',
   },
   avatarImage: {
@@ -939,7 +939,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 55,
   },
   avatarButtonText: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
     fontWeight: '600',
     marginTop: 4,
@@ -962,7 +962,7 @@ const localStyles = StyleSheet.create({
   },
   pickerPlaceholderText: {
     fontSize: 15,
-    color: 'rgba(255,255,255,0.4)',
+    color: colors.whiteA40,
   },
   actionButton: {
     alignItems: 'center',
@@ -973,17 +973,17 @@ const localStyles = StyleSheet.create({
     paddingVertical: 14,
   },
   actionButtonDisabled: {
-    backgroundColor: 'rgba(19, 118, 190, 0.45)',
+    backgroundColor: colors.mediumBlueA45,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.2)',
+    borderBottomColor: colors.whiteA20,
     paddingVertical: 9,
   },
   summaryLabel: {
-    color: 'rgba(255,255,255,0.75)',
+    color: colors.whiteA75,
     fontSize: 13,
   },
   summaryValue: {

@@ -451,7 +451,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 <Text style={travelDate ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
                   {travelDate || 'DD-MM-YYYY'}
                 </Text>
-                <Ionicons color="rgba(255,255,255,0.6)" name="calendar-outline" size={18} />
+                <Ionicons color={colors.whiteA60} name="calendar-outline" size={18} />
               </Pressable>
               {travelDateErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{travelDateErr}</Text>}
 
@@ -466,7 +466,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 <Text style={depTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
                   {depTime ? formatTime12h(depTime) : 'Select time'}
                 </Text>
-                <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
+                <Ionicons color={colors.whiteA60} name="time-outline" size={18} />
               </Pressable>
               {depTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{depTimeErr}</Text>}
 
@@ -481,7 +481,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 <Text style={arrTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
                   {arrTime ? formatTime12h(arrTime) : 'Select time'}
                 </Text>
-                <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
+                <Ionicons color={colors.whiteA60} name="time-outline" size={18} />
               </Pressable>
               {arrTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{arrTimeErr}</Text>}
               {arrTimeErr === '' && timeOrderWarning !== '' && <Text style={localStyles.warningText}>{timeOrderWarning}</Text>}
@@ -566,7 +566,7 @@ const localStyles = StyleSheet.create({
     paddingBottom: 12,
     backgroundColor: colors.darkBlue,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomColor: colors.whiteA08,
   },
   scrollContent: {
     padding: 20,
@@ -581,7 +581,7 @@ const localStyles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 20,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
   },
   backButtonLabel: {
     fontFamily: 'Marcellus_400Regular',
@@ -605,14 +605,14 @@ const localStyles = StyleSheet.create({
     flex: 1,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: colors.whiteA18,
   },
   progressSegmentActive: {
     backgroundColor: colors.white,
   },
   progressLabel: {
     marginTop: 8,
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -635,7 +635,7 @@ const localStyles = StyleSheet.create({
   },
   segmentRow: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
     borderRadius: 14,
     padding: 4,
   },
@@ -658,26 +658,26 @@ const localStyles = StyleSheet.create({
     opacity: 1,
   },
   fieldLabel: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     marginBottom: 6,
   },
   fieldInput: {
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: colors.whiteA30,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     color: colors.white,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: colors.whiteA10,
   },
   fieldInputFocused: {
     borderColor: colors.white,
     borderWidth: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: colors.whiteA18,
   },
   pickerField: {
     flexDirection: 'row',
@@ -690,7 +690,7 @@ const localStyles = StyleSheet.create({
   },
   pickerPlaceholderText: {
     fontSize: 15,
-    color: 'rgba(255,255,255,0.4)',
+    color: colors.whiteA40,
   },
   actionButton: {
     alignItems: 'center',
@@ -701,17 +701,17 @@ const localStyles = StyleSheet.create({
     paddingVertical: 14,
   },
   actionButtonDisabled: {
-    backgroundColor: 'rgba(19, 118, 190, 0.45)',
+    backgroundColor: colors.mediumBlueA45,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.2)',
+    borderBottomColor: colors.whiteA20,
     paddingVertical: 9,
   },
   summaryLabel: {
-    color: 'rgba(255,255,255,0.75)',
+    color: colors.whiteA75,
     fontSize: 13,
   },
   summaryValue: {
@@ -725,7 +725,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     marginBottom: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: colors.whiteA10,
   },
   infoHeaderRow: {
     flexDirection: 'row',
