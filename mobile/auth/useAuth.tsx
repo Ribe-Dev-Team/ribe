@@ -10,13 +10,7 @@ import {
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import type { UserProfileDraft } from '../pages/schema/user.schema';
-import {
-  isValidDob,
-  isValidEmail,
-  isValidName,
-  isValidPassword,
-  isValidPhoneNumber,
-} from '../pages/schema/user.validation';
+import { getFormValidationError } from '../pages/schema/user.validation';
 
 type UserProfileData = UserProfileDraft;
 
@@ -107,72 +101,6 @@ const getAuthErrorMessage = (err: unknown) => {
   }
 
   return message;
-};
-
-const getFormValidationError = ({
-  mode,
-  name,
-  dob,
-  phoneNumber,
-  email,
-  password,
-  confirmPassword,
-}: {
-  mode: 'login' | 'signup';
-  name: string;
-  dob: string;
-  phoneNumber: string;
-  email: string;
-  password: string;
-  confirmPassword: string;
-}) => {
-  // Trim everything internally for live validation checking (like isFormValid)
-  const trimmedEmail = email.trim();
-  const trimmedName = name.trim();
-  const trimmedDob = dob.trim();
-  const trimmedPhone = phoneNumber.trim();
-
-  if (!trimmedEmail) {
-    return 'Email is required.';
-  }
-
-  if (!isValidEmail(trimmedEmail)) {
-    return 'Enter a valid email address.';
-  }
-
-  if (!password) {
-    return 'Password is required.';
-  }
-
-  if (mode !== 'signup') {
-    return null;
-  }
-
-  if (!isValidPassword(password)) {
-    return 'Password must be at least 8 characters long and include uppercase, lowercase, and a number.';
-  }
-
-  if (!isValidName(trimmedName)) {
-    return 'Please enter a valid full name.';
-  }
-
-  if (!isValidDob(trimmedDob)) {
-    return 'Please enter a valid date of birth in DD/MM/YYYY format and you must be at least 18 years old.';
-  }
-
-  if (!isValidPhoneNumber(trimmedPhone)) {
-    return 'Please enter a valid phone number.';
-  }
-
-  if (!confirmPassword) {
-    return 'Please confirm your password.';
-  }
-
-  if (password !== confirmPassword) {
-    return 'Passwords do not match.';
-  }
-
-  return null;
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
