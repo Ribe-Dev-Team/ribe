@@ -24,8 +24,6 @@ interface ProfilePageProps {
   onLogout: () => void;
 }
 
-const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-
 export default function ProfilePage({ onLogout }: ProfilePageProps) {
   const { user, profileData, submitting, updateProfileDetails } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -36,13 +34,6 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
   const [profilePhotoMimeType, setProfilePhotoMimeType] = useState<string | null>(null);
   // Local-only for now - no backend field yet, follow-up work once profile schema supports it
   const [driverMode, setDriverMode] = useState(false);
-  const [campusDays, setCampusDays] = useState<string[]>([]);
-
-  const toggleCampusDay = (day: string) => {
-    setCampusDays((current) =>
-      current.includes(day) ? current.filter((d) => d !== day) : [...current, day],
-    );
-  };
 
   const profileName = profileData?.name || user?.displayName || 'Your name';
   const profileEmail = profileData?.email || user?.email || 'No email added';
