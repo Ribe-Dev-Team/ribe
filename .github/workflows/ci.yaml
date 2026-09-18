@@ -1,0 +1,39 @@
+name: Run CI
+run-name: Applying CI to ${{ github.ref_name }} by @${{ github.actor }}
+on:
+  push:
+    branches: [ "main", "feature-*/**" ]
+  pull_request:
+    branches: [ "main", "feature-*/**" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Run TypeScript check
+        run: npx tsc --noEmit -p mobile
+
+      - name: Run tests (with coverage)
+        run: npm test -- --coverage --ci
+
+      - name: Upload HTML coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-coverage
+          path: mobile/coverage/lcov-report
