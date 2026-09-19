@@ -11,6 +11,19 @@ const generateId = () =>
 // Firestore API mocks
 export const getFirestore = () => ({});
 
+// Timestamp (mirrors the fromDate/toDate surface firebase/firestore exposes)
+export class Timestamp {
+    private constructor(private readonly _date: Date) { }
+
+    static fromDate(date: Date): Timestamp {
+        return new Timestamp(date);
+    }
+
+    toDate(): Date {
+        return this._date;
+    }
+}
+
 // Collection reference
 export const collection = (_db: any, name: string) => ({
     __type: "collection",
