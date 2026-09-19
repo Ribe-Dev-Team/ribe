@@ -34,6 +34,7 @@ function toDetailRide(ride: RideCardProps): Ride {
     start: ride.pickup.address,
     destination: ride.destination.address,
     driver: ride.driver.name,
+    driverUid: ride.driver.uid,
     vehicle: ride.driver.vehicle,
   };
 }

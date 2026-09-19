@@ -88,7 +88,7 @@ export interface RideCardProps {
   etaMinutes: number;
   cost: string;
   co2SavedKg: number;
-  driver: { name: string; vehicle: string; avatarUri?: string };
+  driver: { uid?: string; name: string; vehicle: string; avatarUri?: string };
   plate: string;
   /** When a driver match was found - only used for 'awaiting' cards to show a 12h approval countdown */
   matchedAt?: Date;
