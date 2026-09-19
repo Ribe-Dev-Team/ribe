@@ -288,7 +288,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.whiteA20,
   },
   notificationsDropdown: {
     position: 'absolute',

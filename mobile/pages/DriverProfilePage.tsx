@@ -191,7 +191,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.whiteA20,
     marginBottom: 10,
   },
   name: {
@@ -215,7 +215,7 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: colors.whiteA14,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -266,7 +266,7 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 16,
     paddingVertical: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: colors.whiteA10,
   },
   statValue: {
     color: colors.white,
@@ -283,7 +283,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     marginBottom: 18,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.whiteA08,
   },
   privacyHeader: {
     flexDirection: 'row',
@@ -307,7 +307,7 @@ const localStyles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
+    borderColor: colors.whiteA40,
   },
   reportButtonText: {
     color: colors.white,

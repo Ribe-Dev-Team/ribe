@@ -112,7 +112,7 @@ export default function AddressAutocompleteInput({
         }}
         onLayout={(event) => setInputHeight(event.nativeEvent.layout.height)}
         placeholder={placeholder}
-        placeholderTextColor="rgba(255,255,255,0.4)"
+        placeholderTextColor={colors.whiteA40}
         style={inputStyle}
         value={value}
       />
@@ -167,7 +167,7 @@ const localStyles = StyleSheet.create({
   },
   dropdownItemDivider: {
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
+    borderTopColor: colors.whiteA10,
   },
   dropdownItemText: {
     color: colors.white,
