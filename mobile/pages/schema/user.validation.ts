@@ -38,3 +38,105 @@ export const isValidDob = (value: string) => {
 };
 
 export const isValidPassword = (value: string) => passwordPattern.test(value);
+
+export type AuthFormMode = 'login' | 'signup';
+
+export interface AuthFormValues {
+  mode: AuthFormMode;
+  name: string;
+  dob: string;
+  phoneNumber: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export const getFormValidationError = ({
+  mode,
+  name,
+  dob,
+  phoneNumber,
+  email,
+  password,
+  confirmPassword,
+}: AuthFormValues): string | null => {
+  // Trim everything internally for live validation checking (like isFormValid)
+  const trimmedEmail = email.trim();
+  const trimmedName = name.trim();
+  const trimmedDob = dob.trim();
+  const trimmedPhone = phoneNumber.trim();
+
+  if (!trimmedEmail) {
+    return 'Email is required.';
+  }
+
+  if (!isValidEmail(trimmedEmail)) {
+    return 'Enter a valid email address.';
+  }
+
+  if (!password) {
+    return 'Password is required.';
+  }
+
+  if (mode !== 'signup') {
+    return null;
+  }
+
+  if (!isValidPassword(password)) {
+    return 'Password must be at least 8 characters long and include uppercase, lowercase, and a number.';
+  }
+
+  if (!isValidName(trimmedName)) {
+    return 'Please enter a valid full name.';
+  }
+
+  if (!isValidDob(trimmedDob)) {
+    return 'Please enter a valid date of birth in DD/MM/YYYY format and you must be at least 18 years old.';
+  }
+
+  if (!isValidPhoneNumber(trimmedPhone)) {
+    return 'Please enter a valid phone number.';
+  }
+
+  if (!confirmPassword) {
+    return 'Please confirm your password.';
+  }
+
+  if (password !== confirmPassword) {
+    return 'Passwords do not match.';
+  }
+
+  return null;
+};
+
+export interface DriverFormValues {
+  isDriver: boolean;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleColor: string;
+  licensePlate: string;
+  seatsAvailable: string;
+}
+
+export const getDriverValidationError = ({
+  isDriver,
+  vehicleMake,
+  vehicleModel,
+  vehicleColor,
+  licensePlate,
+  seatsAvailable,
+}: DriverFormValues): string | null => {
+  if (!isDriver) {
+    return null;
+  }
+
+  if (!vehicleMake.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !licensePlate.trim()) {
+    return 'Please fill in all vehicle details.';
+  }
+
+  if (!Number.isInteger(Number(seatsAvailable)) || Number(seatsAvailable) < 1) {
+    return 'Please enter a valid number of seats available.';
+  }
+
+  return null;
+};

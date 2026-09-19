@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -6,6 +6,7 @@ import {
   NativeSyntheticEvent,
   SafeAreaView,
   StatusBar,
+  StyleSheet,
   View,
 } from 'react-native';
 import { useFonts, Marcellus_400Regular } from '@expo-google-fonts/marcellus';
@@ -19,9 +20,9 @@ import HomePage from './pages/HomePage';
 import CalendarPage, { Ride } from './pages/CalendarPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
-import OnboardingPage from './pages/OnboardingPage';
 import RideDetailPage from './pages/RideDetailPage';
 import DriverProfilePage from './pages/DriverProfilePage';
+import DriverRegistrationPage from './pages/DriverRegistrationPage';
 import BookingPage from './pages/BookingPage';
 
 // Adapts a rich Home/Dashboard ride card into the simpler shape RideDetailPage
@@ -92,7 +93,9 @@ function AppContent() {
   const [viewingDriver, setViewingDriver] = useState<RideCardProps | null>(null);
   const [showBooking, setShowBooking] = useState(false);
   const [bookingDate, setBookingDate] = useState<Date | null>(null);
+  const [showDriverRegistration, setShowDriverRegistration] = useState(false);
   const lastScrollY = useRef(0);
+  const wasLoggedIn = useRef(false);
 
   const changeTab = (tab: NavigationTab) => {
     setActiveTab(tab);
@@ -123,27 +126,20 @@ function AppContent() {
     loading,
     submitting,
     error,
-    mode,
     clearError,
-    toggleMode,
-    name,
-    setName,
-    dob,
-    setDob,
-    phoneNumber,
-    setPhoneNumber,
-    email,
-    setEmail,
-    password,
-    setPassword,
-    confirmPassword,
-    setConfirmPassword,
-    needsProfileSetup,
-    completeProfileSetup,
     handleLogin,
     handleSignup,
     handleLogout,
   } = useAuth();
+
+  // Always land on the home tab right after a fresh login/signup, rather than
+  // wherever the tab happened to be left (e.g. Profile, if that's where the user signed out).
+  useEffect(() => {
+    if (user && !wasLoggedIn.current) {
+      setActiveTab('home');
+    }
+    wasLoggedIn.current = !!user;
+  }, [user]);
 
   const renderPage = () => {
     if (showBooking) {
@@ -195,7 +191,12 @@ function AppContent() {
           />
         );
       case 'profile':
-        return <ProfilePage onLogout={handleLogout} />;
+        return (
+          <ProfilePage
+            onLogout={handleLogout}
+            onOpenDriverRegistration={() => setShowDriverRegistration(true)}
+          />
+        );
       default:
         return (
           <HomePage
@@ -223,35 +224,10 @@ function AppContent() {
     return (
       <AuthPage
         clearError={clearError}
-        confirmPassword={confirmPassword}
-        dob={dob}
-        email={email}
         error={error}
         handleLogin={handleLogin}
         handleSignup={handleSignup}
-        mode={mode}
-        name={name}
-        password={password}
-        phoneNumber={phoneNumber}
-        setConfirmPassword={setConfirmPassword}
-        setDob={setDob}
-        setEmail={setEmail}
-        setName={setName}
-        setPassword={setPassword}
-        setPhoneNumber={setPhoneNumber}
         submitting={submitting}
-        toggleMode={toggleMode}
-      />
-    );
-  }
-
-  if (needsProfileSetup) {
-    return (
-      <OnboardingPage
-        onComplete={async (data) => {
-          await completeProfileSetup(data);
-          changeTab('home');
-        }}
       />
     );
   }
@@ -263,10 +239,16 @@ function AppContent() {
 
       <View style={styles.contentContainer}>{renderPage()}</View>
 
+      {showDriverRegistration && (
+        <View style={StyleSheet.absoluteFill}>
+          <DriverRegistrationPage onDone={() => setShowDriverRegistration(false)} />
+        </View>
+      )}
+
       <AppNavigation
         activeTab={activeTab}
         onChange={changeTab}
-        hidden={navHidden || !!selectedRide || !!viewingDriver || showBooking}
+        hidden={navHidden || !!selectedRide || !!viewingDriver || showBooking || showDriverRegistration}
       />
     </SafeAreaView>
   );
