@@ -33,13 +33,6 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
   const [profilePhotoBase64, setProfilePhotoBase64] = useState<string | null>(null);
   const [profilePhotoMimeType, setProfilePhotoMimeType] = useState<string | null>(null);
   const isDriver = Boolean(profileData?.isDriver);
-  const [campusDays, setCampusDays] = useState<string[]>([]);
-
-  const toggleCampusDay = (day: string) => {
-    setCampusDays((current) =>
-      current.includes(day) ? current.filter((d) => d !== day) : [...current, day],
-    );
-  };
 
   const profileName = profileData?.name || user?.displayName || 'Your name';
   const profileEmail = profileData?.email || user?.email || 'No email added';
@@ -219,40 +212,28 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
                 </>
               )}
 
-              <View style={styles.profileInfoBlock}>
-                <Text style={styles.profileLabel}>On campus</Text>
-                <View style={localStyles.daysRow}>
-                  {weekdays.map((day) => {
-                    const active = campusDays.includes(day);
-                    return (
-                      <Pressable
-                        key={day}
-                        onPress={() => toggleCampusDay(day)}
-                        style={[localStyles.dayPill, active && localStyles.dayPillActive]}
-                      >
-                        <Text style={[localStyles.dayPillText, active && localStyles.dayPillTextActive]}>{day}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <View style={[styles.profileInfoBlock, localStyles.driverModeRow]}>
-                <View style={localStyles.driverModeCopy}>
-                  <View style={localStyles.driverModeTitleRow}>
-                    <Ionicons name="car-sport-outline" size={16} color={colors.white} />
-                    <Text style={localStyles.driverModeTitle}>Driver status</Text>
+              {!isEditing && (
+                <View style={[styles.profileInfoBlock, localStyles.driverModeRow]}>
+                  <View style={localStyles.driverModeCopy}>
+                    <View style={localStyles.driverModeTitleRow}>
+                      <Ionicons name="car-sport-outline" size={16} color={colors.white} />
+                      <Text style={localStyles.driverModeTitle}>Driver status</Text>
+                    </View>
+                    <Text style={localStyles.driverModeSubtitle}>
+                      {isDriver
+                        ? [profileData?.vehicleColor, profileData?.vehicleMake, profileData?.vehicleModel]
+                            .filter(Boolean)
+                            .join(' ') || 'Vehicle details on file'
+                        : 'Add your vehicle details to start giving rides'}
+                    </Text>
                   </View>
-                  <Text style={localStyles.driverModeSubtitle}>
-                    {isDriver ? 'This user is also a driver' : 'Not currently marked as a driver'}
-                  </Text>
+                  {isDriver ? (
+                    <View style={localStyles.driverBadge}>
+                      <Text style={localStyles.driverBadgeText}>Driver</Text>
+                    </View>
+                  ) : null}
                 </View>
-                {isDriver ? (
-                  <View style={localStyles.driverBadge}>
-                    <Text style={localStyles.driverBadgeText}>Driver</Text>
-                  </View>
-                ) : null}
-              </View>
+              )}
             </View>
           </View>
         </TouchableWithoutFeedback>

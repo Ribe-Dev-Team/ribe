@@ -310,6 +310,15 @@ function AppContent() {
     wasLoggedIn.current = !!user;
   }, [user]);
 
+  // Always land on the home tab right after a fresh login/signup, rather than
+  // wherever the tab happened to be left (e.g. Profile, if that's where the user signed out).
+  useEffect(() => {
+    if (user && !wasLoggedIn.current) {
+      setActiveTab('home');
+    }
+    wasLoggedIn.current = !!user;
+  }, [user]);
+
   const renderPage = () => {
     if (showBooking) {
       return (
