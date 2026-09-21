@@ -22,7 +22,6 @@ module.exports = {
   ],
   moduleNameMapper: {
     // Firebase v9 modular mocks
-    "^firebase/app$": "<rootDir>/../__mocks__/firebase/app.ts",
     "^firebase/auth$": "<rootDir>/../__mocks__/firebase/auth.ts",
     "^firebase/firestore$": "<rootDir>/../__mocks__/firebase/firestore.ts",
 
@@ -52,14 +51,6 @@ module.exports = {
   coverageReporters: ["lcov", "text"],
 
   // Ensures mocks reset between tests
-  //
-  // Gotcha: resetMocks strips any jest.fn() implementation (mockReturnValue/mockResolvedValue/
-  // mockImplementation, or one passed to jest.fn(impl) directly) before EVERY test, including
-  // the first - even one defined inside a jest.mock(...) factory at the top of a test file. If a
-  // mocked module needs a default return value but nothing asserts on how it was called, define
-  // it as a plain function in the factory instead of jest.fn() so there's no implementation for
-  // resetMocks to strip. If you do need call assertions, re-apply the mockImplementation/
-  // mockResolvedValue in a beforeEach (it runs after the auto-reset, so it sticks for that test).
   resetMocks: true,
   clearMocks: true,
   restoreMocks: true,
