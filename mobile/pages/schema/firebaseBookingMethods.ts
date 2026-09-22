@@ -16,15 +16,30 @@ const parseDateToTimestamp = (dateStr: string): Timestamp => {
 export const addRideRequest = async (booking: Booking): Promise<string> => {
   const collectionRef = collection(db, 'rideRequests');
 
+  if (!booking.userId) {
+    throw new Error('A user must be signed in to create a ride request.');
+  }
+
   const req: Omit<RideRequest, 'requestID'> = {
+    userId: booking.userId,
+    status: booking.status ?? 'pending',
     toUni: booking.toUni,
     address: booking.address.trim(),
     date: parseDateToTimestamp(booking.travelDate),
     departureTime: booking.depTime.trim(),
     arrivalTime: booking.arrTime.trim(),
+    createdAt: new Date().toISOString(),
   };
 
   // existence & type checking
+  if (typeof req.userId !== 'string' || !req.userId.trim()) {
+    throw new Error('userId must be a non-empty string');
+  }
+
+  if (req.status !== 'pending' && req.status !== 'awaiting' && req.status !== 'confirmed') {
+    throw new Error('status must be pending, awaiting, or confirmed');
+  }
+
   if (req.toUni !== undefined && typeof req.toUni !== "boolean") {
     throw new Error("toUni must be a boolean");
   }
@@ -64,9 +79,15 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error("Number of available seats needs to be specified for ride offers");
   }
 
+  if (!booking.userId) {
+    throw new Error('A user must be signed in to create a ride offer.');
+  }
+
   const collectionRef = collection(db, 'rideOffers');
 
   const offer: Omit<RideOffer, 'offerID'> = {
+    userId: booking.userId,
+    status: booking.status ?? 'pending',
     toUni: booking.toUni,
     address: booking.address.trim(),
     date: parseDateToTimestamp(booking.travelDate),
@@ -74,9 +95,18 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     arrivalTime: booking.arrTime.trim(),
     maxDetourTime: booking.detourTime,
     seatCapacity: booking.capacity,
+    createdAt: new Date().toISOString(),
   };
 
   // existence & type checking
+  if (typeof offer.userId !== 'string' || !offer.userId.trim()) {
+    throw new Error('userId must be a non-empty string');
+  }
+
+  if (offer.status !== 'pending' && offer.status !== 'awaiting' && offer.status !== 'confirmed') {
+    throw new Error('status must be pending, awaiting, or confirmed');
+  }
+
   if (offer.toUni !== undefined && typeof offer.toUni !== "boolean") {
     throw new Error("toUni must be a boolean");
   }

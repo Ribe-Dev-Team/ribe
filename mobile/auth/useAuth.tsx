@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -10,15 +10,31 @@ import {
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import type { UserProfileDraft } from '../pages/schema/user.schema';
-import {
-  isValidDob,
-  isValidEmail,
-  isValidName,
-  isValidPassword,
-  isValidPhoneNumber,
-} from '../pages/schema/user.validation';
+import { getFormValidationError } from '../pages/schema/user.validation';
 
 type UserProfileData = UserProfileDraft;
+
+type ProfileExtras = {
+  profilePhotoBase64?: string;
+  profilePhotoMimeType?: string;
+  degree?: string;
+  bio?: string;
+  isDriver?: boolean;
+  vehicleMake?: string;
+  vehicleModel?: string;
+  vehicleColor?: string;
+  licensePlate?: string;
+  seatsAvailable?: number;
+};
+
+type SignupFields = {
+  name: string;
+  dob: string;
+  phoneNumber: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+};
 
 type AuthContextType = {
   user: User | null;
@@ -26,41 +42,12 @@ type AuthContextType = {
   loading: boolean;
   submitting: boolean;
   error: string | null;
-  mode: 'login' | 'signup';
-  toggleMode: () => void;
-
-  // Form fields
-  name: string;
-  setName: (s: string) => void;
-  dob: string;
-  setDob: (s: string) => void;
-  phoneNumber: string;
-  setPhoneNumber: (s: string) => void;
-  email: string;
-  setEmail: (s: string) => void;
-  password: string;
-  setPassword: (s: string) => void;
-  confirmPassword: string;
-  setConfirmPassword: (s: string) => void;
 
   clearError: () => void;
 
-  isFormValid: boolean;
-  needsProfileSetup: boolean;
-  completeProfileSetup: (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => Promise<void>;
-  updateProfileDetails: (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => Promise<void>;
-  handleLogin: () => Promise<void>;
-  handleSignup: () => Promise<void>;
+  updateProfileDetails: (data: ProfileExtras) => Promise<void>;
+  handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
+  handleSignup: (fields: SignupFields, extra?: ProfileExtras) => Promise<void>;
   handleLogout: () => Promise<void>;
 };
 
@@ -108,88 +95,12 @@ const getAuthErrorMessage = (err: unknown) => {
   return message;
 };
 
-const getFormValidationError = ({
-  mode,
-  name,
-  dob,
-  phoneNumber,
-  email,
-  password,
-  confirmPassword,
-}: {
-  mode: 'login' | 'signup';
-  name: string;
-  dob: string;
-  phoneNumber: string;
-  email: string;
-  password: string;
-  confirmPassword: string;
-}) => {
-  // Trim everything internally for live validation checking (like isFormValid)
-  const trimmedEmail = email.trim();
-  const trimmedName = name.trim();
-  const trimmedDob = dob.trim();
-  const trimmedPhone = phoneNumber.trim();
-
-  if (!trimmedEmail) {
-    return 'Email is required.';
-  }
-
-  if (!isValidEmail(trimmedEmail)) {
-    return 'Enter a valid email address.';
-  }
-
-  if (!password) {
-    return 'Password is required.';
-  }
-
-  if (mode !== 'signup') {
-    return null;
-  }
-
-  if (!isValidPassword(password)) {
-    return 'Password must be at least 8 characters long and include uppercase, lowercase, and a number.';
-  }
-
-  if (!isValidName(trimmedName)) {
-    return 'Please enter a valid full name.';
-  }
-
-  if (!isValidDob(trimmedDob)) {
-    return 'Please enter a valid date of birth in DD/MM/YYYY format and you must be at least 18 years old.';
-  }
-
-  if (!isValidPhoneNumber(trimmedPhone)) {
-    return 'Please enter a valid phone number.';
-  }
-
-  if (!confirmPassword) {
-    return 'Please confirm your password.';
-  }
-
-  if (password !== confirmPassword) {
-    return 'Passwords do not match.';
-  }
-
-  return null;
-};
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profileData, setProfileData] = useState<UserProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
-
-  // Form fields
-  const [name, setName] = useState('');
-  const [dob, setDob] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -205,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profileDoc = await getDoc(doc(db, 'users', currentUser.uid));
         if (profileDoc.exists()) {
           const data = profileDoc.data() as UserProfileData;
+          const isComplete = data.onboardingComplete ?? false;
           setProfileData({
             name: data.name ?? currentUser.displayName ?? '',
             dob: data.dob ?? '',
@@ -213,7 +125,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             degree: data.degree ?? null,
             bio: data.bio ?? null,
             profilePhotoUrl: data.profilePhotoUrl ?? null,
-            onboardingComplete: data.onboardingComplete ?? false,
+            onboardingComplete: isComplete,
+            isDriver: data.isDriver ?? false,
+            vehicleMake: data.vehicleMake ?? null,
+            vehicleModel: data.vehicleModel ?? null,
+            vehicleColor: data.vehicleColor ?? null,
+            licensePlate: data.licensePlate ?? null,
+            seatsAvailable: data.seatsAvailable ?? null,
           });
         } else {
           setProfileData({
@@ -225,6 +143,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             bio: null,
             profilePhotoUrl: null,
             onboardingComplete: false,
+            isDriver: false,
+            vehicleMake: null,
+            vehicleModel: null,
+            vehicleColor: null,
+            licensePlate: null,
+            seatsAvailable: null,
           });
         }
       } catch {
@@ -237,6 +161,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           bio: null,
           profilePhotoUrl: null,
           onboardingComplete: false,
+          isDriver: false,
+          vehicleMake: null,
+          vehicleModel: null,
+          vehicleColor: null,
+          licensePlate: null,
+          seatsAvailable: null,
         });
       } finally {
         setLoading(false);
@@ -246,31 +176,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const isFormValid = useMemo(() => {
-    return (
-      getFormValidationError({
-        mode,
-        name,
-        dob,
-        phoneNumber,
-        email,
-        password,
-        confirmPassword,
-      }) === null
-    );
-  }, [confirmPassword, dob, email, mode, name, password, phoneNumber]);
-
-  const handleLogin = async () => {
+  const handleLogin = async ({ email, password }: { email: string; password: string }) => {
     const trimmedEmail = email.trim();
 
     const validationError = getFormValidationError({
       mode: 'login',
-      name,
-      dob,
-      phoneNumber,
+      name: '',
+      dob: '',
+      phoneNumber: '',
       email: trimmedEmail,
       password,
-      confirmPassword,
+      confirmPassword: '',
     });
 
     if (validationError || submitting) {
@@ -290,12 +206,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSignup = async () => {
+  const handleSignup = async (fields: SignupFields, extra?: ProfileExtras) => {
     // Clean inputs exactly once for the signup process
-    const trimmedName = name.trim();
-    const trimmedDob = dob.trim();
-    const trimmedPhone = phoneNumber.trim();
-    const trimmedEmail = email.trim();
+    const trimmedName = fields.name.trim();
+    const trimmedDob = fields.dob.trim();
+    const trimmedPhone = fields.phoneNumber.trim();
+    const trimmedEmail = fields.email.trim();
 
     const validationError = getFormValidationError({
       mode: 'signup',
@@ -303,8 +219,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       dob: trimmedDob,
       phoneNumber: trimmedPhone,
       email: trimmedEmail,
-      password,
-      confirmPassword,
+      password: fields.password,
+      confirmPassword: fields.confirmPassword,
     });
 
     if (validationError || submitting) {
@@ -316,26 +232,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, fields.password);
       const currentUser = userCredential.user;
 
       await updateProfile(currentUser, { displayName: trimmedName });
-      
+
+      const trimmedDegree = extra?.degree?.trim() || null;
+      const trimmedBio = extra?.bio?.trim() || null;
+      const profilePhotoUrl = extra?.profilePhotoBase64
+        ? `data:${extra.profilePhotoMimeType || 'image/jpeg'};base64,${extra.profilePhotoBase64}`
+        : null;
+      const isDriverValue = extra?.isDriver ?? false;
+      const vehicleMake = extra?.vehicleMake?.trim() || null;
+      const vehicleModel = extra?.vehicleModel?.trim() || null;
+      const vehicleColor = extra?.vehicleColor?.trim() || null;
+      const licensePlate = extra?.licensePlate?.trim() || null;
+      const seatsAvailable = typeof extra?.seatsAvailable === 'number' ? extra.seatsAvailable : null;
+
+      // Profile details (photo/degree/bio/driver info) are gathered in the signup wizard
+      // itself now, so the account is created fully onboarded in one write instead of
+      // needing a separate post-signup setup screen.
       const profilePayload = {
         name: trimmedName,
         dob: trimmedDob,
         phoneNumber: trimmedPhone,
         email: trimmedEmail,
-        onboardingComplete: false,
+        degree: trimmedDegree,
+        bio: trimmedBio,
+        profilePhotoUrl,
+        isDriver: isDriverValue,
+        vehicleMake,
+        vehicleModel,
+        vehicleColor,
+        licensePlate,
+        seatsAvailable,
+        onboardingComplete: true,
         createdAt: new Date().toISOString(),
       };
 
       await setDoc(doc(db, 'users', currentUser.uid), profilePayload, { merge: true });
+
+      if (isDriverValue) {
+        await setDoc(
+          doc(db, 'drivers', currentUser.uid),
+          {
+            uid: currentUser.uid,
+            name: trimmedName,
+            dob: trimmedDob,
+            profilePhotoUrl,
+            vehicleMake,
+            vehicleModel,
+            vehicleColor,
+            licensePlate,
+            seatsAvailable,
+            createdAt: profilePayload.createdAt,
+            updatedAt: profilePayload.createdAt,
+          },
+          { merge: true },
+        );
+      }
+
       setProfileData((currentProfile) => ({
         ...(currentProfile ?? {}),
         ...profilePayload,
       }));
-      setNeedsProfileSetup(true);
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {
@@ -343,12 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const saveProfileDetails = async (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => {
+  const saveProfileDetails = async (data: ProfileExtras) => {
     const currentUser = auth.currentUser ?? user;
 
     if (!currentUser) {
@@ -370,17 +325,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Clean inputs exactly once for saving to Firestore
       const trimmedDegree = data.degree?.trim() || null;
       const trimmedBio = data.bio?.trim() || null;
+      const isDriverValue = data.isDriver ?? false;
+      const vehicleMake = data.vehicleMake?.trim() || null;
+      const vehicleModel = data.vehicleModel?.trim() || null;
+      const vehicleColor = data.vehicleColor?.trim() || null;
+      const licensePlate = data.licensePlate?.trim() || null;
+      const seatsAvailable = typeof data.seatsAvailable === 'number' ? data.seatsAvailable : null;
 
+      const timestamp = new Date().toISOString();
       const profilePayload = {
         degree: trimmedDegree,
         bio: trimmedBio,
-        profilePhotoUrl, 
+        profilePhotoUrl,
+        isDriver: isDriverValue,
+        vehicleMake,
+        vehicleModel,
+        vehicleColor,
+        licensePlate,
+        seatsAvailable,
         onboardingComplete: true,
-        updatedAt: new Date().toISOString(),
+        updatedAt: timestamp,
       };
 
       await setDoc(doc(db, 'users', currentUser.uid), profilePayload, { merge: true });
-      
+
+      if (isDriverValue) {
+        const driverPayload = {
+          uid: currentUser.uid,
+          name: profileData?.name ?? currentUser.displayName ?? '',
+          dob: profileData?.dob ?? '',
+          profilePhotoUrl,
+          vehicleMake,
+          vehicleModel,
+          vehicleColor,
+          licensePlate,
+          seatsAvailable,
+          createdAt: profileData?.updatedAt ?? timestamp,
+          updatedAt: timestamp,
+        };
+
+        await setDoc(doc(db, 'drivers', currentUser.uid), driverPayload, { merge: true });
+      }
+
       setProfileData((currentProfile) => ({
         ...(currentProfile ?? {}),
         name: currentProfile?.name ?? currentUser.displayName ?? '',
@@ -398,40 +384,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const completeProfileSetup = async (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => {
-    const currentUser = auth.currentUser ?? user;
-
-    if (!currentUser) {
-      setError('You need to sign in before completing profile setup.');
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-    setNeedsProfileSetup(false);
-
-    try {
-      await saveProfileDetails(data);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to save profile details right now.';
-      setError(message);
-      setNeedsProfileSetup(true);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const updateProfileDetails = async (data: {
-    profilePhotoBase64?: string;
-    profilePhotoMimeType?: string;
-    degree?: string;
-    bio?: string;
-  }) => {
+  const updateProfileDetails = async (data: ProfileExtras) => {
     await saveProfileDetails(data);
   };
 
@@ -439,13 +392,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       await firebaseSignOut(auth);
-      setName('');
-      setDob('');
-      setPhoneNumber('');
-      setEmail('');
-      setPassword('');
-      setConfirmPassword('');
-      setNeedsProfileSetup(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to sign out right now.';
       setError(message);
@@ -454,38 +400,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearError = () => setError(null);
 
-  const toggleMode = () => {
-    setMode((currentMode) => (currentMode === 'login' ? 'signup' : 'login'));
-    setConfirmPassword('');
-    setError(null);
-  };
-
   const value = {
     user,
     profileData,
     loading,
     submitting,
     error,
-    mode,
-    toggleMode,
 
-    name,
-    setName,
-    dob,
-    setDob,
-    phoneNumber,
-    setPhoneNumber,
-    email,
-    setEmail,
-    password,
-    setPassword,
-    confirmPassword,
-    setConfirmPassword,
-
-    isFormValid,
-    needsProfileSetup,
     clearError,
-    completeProfileSetup,
     updateProfileDetails,
     handleLogin,
     handleSignup,

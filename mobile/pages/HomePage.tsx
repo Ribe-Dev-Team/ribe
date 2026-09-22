@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
@@ -12,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import { useAuth } from '../auth/useAuth';
 import RideCard, { RideCardProps } from '../components/RideCard';
+import { fetchUserRides } from '../services/rideData';
 
 interface HomePageProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -21,57 +23,9 @@ interface HomePageProps {
   onOpenDriverProfile: (ride: RideCardProps) => void;
 }
 
-// Mock data - wiring to real ride data is follow-up work once the backend endpoint exists
-const todaysRides: RideCardProps[] = [
-  {
-    status: 'confirmed',
-    date: new Date(2026, 6, 12),
-    pickup: { address: '12 Gambler Crescent', time: '10:30 AM' },
-    destination: { address: 'Monash University Clayton', eta: '11:15 AM' },
-    etaMinutes: 45,
-    cost: '$8.50',
-    co2SavedKg: 2.1,
-    driver: { name: 'Marcus Vance', vehicle: 'Honda Civic - Silver' },
-    plate: '1ABC234',
-    driverPhone: '0412345678',
-    pickupDateTime: new Date(Date.now() + 6 * 60 * 60 * 1000), // 6h away - within reveal window
-  },
-  {
-    status: 'confirmed',
-    date: new Date(2026, 6, 12),
-    pickup: { address: 'Monash University Clayton', time: '4:45 PM' },
-    destination: { address: '12 Gambler Crescent', eta: '5:30 PM' },
-    etaMinutes: 45,
-    cost: '$8.50',
-    co2SavedKg: 2.1,
-    driver: { name: 'Marcus Vance', vehicle: 'Honda Civic - Silver' },
-    plate: '1ABC234',
-    driverPhone: '0412345678',
-    pickupDateTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 2 days away - still masked
-  },
-];
-
-// TEST DATA ONLY: "Today's Drives" for the driver side of the rider/driver toggle plan.
-// RideCard's "driver" field is repurposed as passenger info here - a real driver-mode
-// card variant is follow-up work once that flow is designed.
-const todaysDrives: RideCardProps[] = [
-  {
-    status: 'confirmed',
-    date: new Date(2026, 6, 12),
-    pickup: { address: '12 Gambler Crescent', time: '10:30 AM' },
-    destination: { address: 'Monash University Clayton', eta: '11:15 AM' },
-    etaMinutes: 45,
-    cost: '$8.50',
-    co2SavedKg: 2.1,
-    driver: { name: 'Emily Chen (passenger)', vehicle: '1 passenger' },
-    plate: '1ABC234',
-  },
-];
-
 const notifications = [
   { id: '1', text: 'Your ride with Marcus Vance is confirmed for 10:30 AM.' },
   { id: '2', text: 'A driver has been matched for your 1:15 PM request.' },
-  { id: '3', text: 'Reminder: rate your last trip with Priya Nair.' },
 ];
 
 function ridesDescription(count: number, noun: 'ride' | 'drive') {
@@ -90,6 +44,54 @@ export default function HomePage({
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'there';
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [todaysRides, setTodaysRides] = useState<RideCardProps[]>([]);
+  const [todaysDrives, setTodaysDrives] = useState<RideCardProps[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setTodaysRides([]);
+      setTodaysDrives([]);
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadRides = async () => {
+      try {
+        const { requests, offers } = await fetchUserRides(user.uid);
+        if (!isMounted) return;
+
+        // Helper function to check if a date matches today's date
+        const today = new Date();
+        const isToday = (d: Date) =>
+          d.getFullYear() === today.getFullYear() &&
+          d.getMonth() === today.getMonth() &&
+          d.getDate() === today.getDate();
+
+        // Filter requests and offers for today only
+        const todayRequests: RideCardProps[] = requests.filter((ride: RideCardProps) => isToday(ride.date));
+        const todayDrives: RideCardProps[] = offers.filter((drive: RideCardProps) => isToday(drive.date));
+
+        setTodaysRides(todayRequests);
+        setTodaysDrives(todayDrives);
+      } catch (error) {
+        console.warn('Failed to load rides:', error);
+        if (isMounted) {
+          setTodaysRides([]);
+          setTodaysDrives([]);
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    loadRides();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.uid]);
 
   return (
     <ScrollView
@@ -136,31 +138,47 @@ export default function HomePage({
 
       <Text style={localStyles.sectionHeading}>Today's Rides</Text>
       <Text style={localStyles.sectionDescription}>
-        {ridesDescription(todaysRides.length, 'ride')}
+        {loading ? 'Loading rides...' : ridesDescription(todaysRides.length, 'ride')}
       </Text>
 
-      {todaysRides.map((ride, index) => (
-        <RideCard
-          key={index}
-          {...ride}
-          onSeeDetails={() => onSeeRideDetails(ride)}
-          onOpenDriverProfile={() => onOpenDriverProfile(ride)}
-        />
-      ))}
+      {loading ? (
+        <View style={localStyles.loadingState}>
+          <ActivityIndicator color={colors.white} size="small" />
+        </View>
+      ) : todaysRides.length === 0 ? (
+        <Text style={localStyles.emptyState}>No rides scheduled yet.</Text>
+      ) : (
+        todaysRides.map((ride, index) => (
+          <RideCard
+            key={`${ride.date.toISOString()}-${index}`}
+            {...ride}
+            onSeeDetails={() => onSeeRideDetails(ride)}
+            onOpenDriverProfile={() => onOpenDriverProfile(ride)}
+          />
+        ))
+      )}
 
       <Text style={localStyles.sectionHeading}>Today's Drives</Text>
       <Text style={localStyles.sectionDescription}>
-        {ridesDescription(todaysDrives.length, 'drive')}
+        {loading ? 'Loading drives...' : ridesDescription(todaysDrives.length, 'drive')}
       </Text>
 
-      {todaysDrives.map((drive, index) => (
-        <RideCard
-          key={index}
-          {...drive}
-          onSeeDetails={() => onSeeRideDetails(drive)}
-          onOpenDriverProfile={() => onOpenDriverProfile(drive)}
-        />
-      ))}
+      {loading ? (
+        <View style={localStyles.loadingState}>
+          <ActivityIndicator color={colors.white} size="small" />
+        </View>
+      ) : todaysDrives.length === 0 ? (
+        <Text style={localStyles.emptyState}>No drives scheduled yet.</Text>
+      ) : (
+        todaysDrives.map((drive, index) => (
+          <RideCard
+            key={`${drive.date.toISOString()}-${index}`}
+            {...drive}
+            onSeeDetails={() => onSeeRideDetails(drive)}
+            onOpenDriverProfile={() => onOpenDriverProfile(drive)}
+          />
+        ))
+      )}
     </ScrollView>
   );
 }
@@ -206,7 +224,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: colors.whiteA20,
   },
   notificationsDropdown: {
     position: 'absolute',
@@ -271,5 +289,15 @@ const localStyles = StyleSheet.create({
     opacity: 0.75,
     fontSize: 13,
     marginBottom: 16,
+  },
+  loadingState: {
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  emptyState: {
+    color: colors.white,
+    opacity: 0.7,
+    fontSize: 13,
+    marginBottom: 18,
   },
 });

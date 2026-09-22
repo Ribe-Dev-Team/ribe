@@ -1,0 +1,8 @@
+{
+  "exclude": [
+    "node_modules",
+    ".vscode",
+    ".github"
+  ],
+  "extends": "mobile/tsconfig.json"
+}

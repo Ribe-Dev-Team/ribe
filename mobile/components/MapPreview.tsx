@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, View, ViewStyle } from 'react-native';
-import styles, { colors } from '../styles';
+import styles from '../styles';
 
 //this can mainly be disregarded as it will be updated with google API.
 

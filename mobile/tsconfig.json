@@ -1,12 +1,28 @@
 {
-  "extends": "expo/tsconfig.base",
-   "compilerOptions": {
+  "compilerOptions": {
     "target": "es2020",
     "module": "esnext",
     "jsx": "react-native",
+    "types": [
+      "jest",
+      "node"
+    ],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
     "forceConsistentCasingInFileNames": true
   },
+  "exclude": [
+    "node_modules",
+    "assets",
+    ".expo"
+  ],
+  "extends": "expo/tsconfig.base"
 }

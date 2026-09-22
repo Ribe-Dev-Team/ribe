@@ -15,14 +15,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import styles, { colors } from '../styles';
 import { Booking } from './schema/booking.schema';
 import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
-import { timePattern, toMinutes, formatTime12h } from '../utility/times';
+import { formatTime12h } from '../utility/times';
 import { isFutureDate, formatDateToStr, parseDateAsStr } from '../utility/dates';
+import { validateTripStep as validateTripStepFields, validateDetailsStep as validateDetailsStepFields, getTimeOrderWarning, getDetourWarning } from './validation/bookingValidation';
 import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
 import NumberStepper from '../components/NumberStepper';
 import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import RouteMapPreview from '../components/RouteMapPreview';
 import { geocodeAddress, ResolvedPlace } from '../services/googlePlaces';
+import { useAuth } from '../auth/useAuth';
 
 interface BookingPageProps {
   onDone: () => void;
@@ -39,6 +41,7 @@ function toTitleCase(value: string): string {
 }
 
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>('trip');
   const [isDriving, setIsDriving] = useState<boolean>(false);
   const [toUni, setToUni] = useState<boolean>(true);
@@ -116,77 +119,24 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated]);
 
-  const depMinutes = timePattern.test(depTime.trim()) ? toMinutes(depTime.trim()) : null;
-  const arrMinutes = timePattern.test(arrTime.trim()) ? toMinutes(arrTime.trim()) : null;
-  const timeOrderWarning =
-    depMinutes !== null && arrMinutes !== null && arrMinutes <= depMinutes
-      ? 'Arrival time must be later than departure time.'
-      : '';
-  const detourWarning =
-    isDriving && detourTime > 0 && depMinutes !== null && arrMinutes !== null && arrMinutes - depMinutes < detourTime
-      ? `Detour of ${detourTime} min exceeds your ${arrMinutes - depMinutes} min travel window.`
-      : '';
+  const timeOrderWarning = getTimeOrderWarning(depTime, arrTime);
+  const detourWarning = getDetourWarning(isDriving, detourTime, depTime, arrTime);
 
   const validateTripStep = (): boolean => {
-    let valid = true;
-
-    // address validation
-    if (!address.trim()) {
-      setAddrErr('Address is required.');
-      valid = false;
-    } else setAddrErr('');
-
-    return valid;
+    const { addrErr } = validateTripStepFields(address);
+    setAddrErr(addrErr);
+    return addrErr === '';
   };
 
   const validateDetailsStep = (): boolean => {
-    let valid = true;
-
-    // travel date validation
-    const parsedDate = parseDateAsStr(travelDate);
-
-    if (!parsedDate) {
-      setTravelDateErr(`'${travelDate}' is not a valid date`);
-      valid = false;
-    } else if (!isFutureDate(parsedDate)) {
-      setTravelDateErr(`'${travelDate}' must be a future date`);
-      valid = false;
-    } else setTravelDateErr('');
-
-    // detour time & seats validation
-    if (!isDriving) {
-      setDetourTimeErr('');
-      setDetourTime(0);
-      setNumSeatsErr('');
-    } else {
-      if (detourTime <= 0) {
-        setDetourTimeErr("Maximum detour time required");
-      } else setDetourTimeErr('');
-
-      if (numSeats < 1) {
-        setNumSeatsErr("Ride offers require at least one available seat");
-      } else if (numSeats > 12) {
-        setNumSeatsErr("Too many seats offered. Max 12.");
-      } else setNumSeatsErr('');
-    }
-
-    // departure time validation
-    if (!timePattern.test(depTime.trim())) {
-      setDepTimeErr('Departure time must be HH:mm (24-hr).');
-      valid = false;
-    } else setDepTimeErr('');
-
-    // arrival time validation
-    if (!timePattern.test(arrTime.trim())) {
-      setArrTimeErr('Arrival time must be HH:mm (24-hr).');
-      valid = false;
-    } else setArrTimeErr('');
-
-    // arrival-after-departure and detour-vs-window sanity checks (surfaced inline as the user types)
-    if (timeOrderWarning || detourWarning) valid = false;
-
-    // return valid if no issues found, otherwise return false
-    return valid;
+    const result = validateDetailsStepFields({ travelDate, isDriving, detourTime, numSeats, depTime, arrTime });
+    setTravelDateErr(result.travelDateErr);
+    setDetourTimeErr(result.detourTimeErr);
+    setNumSeatsErr(result.numSeatsErr);
+    setDepTimeErr(result.depTimeErr);
+    setArrTimeErr(result.arrTimeErr);
+    if (result.resetDetourTime) setDetourTime(0);
+    return result.valid;
   };
 
   const goToDetails = () => {
@@ -207,6 +157,8 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     try {
       // Build common booking data
       const commonData: Booking = {
+        userId: user?.uid,
+        status: 'pending',
         isDriving,
         toUni,
         address: address.trim(),
@@ -236,7 +188,8 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       onDone();
     } catch (error) {
       console.error('Failed to create ride request/offer:', error);
-      alert('Error submitting booking.');
+      const msg = error instanceof Error ? error.message : JSON.stringify(error);
+      alert(`Error submitting booking: ${msg}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -351,7 +304,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         </View>
 
         <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <ScrollView
               contentContainerStyle={localStyles.scrollContent}
               keyboardShouldPersistTaps="handled"
@@ -403,7 +356,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                   placeholder="123 Main St, Suburb"
                   value={address}
                 />
-                {addrErr !== '' && <Text style={styles.errorText}>{addrErr}</Text>}
+                {addrErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{addrErr}</Text>}
 
                 <Text style={[localStyles.fieldLabel, { marginTop: 16 }]}>Route preview</Text>
                 <RouteMapPreview address={addressPlace} toUni={toUni} />
@@ -431,7 +384,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       </View>
 
       <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView
             contentContainerStyle={localStyles.scrollContent}
             keyboardShouldPersistTaps="handled"
@@ -450,9 +403,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 <Text style={travelDate ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
                   {travelDate || 'DD-MM-YYYY'}
                 </Text>
-                <Ionicons color="rgba(255,255,255,0.6)" name="calendar-outline" size={18} />
+                <Ionicons color={colors.whiteA60} name="calendar-outline" size={18} />
               </Pressable>
-              {travelDateErr !== '' && <Text style={styles.errorText}>{travelDateErr}</Text>}
+              {travelDateErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{travelDateErr}</Text>}
 
               <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest departure</Text>
               <Pressable
@@ -465,9 +418,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 <Text style={depTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
                   {depTime ? formatTime12h(depTime) : 'Select time'}
                 </Text>
-                <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
+                <Ionicons color={colors.whiteA60} name="time-outline" size={18} />
               </Pressable>
-              {depTimeErr !== '' && <Text style={styles.errorText}>{depTimeErr}</Text>}
+              {depTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{depTimeErr}</Text>}
 
               <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest arrival</Text>
               <Pressable
@@ -480,9 +433,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 <Text style={arrTime ? localStyles.pickerValueText : localStyles.pickerPlaceholderText}>
                   {arrTime ? formatTime12h(arrTime) : 'Select time'}
                 </Text>
-                <Ionicons color="rgba(255,255,255,0.6)" name="time-outline" size={18} />
+                <Ionicons color={colors.whiteA60} name="time-outline" size={18} />
               </Pressable>
-              {arrTimeErr !== '' && <Text style={styles.errorText}>{arrTimeErr}</Text>}
+              {arrTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{arrTimeErr}</Text>}
               {arrTimeErr === '' && timeOrderWarning !== '' && <Text style={localStyles.warningText}>{timeOrderWarning}</Text>}
             </View>
 
@@ -491,12 +444,12 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 <Text style={localStyles.cardLabel}>Driver details</Text>
                 <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
                 <NumberStepper max={120} min={0} onChange={setDetourTime} step={5} style={localStyles.fieldInput} value={detourTime} />
-                {detourTimeErr !== '' && <Text style={styles.errorText}>{detourTimeErr}</Text>}
+                {detourTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{detourTimeErr}</Text>}
                 {detourTimeErr === '' && detourWarning !== '' && <Text style={localStyles.warningText}>{detourWarning}</Text>}
 
                 <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
                 <NumberStepper max={12} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
-                {numSeatsErr !== '' && <Text style={styles.errorText}>{numSeatsErr}</Text>}
+                {numSeatsErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{numSeatsErr}</Text>}
               </View>
             )}
 
@@ -565,7 +518,7 @@ const localStyles = StyleSheet.create({
     paddingBottom: 12,
     backgroundColor: colors.darkBlue,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomColor: colors.whiteA08,
   },
   scrollContent: {
     padding: 20,
@@ -580,7 +533,7 @@ const localStyles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 20,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
   },
   backButtonLabel: {
     fontFamily: 'Marcellus_400Regular',
@@ -604,14 +557,14 @@ const localStyles = StyleSheet.create({
     flex: 1,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: colors.whiteA18,
   },
   progressSegmentActive: {
     backgroundColor: colors.white,
   },
   progressLabel: {
     marginTop: 8,
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -634,7 +587,7 @@ const localStyles = StyleSheet.create({
   },
   segmentRow: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
     borderRadius: 14,
     padding: 4,
   },
@@ -657,26 +610,26 @@ const localStyles = StyleSheet.create({
     opacity: 1,
   },
   fieldLabel: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     marginBottom: 6,
   },
   fieldInput: {
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: colors.whiteA30,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
     color: colors.white,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: colors.whiteA10,
   },
   fieldInputFocused: {
     borderColor: colors.white,
     borderWidth: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: colors.whiteA18,
   },
   pickerField: {
     flexDirection: 'row',
@@ -689,7 +642,7 @@ const localStyles = StyleSheet.create({
   },
   pickerPlaceholderText: {
     fontSize: 15,
-    color: 'rgba(255,255,255,0.4)',
+    color: colors.whiteA40,
   },
   actionButton: {
     alignItems: 'center',
@@ -700,17 +653,17 @@ const localStyles = StyleSheet.create({
     paddingVertical: 14,
   },
   actionButtonDisabled: {
-    backgroundColor: 'rgba(19, 118, 190, 0.45)',
+    backgroundColor: colors.mediumBlueA45,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.2)',
+    borderBottomColor: colors.whiteA20,
     paddingVertical: 9,
   },
   summaryLabel: {
-    color: 'rgba(255,255,255,0.75)',
+    color: colors.whiteA75,
     fontSize: 13,
   },
   summaryValue: {
@@ -724,7 +677,7 @@ const localStyles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     marginBottom: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: colors.whiteA10,
   },
   infoHeaderRow: {
     flexDirection: 'row',

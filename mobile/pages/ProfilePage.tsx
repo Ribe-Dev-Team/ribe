@@ -4,13 +4,10 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
   TouchableWithoutFeedback,
   Keyboard,
@@ -20,14 +17,14 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../auth/useAuth';
 import styles, { colors } from '../styles';
+import PressableScale from '../components/PressableScale';
 
 interface ProfilePageProps {
   onLogout: () => void;
+  onOpenDriverRegistration: () => void;
 }
 
-const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-
-export default function ProfilePage({ onLogout }: ProfilePageProps) {
+export default function ProfilePage({ onLogout, onOpenDriverRegistration }: ProfilePageProps) {
   const { user, profileData, submitting, updateProfileDetails } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [degree, setDegree] = useState(profileData?.degree || '');
@@ -35,15 +32,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(profileData?.profilePhotoUrl || null);
   const [profilePhotoBase64, setProfilePhotoBase64] = useState<string | null>(null);
   const [profilePhotoMimeType, setProfilePhotoMimeType] = useState<string | null>(null);
-  // Local-only for now - no backend field yet, follow-up work once profile schema supports it
-  const [driverMode, setDriverMode] = useState(false);
-  const [campusDays, setCampusDays] = useState<string[]>([]);
-
-  const toggleCampusDay = (day: string) => {
-    setCampusDays((current) =>
-      current.includes(day) ? current.filter((d) => d !== day) : [...current, day],
-    );
-  };
+  const isDriver = Boolean(profileData?.isDriver);
 
   const profileName = profileData?.name || user?.displayName || 'Your name';
   const profileEmail = profileData?.email || user?.email || 'No email added';
@@ -105,7 +94,6 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
     >
       <ScrollView
         contentContainerStyle={styles.profileScrollView}
@@ -114,14 +102,20 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
       >
         <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
           <View>
-            <Text style={localStyles.pageTitle}>Profile</Text>
 
             <View style={styles.profileCard}>
-              {!isEditing ? (
-                <Pressable onPress={() => setIsEditing(true)} style={styles.editButton}>
-                  <Text style={styles.editButtonText}>Edit</Text>
-                </Pressable>
-              ) : null}
+              {!isEditing && (
+                <View style={localStyles.topActionsRow}>
+                  <PressableScale onPress={onLogout} style={localStyles.signOutButton}>
+                    <Ionicons name="log-out-outline" size={14} color={colors.white} />
+                    <Text style={localStyles.signOutText}>Sign out</Text>
+                  </PressableScale>
+
+                  <PressableScale onPress={() => setIsEditing(true)} style={styles.editButton}>
+                    <Text style={styles.editButtonText}>Edit</Text>
+                  </PressableScale>
+                </View>
+              )}
 
               <View style={localStyles.photoWrap}>
                 {profilePhotoUri ? (
@@ -132,13 +126,13 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                   </View>
                 )}
                 {isEditing && (
-                  <Pressable
+                  <PressableScale
                     accessibilityLabel="Change photo"
                     onPress={openImagePicker}
                     style={localStyles.editPhotoBadge}
                   >
                     <Ionicons name="pencil" size={14} color={colors.darkBlue} />
-                  </Pressable>
+                  </PressableScale>
                 )}
               </View>
 
@@ -158,7 +152,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                       autoCapitalize="words"
                       onChangeText={setDegree}
                       placeholder="Bachelor of Science in Computer Science"
-                      placeholderTextColor="rgba(255,255,255,0.4)"
+                      placeholderTextColor={colors.whiteA40}
                       style={styles.editInput}
                       value={degree}
                     />
@@ -172,7 +166,7 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                       numberOfLines={4}
                       onChangeText={setBio}
                       placeholder="Write a short bio about yourself..."
-                      placeholderTextColor="rgba(255,255,255,0.4)"
+                      placeholderTextColor={colors.whiteA40}
                       style={styles.editBioInput}
                       textAlignVertical="top"
                       value={bio}
@@ -180,21 +174,28 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                     <Text style={localStyles.charCount}>{bio.length} / 200</Text>
                   </View>
 
-                  <View style={styles.editActionsRow}>
-                    <Pressable onPress={handleCancel} style={styles.secondaryButton}>
-                      <Text style={styles.secondaryButtonText}>Cancel</Text>
-                    </Pressable>
+                  <PressableScale onPress={onOpenDriverRegistration} style={localStyles.driverActionButton}>
+                    <Text style={localStyles.driverActionButtonText}>
+                      {isDriver ? 'Update Driver Details' : 'Become A Driver'}
+                    </Text>
+                  </PressableScale>
 
-                    <Pressable
+                  <View style={styles.editActionsRow}>
+                    <PressableScale onPress={handleCancel} style={styles.secondaryButton}>
+                      <Text style={styles.secondaryButtonText}>Cancel</Text>
+                    </PressableScale>
+
+                    <PressableScale
+                      disabled={submitting}
                       onPress={handleSave}
-                      style={[styles.primaryButton, submitting && styles.primaryButtonDisabled]}
+                      style={[localStyles.saveButton, submitting && localStyles.saveButtonDisabled]}
                     >
                       {submitting ? (
-                        <ActivityIndicator color="#ffffff" />
+                        <ActivityIndicator color={colors.darkBlue} />
                       ) : (
-                        <Text style={styles.primaryButtonText}>Save</Text>
+                        <Text style={localStyles.saveButtonText}>Save</Text>
                       )}
-                    </Pressable>
+                    </PressableScale>
                   </View>
                 </>
               ) : (
@@ -211,46 +212,29 @@ export default function ProfilePage({ onLogout }: ProfilePageProps) {
                 </>
               )}
 
-              <View style={styles.profileInfoBlock}>
-                <Text style={styles.profileLabel}>On campus</Text>
-                <View style={localStyles.daysRow}>
-                  {weekdays.map((day) => {
-                    const active = campusDays.includes(day);
-                    return (
-                      <Pressable
-                        key={day}
-                        onPress={() => toggleCampusDay(day)}
-                        style={[localStyles.dayPill, active && localStyles.dayPillActive]}
-                      >
-                        <Text style={[localStyles.dayPillText, active && localStyles.dayPillTextActive]}>{day}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <View style={[styles.profileInfoBlock, localStyles.driverModeRow]}>
-                <View style={localStyles.driverModeCopy}>
-                  <View style={localStyles.driverModeTitleRow}>
-                    <Ionicons name="car-sport-outline" size={16} color={colors.white} />
-                    <Text style={localStyles.driverModeTitle}>Driver mode</Text>
+              {!isEditing && (
+                <View style={[styles.profileInfoBlock, localStyles.driverModeRow]}>
+                  <View style={localStyles.driverModeCopy}>
+                    <View style={localStyles.driverModeTitleRow}>
+                      <Ionicons name="car-sport-outline" size={16} color={colors.white} />
+                      <Text style={localStyles.driverModeTitle}>Driver status</Text>
+                    </View>
+                    <Text style={localStyles.driverModeSubtitle}>
+                      {isDriver
+                        ? [profileData?.vehicleColor, profileData?.vehicleMake, profileData?.vehicleModel]
+                            .filter(Boolean)
+                            .join(' ') || 'Vehicle details on file'
+                        : 'Add your vehicle details to start giving rides'}
+                    </Text>
                   </View>
-                  <Text style={localStyles.driverModeSubtitle}>
-                    {driverMode ? 'Honda Civic - 1ABC234' : 'Add your vehicle details to start driving'}
-                  </Text>
+                  {isDriver ? (
+                    <View style={localStyles.driverBadge}>
+                      <Text style={localStyles.driverBadgeText}>Driver</Text>
+                    </View>
+                  ) : null}
                 </View>
-                <Switch
-                  value={driverMode}
-                  onValueChange={setDriverMode}
-                  trackColor={{ false: 'rgba(255,255,255,0.3)', true: colors.confirmed }}
-                  thumbColor={colors.white}
-                />
-              </View>
+              )}
             </View>
-
-            <TouchableOpacity onPress={onLogout} style={localStyles.signOutButton}>
-              <Text style={localStyles.signOutText}>Sign out</Text>
-            </TouchableOpacity>
           </View>
         </TouchableWithoutFeedback>
       </ScrollView>
@@ -282,28 +266,6 @@ const localStyles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.mediumBlue,
   },
-  daysRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  dayPill: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  dayPillActive: {
-    backgroundColor: colors.white,
-  },
-  dayPillText: {
-    color: colors.white,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  dayPillTextActive: {
-    color: colors.mediumBlue,
-  },
   driverModeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -325,22 +287,77 @@ const localStyles = StyleSheet.create({
     fontWeight: '600',
   },
   driverModeSubtitle: {
-    color: 'rgba(255,255,255,0.7)',
+    color: colors.whiteA70,
     fontSize: 12,
+  },
+  driverBadge: {
+    backgroundColor: colors.confirmed,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  driverBadgeText: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  driverActionButton: {
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.whiteA25,
+    backgroundColor: colors.darkBlue,
+  },
+  driverActionButtonText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '600',
   },
   charCount: {
     alignSelf: 'flex-end',
-    color: 'rgba(255,255,255,0.6)',
+    color: colors.whiteA60,
     fontSize: 11,
     marginTop: 4,
   },
+  saveButton: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  saveButtonText: {
+    color: colors.darkBlue,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  topActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   signOutButton: {
-    marginTop: 20,
-    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    backgroundColor: colors.pending,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 12,
   },
   signOutText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 14,
+    color: colors.white,
+    fontSize: 13,
     fontWeight: '600',
   },
 });

@@ -4,6 +4,10 @@ backend/node_modules/
 mobile/node_modules/
 matching/dist/
 
+# Test coverage output
+coverage/
+mobile/coverage/
+
 # Mobile / Expo
 mobile/.expo/
 mobile/.expo-shared/

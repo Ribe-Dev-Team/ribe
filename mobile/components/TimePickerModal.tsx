@@ -45,7 +45,11 @@ function nearestMinuteIndex(minute: number): number {
 function parseInitialTime(time?: string) {
   if (time && isValid24Time(time)) {
     const t12 = decomposeTime12h(time);
-    return { hourIndex: t12.hrs - 1, minuteIndex: nearestMinuteIndex(t12.mins), periodIndex: t12.period };
+    return {
+      hourIndex: t12.hrs - 1,
+      minuteIndex: nearestMinuteIndex(t12.mins),
+      periodIndex: t12.period === 'PM' ? 1 : 0,
+    };
   }
   return { hourIndex: 7, minuteIndex: 0, periodIndex: 0 }; // default 08:00 AM
 }
@@ -135,7 +139,7 @@ export default function TimePickerModal({ visible, label, initialTime, onSelect,
           touch responder on press-down and won't release it to the ScrollView wheels below,
           which silently breaks their drag-to-scroll gesture.
         */}
-        <Pressable onPress={onClose} style={StyleSheet.absoluteFillObject} />
+        <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
 
         <View style={localStyles.sheet}>
           <Text style={localStyles.title}>{label}</Text>
@@ -175,7 +179,7 @@ export default function TimePickerModal({ visible, label, initialTime, onSelect,
 const localStyles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(6,32,54,0.6)',
+    backgroundColor: colors.navyA60,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -205,10 +209,10 @@ const localStyles = StyleSheet.create({
     top: SPACER_HEIGHT,
     height: ITEM_HEIGHT,
     borderRadius: 12,
-    backgroundColor: 'rgba(145, 211, 249, 0.22)',
+    backgroundColor: colors.skyBlueA22,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: colors.whiteA30,
   },
   columnsRow: {
     flexDirection: 'row',
@@ -231,7 +235,7 @@ const localStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   cellText: {
-    color: 'rgba(255,255,255,0.45)',
+    color: colors.whiteA45,
     fontSize: 17,
   },
   cellTextActive: {
@@ -249,7 +253,7 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: colors.whiteA16,
   },
   cancelButtonText: {
     color: colors.white,

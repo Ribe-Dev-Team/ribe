@@ -1,5 +1,30 @@
 {
-  "dependencies": {
-    "firebase": "^12.17.1"
-  }
+    "name": "root-testing-environment",
+    "private": true,
+    "workspaces": [
+        "mobile",
+        "backend"
+    ],
+    "scripts": {
+        "test": "jest --config mobile/jest.config.js"
+    },
+    "devDependencies": {
+        "@babel/core": "^7.24.0",
+        "@babel/preset-env": "^7.24.0",
+        "@babel/preset-react": "^7.24.0",
+        "@babel/preset-typescript": "^7.24.0",
+        "@testing-library/react-native": "^14.0.1",
+        "@types/jest": "^29.5.5",
+        "babel-jest": "^29.7.0",
+        "jest": "^29.7.0",
+        "jest-expo": "^57.0.0",
+        "test-renderer": "^1.0.0",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.4.0"
+    },
+    "overrides": {
+        "expo": "~57.0.23",
+        "react": "19.2.3",
+        "uuid": "^11.1.1"
+    }
 }
