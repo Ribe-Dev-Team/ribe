@@ -1,7 +1,8 @@
 import { collection, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
-import { Booking } from './booking.schema';
+import { Booking, Coord } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
+import { BOOKING_STATUSES, isBookingStatus } from './matchStatus';
 import { timePattern, toMinutes } from '../../utility/times';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
 
@@ -12,6 +13,41 @@ const parseDateToTimestamp = (dateStr: string): Timestamp => {
   throw new Error(`The date ${dateStr} was not a valid date.`);
 };
 
+/*
+Validate and normalise a booking's resolved coordinates.
+
+Returns undefined when the booking carries none. That is not an error: Places
+and Geocoding can both fail, or the API key can be absent, and the booking is
+still worth accepting - the document simply isn't matchable until it is
+backfilled. Anything PRESENT but malformed is rejected outright, because a
+silently wrong coordinate sends a real driver to the wrong suburb.
+
+Rebuilt field by field rather than passed through, so a caller handing us a
+ResolvedPlace-shaped object doesn't leak `lng`/`description` into Firestore.
+*/
+const validateCoord = (coord: Coord | undefined, label: string): Coord | undefined => {
+  // `== null` on purpose: a draft restored from AsyncStorage is JSON, so an
+  // absent coordinate can come back as null rather than undefined.
+  if (coord == null) return undefined;
+
+  const { lat, lon } = coord;
+
+  if (typeof lat !== 'number' || !Number.isFinite(lat)) {
+    throw new Error(`${label} latitude must be a finite number`);
+  }
+  if (typeof lon !== 'number' || !Number.isFinite(lon)) {
+    throw new Error(`${label} longitude must be a finite number`);
+  }
+  if (lat < -90 || lat > 90) {
+    throw new Error(`${label} latitude must be between -90 and 90, but was ${lat}`);
+  }
+  if (lon < -180 || lon > 180) {
+    throw new Error(`${label} longitude must be between -180 and 180, but was ${lon}`);
+  }
+
+  return { lat, lon };
+};
+
 // Add request to DB
 export const addRideRequest = async (booking: Booking): Promise<string> => {
   const collectionRef = collection(db, 'rideRequests');
@@ -20,11 +56,18 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     throw new Error('A user must be signed in to create a ride request.');
   }
 
+  // Validated before anything is built, so a malformed coordinate fails the
+  // write rather than reaching Firestore.
+  const coord = validateCoord(booking.coord, 'Ride request');
+
   const req: Omit<RideRequest, 'requestID'> = {
     userId: booking.userId,
     status: booking.status ?? 'pending',
     toUni: booking.toUni,
     address: booking.address.trim(),
+    // Firestore rejects an explicit `undefined`, so the key is left out
+    // entirely when the address could not be resolved to a point.
+    ...(coord ? { coord } : {}),
     date: parseDateToTimestamp(booking.travelDate),
     departureTime: booking.depTime.trim(),
     arrivalTime: booking.arrTime.trim(),
@@ -36,8 +79,8 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     throw new Error('userId must be a non-empty string');
   }
 
-  if (req.status !== 'pending' && req.status !== 'awaiting' && req.status !== 'confirmed') {
-    throw new Error('status must be pending, awaiting, or confirmed');
+  if (!isBookingStatus(req.status)) {
+    throw new Error(`status must be one of ${BOOKING_STATUSES.join(', ')}`);
   }
 
   if (req.toUni !== undefined && typeof req.toUni !== "boolean") {
@@ -85,11 +128,18 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
 
   const collectionRef = collection(db, 'rideOffers');
 
+  // Validated before anything is built, so a malformed coordinate fails the
+  // write rather than reaching Firestore.
+  const coord = validateCoord(booking.coord, 'Ride offer');
+
   const offer: Omit<RideOffer, 'offerID'> = {
     userId: booking.userId,
     status: booking.status ?? 'pending',
     toUni: booking.toUni,
     address: booking.address.trim(),
+    // Firestore rejects an explicit `undefined`, so the key is left out
+    // entirely when the address could not be resolved to a point.
+    ...(coord ? { coord } : {}),
     date: parseDateToTimestamp(booking.travelDate),
     departureTime: booking.depTime.trim(),
     arrivalTime: booking.arrTime.trim(),
@@ -103,8 +153,8 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error('userId must be a non-empty string');
   }
 
-  if (offer.status !== 'pending' && offer.status !== 'awaiting' && offer.status !== 'confirmed') {
-    throw new Error('status must be pending, awaiting, or confirmed');
+  if (!isBookingStatus(offer.status)) {
+    throw new Error(`status must be one of ${BOOKING_STATUSES.join(', ')}`);
   }
 
   if (offer.toUni !== undefined && typeof offer.toUni !== "boolean") {

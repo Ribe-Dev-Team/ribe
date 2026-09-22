@@ -6,7 +6,7 @@
 import { addRideRequest, addRideOffer } from '../../mobile/pages/schema/firebaseBookingMethods';
 import { db } from '../../mobile/firebaseConfig';
 import { collection, doc, getDoc, getDocs, query } from 'firebase/firestore';
-import { Booking } from '../../mobile/pages/schema/booking.schema';
+import { Booking, Coord } from '../../mobile/pages/schema/booking.schema';
 
 // The mocked Firestore/AsyncStorage use real setTimeout delays internally;
 // jest.setup.js switches the suite to fake timers by default, which would
@@ -21,7 +21,13 @@ function futureDateStr(daysFromNow: number): string {
   return `${day}-${month}-${d.getFullYear()}`;
 }
 
+/*
+`userId` is required: both write methods reject a booking without a signed-in
+user before any other validation runs. Omitting it here made every test in this
+file fail on that check rather than on the behaviour it meant to exercise.
+*/
 const baseRiderBooking: Booking = {
+  userId: 'test-user-123',
   isDriving: false,
   toUni: true,
   address: '123 Main St',
@@ -134,6 +140,76 @@ describe('addRideOffer', () => {
 
   test('does not create a document when validation fails', async () => {
     await expect(addRideOffer({ ...baseDriverBooking, capacity: 0 })).rejects.toThrow();
+
+    const snapshot = await getDocs(query(collection(db, 'rideOffers')));
+    expect(snapshot.size).toBe(0);
+  });
+});
+
+/*
+Coordinates are what make a booking matchable (matching/src/types.ts consumes
+{ lat, lon } directly). They are optional by design: Places/Geocoding can be
+unavailable, and a booking without a point is still accepted - it just can't be
+matched until backfilled. Anything present but malformed is rejected.
+*/
+describe('booking coordinates', () => {
+  const MELBOURNE: Coord = { lat: -37.8136, lon: 144.9631 };
+
+  test('persists a resolved coordinate on a ride request', async () => {
+    const id = await addRideRequest({ ...baseRiderBooking, coord: MELBOURNE });
+
+    const data = (await getDoc(doc(db, 'rideRequests', id))).data();
+    expect(data.coord).toEqual(MELBOURNE);
+  });
+
+  test('persists a resolved coordinate on a ride offer', async () => {
+    const id = await addRideOffer({ ...baseDriverBooking, coord: MELBOURNE });
+
+    const data = (await getDoc(doc(db, 'rideOffers', id))).data();
+    expect(data.coord).toEqual(MELBOURNE);
+  });
+
+  test('omits the key entirely when no coordinate was resolved', async () => {
+    const id = await addRideRequest(baseRiderBooking);
+
+    const data = (await getDoc(doc(db, 'rideRequests', id))).data();
+    // Not merely undefined - Firestore rejects an explicit undefined value,
+    // so the field has to be absent from the written object altogether.
+    expect('coord' in data).toBe(false);
+  });
+
+  test('drops extra keys rather than writing them to Firestore', async () => {
+    // A caller passing a ResolvedPlace-shaped object would otherwise leak
+    // Google's `lng` and `description` into the document.
+    const leaky = { ...MELBOURNE, lng: 144.9631, description: '123 Main St' };
+    const id = await addRideRequest({ ...baseRiderBooking, coord: leaky as Coord });
+
+    const data = (await getDoc(doc(db, 'rideRequests', id))).data();
+    expect(data.coord).toEqual(MELBOURNE);
+  });
+
+  test('rejects a latitude outside -90..90', async () => {
+    await expect(
+      addRideRequest({ ...baseRiderBooking, coord: { lat: 91, lon: 144.9631 } }),
+    ).rejects.toThrow(/latitude must be between -90 and 90/);
+  });
+
+  test('rejects a longitude outside -180..180', async () => {
+    await expect(
+      addRideRequest({ ...baseRiderBooking, coord: { lat: -37.8136, lon: 181 } }),
+    ).rejects.toThrow(/longitude must be between -180 and 180/);
+  });
+
+  test('rejects a non-finite coordinate', async () => {
+    await expect(
+      addRideRequest({ ...baseRiderBooking, coord: { lat: Number.NaN, lon: 144.9631 } }),
+    ).rejects.toThrow(/latitude must be a finite number/);
+  });
+
+  test('does not create a document when the coordinate is invalid', async () => {
+    await expect(
+      addRideOffer({ ...baseDriverBooking, coord: { lat: 91, lon: 144.9631 } }),
+    ).rejects.toThrow();
 
     const snapshot = await getDocs(query(collection(db, 'rideOffers')));
     expect(snapshot.size).toBe(0);

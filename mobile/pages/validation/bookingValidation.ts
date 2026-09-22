@@ -28,7 +28,6 @@ interface DetailsStepErrors {
   numSeatsErr: string;
   depTimeErr: string;
   arrTimeErr: string;
-  resetDetourTime: boolean;
   valid: boolean;
 }
 
@@ -41,11 +40,17 @@ function getTimeOrderWarning(depTime: string, arrTime: string): string {
     : '';
 }
 
-/* Warning shown inline when a driver's max detour exceeds their departure-to-arrival window. */
-function getDetourWarning(isDriving: boolean, detourTime: number, depTime: string, arrTime: string): string {
+/*
+Warning shown inline when a driver's max detour exceeds their departure-to-
+arrival window.
+
+No `isDriving` gate: the detour field is only rendered for drivers, and a rider
+leaves detourTime at 0, which returns early below anyway.
+*/
+function getDetourWarning(detourTime: number, depTime: string, arrTime: string): string {
   const depMinutes = timePattern.test(depTime.trim()) ? toMinutes(depTime.trim()) : null;
   const arrMinutes = timePattern.test(arrTime.trim()) ? toMinutes(arrTime.trim()) : null;
-  if (!isDriving || detourTime <= 0 || depMinutes === null || arrMinutes === null) return '';
+  if (detourTime <= 0 || depMinutes === null || arrMinutes === null) return '';
   const window = arrMinutes - depMinutes;
   return window < detourTime ? `Detour of ${detourTime} min exceeds your ${window} min travel window.` : '';
 }
@@ -69,13 +74,15 @@ function validateDetailsStep(input: DetailsStepInput): DetailsStepErrors {
     valid = false;
   }
 
-  // detour time & seats validation
+  /*
+  Detour and seats are driver-only. Riders are deliberately NOT asked for a
+  detour tolerance: the matcher still needs one (MatchRequest.maxDetour), but
+  derives it from the rider's own direct trip at match time - see
+  matching/src/riderPolicy.ts for the measurements behind that choice.
+  */
   let detourTimeErr = '';
   let numSeatsErr = '';
-  let resetDetourTime = false;
-  if (!isDriving) {
-    resetDetourTime = true;
-  } else {
+  if (isDriving) {
     if (detourTime <= 0) {
       detourTimeErr = 'Maximum detour time required';
       valid = false;
@@ -104,9 +111,9 @@ function validateDetailsStep(input: DetailsStepInput): DetailsStepErrors {
   }
 
   // arrival-after-departure and detour-vs-window sanity checks (surfaced inline as the user types)
-  if (getTimeOrderWarning(depTime, arrTime) || getDetourWarning(isDriving, detourTime, depTime, arrTime)) {
+  if (getTimeOrderWarning(depTime, arrTime) || getDetourWarning(detourTime, depTime, arrTime)) {
     valid = false;
   }
 
-  return { travelDateErr, detourTimeErr, numSeatsErr, depTimeErr, arrTimeErr, resetDetourTime, valid };
+  return { travelDateErr, detourTimeErr, numSeatsErr, depTimeErr, arrTimeErr, valid };
 }
