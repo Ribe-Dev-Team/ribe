@@ -5,6 +5,14 @@
 import type { MatchOffer, MatchRequest, Trip } from "./matching.schema";
 import { UNI } from "./scoring";
 
+export function getEndTime(r: MatchRequest | MatchOffer) {
+  return r.window.end;
+}
+
+export function getStartTime(r: MatchRequest | MatchOffer) {
+  return r.window.start;
+}
+
 export function isTripToUni(t: Trip) {
   if (t.waypoints[-1].loc.lat === UNI.lat && t.waypoints[-1].loc.lon === UNI.lon) {
     return true;
@@ -21,5 +29,12 @@ export function isBookingToUni(r: MatchRequest | MatchOffer) {
     return false;
   }
   throw new Error(`Could not determine if booking was to/from uni: neither ${r.start} or ${r.end} were found to be UNI - ${UNI}`);
+}
+
+export function insertAt<T>(l: T[], add: T[], ind: number, replace: number = 0): T[] {
+  const left = l.splice(0, ind);
+  const right = l.splice(ind + replace, -1);
+  const combined = [...left, ...add, ...right];
+  return combined;
 }
 
