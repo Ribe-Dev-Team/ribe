@@ -1,3 +1,10 @@
+/**
+ * This file contains functions to calculate the score values for a offer
+ * and request pairing. 
+ * This assumes that the additional passenger has already been inserted
+ * into the trip at the optimal position, as expressed in the 'newTrip' variable.
+ */
+
 import { Coord, Trip, MatchOffer, MatchRequest } from "./matching.schema";
 
 export { calcDriverScore, calcPassengerScore };
