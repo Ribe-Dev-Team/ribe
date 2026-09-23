@@ -3,6 +3,7 @@ Utility file to handle generic time types, masks and functions.
 */
 
 export {
+  MS_PER_MIN,
   sepTime12h,
   timePattern,
   isValid24Time,
@@ -11,6 +12,9 @@ export {
   formatTime12h,
   convert12hTo24h,
 };
+
+// CONVERTSION CONSTANT
+const MS_PER_MIN = 60000;
 
 /* type for decomposed 12-hours time */
 interface sepTime12h {

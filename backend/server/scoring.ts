@@ -6,6 +6,7 @@
  */
 
 import { Coord, Trip, MatchOffer, MatchRequest } from "./matching.schema";
+import { MS_PER_MIN } from "../../mobile/utility/times";
 
 export { calcDriverScore, calcPassengerScore, UNI };
 
@@ -17,9 +18,6 @@ const PUNCTUALITY_FACTOR: number = 0.4;
 
 // LOCATION CONSTANT
 const UNI: Coord = { lat: 0, lon: 0 };  // TODO: find actual value
-
-// CONVERTSION CONSTANT
-const MS_PER_MIN = 60000;
 
 function getTimeFinder(toUni: boolean) {
   return (toUni)
@@ -112,11 +110,14 @@ function calcOnTimeScore(p: MatchRequest, newTrip: Trip): number {
   // get the part of the trip the passenger is a part of
   const waypointSubset = newTrip.waypoints.slice(startInd, endInd + 1);
   const legsSubset = newTrip.legs.slice(startInd, endInd);
+  const legDistsSubset = newTrip.legDists.slice(startInd, endInd);
 
   const passTrip: Trip = {
     waypoints: waypointSubset,
     legs: legsSubset,
+    legDists: legDistsSubset,
     currDur: -1,
+    currDist: -1,
   };
   // calculate the duration of this part of the trip
   passTrip.currDur = getTimeFinder(p.end == UNI)(passTrip);
