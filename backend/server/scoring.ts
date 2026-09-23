@@ -7,7 +7,7 @@
 
 import { Coord, Trip, MatchOffer, MatchRequest } from "./matching.schema";
 
-export { calcDriverScore, calcPassengerScore };
+export { calcDriverScore, calcPassengerScore, UNI };
 
 // SCORING CONSTANTS
 const DRIVING_TIME_FACTOR: number = 0.8;
