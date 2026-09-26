@@ -17,7 +17,7 @@ const P_SLACK_TIME_FACTOR: number = 0.6;
 const PUNCTUALITY_FACTOR: number = 0.4;
 
 // LOCATION CONSTANT
-const UNI: Coord = { lat: 0, lon: 0 };  // TODO: find actual value
+const UNI: Coord = { lat: -37.9083901, lon: 145.1319017 };
 
 function getTimeFinder(toUni: boolean) {
   return (toUni)
@@ -134,7 +134,9 @@ function calcOnTimeScore(p: MatchRequest, newTrip: Trip): number {
 }
 
 // calculate how much the driver wants this passenger (from [0, 1])
-function calcDriverScore(d: MatchOffer, newTrip: Trip): number {
+function calcDriverScore(d: MatchOffer, newTrip: Trip | null): number {
+  if (newTrip == null) return 0;
+
   const timeScore = calcDrivingTimeScore(d, newTrip);
   const slackScore = calcSlackScore(d, newTrip);
   const finalScore = DRIVING_TIME_FACTOR * timeScore + DR_SLACK_TIME_FACTOR * slackScore;
@@ -143,7 +145,9 @@ function calcDriverScore(d: MatchOffer, newTrip: Trip): number {
 }
 
 // calculate how much the passenger wants this driver (from [0, 1])
-function calcPassengerScore(d: MatchOffer, p: MatchRequest, newTrip: Trip): number {
+function calcPassengerScore(d: MatchOffer, p: MatchRequest, newTrip: Trip | null): number {
+  if (newTrip == null) return 0;
+
   const onTimeScore = calcOnTimeScore(p, newTrip);
   const slackScore = calcSlackScore(d, newTrip);
   const finalScore = PUNCTUALITY_FACTOR * onTimeScore + P_SLACK_TIME_FACTOR * slackScore;
