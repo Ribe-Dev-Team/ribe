@@ -2,8 +2,12 @@
  * This file contains functions to work with the objects in `./matching.schema.ts`
  */
 
-import type { MatchOffer, MatchRequest, Trip } from "./matching.schema";
-import { UNI } from "./scoring";
+import type { Coord, MatchOffer, MatchRequest, Trip } from "./matching.schema";
+import { MONASH_CLAYTON_LOCATION } from "../../mobile/services/googlePlaces";
+
+export function coordIsUni(c: Coord) {
+  return c.lat === MONASH_CLAYTON_LOCATION.lat && c.lon === MONASH_CLAYTON_LOCATION.lng;
+}
 
 export function getEndTime(r: MatchRequest | MatchOffer) {
   return r.window.end;
@@ -14,21 +18,21 @@ export function getStartTime(r: MatchRequest | MatchOffer) {
 }
 
 export function isTripToUni(t: Trip) {
-  if (t.waypoints[-1].loc.lat === UNI.lat && t.waypoints[-1].loc.lon === UNI.lon) {
+  if (coordIsUni(t.waypoints[-1].loc)) {
     return true;
-  } else if (t.waypoints[0].loc.lat === UNI.lat && t.waypoints[0].loc.lon === UNI.lon) {
+  } else if (coordIsUni(t.waypoints[0].loc)) {
     return true;
   }
-  throw new Error(`Could not determine trip was to/from uni: neither ${t.waypoints[-1].loc} or ${t.waypoints[0].loc} were found to be UNI - ${UNI}`);
+  throw new Error(`Could not determine trip was to/from uni: neither ${t.waypoints[-1].loc} or ${t.waypoints[0].loc} were found to be UNI - ${MONASH_CLAYTON_LOCATION}`);
 }
 
 export function isBookingToUni(r: MatchRequest | MatchOffer) {
-  if (r.end.lat == UNI.lat && r.end.lon === UNI.lon) {
+  if (coordIsUni(r.end)) {
     return true;
-  } else if (r.start.lat == UNI.lat && r.start.lon === UNI.lon) {
+  } else if (coordIsUni(r.start)) {
     return false;
   }
-  throw new Error(`Could not determine if booking was to/from uni: neither ${r.start} or ${r.end} were found to be UNI - ${UNI}`);
+  throw new Error(`Could not determine if booking was to/from uni: neither ${r.start} or ${r.end} were found to be UNI - ${MONASH_CLAYTON_LOCATION}`);
 }
 
 export function insertAt<T>(l: T[], add: T[], ind: number, replace: number = 0): T[] {
