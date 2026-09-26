@@ -1,12 +1,18 @@
 import { collection, getDocs, query, Timestamp, where } from 'firebase/firestore';
-import { RideCardProps, RideStatus } from '../components/RideCard';
+import { RideCardProps } from '../components/RideCard';
 import { db } from '../firebaseConfig';
+import { Coord } from '../pages/schema/booking.schema';
+import { BookingStatus, DisplayableBookingStatus, isDisplayable } from '../pages/schema/matchStatus';
 
 interface FirestoreRideRecord {
   userId: string;
-  status: RideStatus;
+  // Stored status, which is a superset of what RideCard can render: it also
+  // carries the terminal 'cancelled'/'expired' states the matcher can produce.
+  status: BookingStatus;
   toUni: boolean;
   address: string;
+  // Optional: documents written before coordinates were captured have none.
+  coord?: Coord;
   date: Timestamp | Date | string;
   departureTime: string;
   arrivalTime: string;
@@ -15,6 +21,9 @@ interface FirestoreRideRecord {
   requestID?: string;
   offerID?: string;
 }
+
+/** A stored ride that is still in play, so its status is one RideCard renders. */
+type DisplayableRideRecord = FirestoreRideRecord & { status: DisplayableBookingStatus };
 
 interface UserRideBundle {
   requests: RideCardProps[];
@@ -33,7 +42,12 @@ function toMinutes(time: string) {
   return hours * 60 + minutes;
 }
 
-function buildRideCard(record: FirestoreRideRecord, kind: 'request' | 'offer'): RideCardProps {
+/** Takes the narrowed record: terminal statuses are filtered out before this
+ *  runs, because RideCard has no rendering for them. */
+function buildRideCard(
+  record: DisplayableRideRecord,
+  kind: 'request' | 'offer',
+): RideCardProps {
   const date = toDate(record.date);
   const departureTime = record.departureTime ?? '09:00';
   const arrivalTime = record.arrivalTime ?? '10:00';
@@ -76,17 +90,22 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
     getDocs(offersQuery),
   ]);
 
-  const requests = requestsSnap.docs.map((docSnap) => {
-    const data = docSnap.data() as FirestoreRideRecord;
-    return buildRideCard({ ...data, status: data.status ?? 'pending' }, 'request');
-  });
+  // Cancelled and expired rides are dropped rather than rendered: RideCard has
+  // no presentation for them, and they are no longer part of a user's plans.
+  const toCards = (
+    docs: { data: () => unknown }[],
+    kind: 'request' | 'offer',
+  ): RideCardProps[] =>
+    docs
+      .map((docSnap) => docSnap.data() as FirestoreRideRecord)
+      .map((data) => ({ ...data, status: data.status ?? 'pending' }))
+      .filter((data): data is DisplayableRideRecord => isDisplayable(data.status))
+      .map((data) => buildRideCard(data, kind));
 
-  const offers = offersSnap.docs.map((docSnap) => {
-    const data = docSnap.data() as FirestoreRideRecord;
-    return buildRideCard({ ...data, status: data.status ?? 'pending' }, 'offer');
-  });
-
-  return { requests, offers };
+  return {
+    requests: toCards(requestsSnap.docs, 'request'),
+    offers: toCards(offersSnap.docs, 'offer'),
+  };
 }
 
 export type { UserRideBundle };

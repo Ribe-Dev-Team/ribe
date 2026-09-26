@@ -57,26 +57,24 @@ describe('getTimeOrderWarning', () => {
 });
 
 describe('getDetourWarning', () => {
-  test('is silent for a rider (not driving)', () => {
-    expect(getDetourWarning(false, 30, '08:00', '08:20')).toBe('');
-  });
-
+  // A rider leaves detourTime at 0 (the field is driver-only), which the
+  // zero case below already covers.
   test('is silent when detour time is zero', () => {
-    expect(getDetourWarning(true, 0, '08:00', '08:20')).toBe('');
+    expect(getDetourWarning(0, '08:00', '08:20')).toBe('');
   });
 
   test('warns when the detour exceeds the travel window', () => {
-    expect(getDetourWarning(true, 30, '08:00', '08:20')).toBe(
+    expect(getDetourWarning(30, '08:00', '08:20')).toBe(
       'Detour of 30 min exceeds your 20 min travel window.',
     );
   });
 
   test('is silent when the detour fits within the travel window', () => {
-    expect(getDetourWarning(true, 10, '08:00', '08:20')).toBe('');
+    expect(getDetourWarning(10, '08:00', '08:20')).toBe('');
   });
 
   test('is silent while either time is not yet a valid HH:mm', () => {
-    expect(getDetourWarning(true, 30, '8am', '08:20')).toBe('');
+    expect(getDetourWarning(30, '8am', '08:20')).toBe('');
   });
 });
 
@@ -127,21 +125,28 @@ describe('validateDetailsStep - arrival-after-departure sanity check', () => {
 });
 
 describe('validateDetailsStep - rider (not driving)', () => {
-  test('clears detour/seat errors and flags detour time for reset', () => {
+  /*
+  Riders are deliberately never asked for a detour tolerance - the matcher
+  derives one from their own direct trip at match time
+  (matching/src/riderPolicy.ts). So detour and seats are both ignored here,
+  whatever the form state happens to hold.
+  */
+  test('ignores detour and seat values entirely for a rider', () => {
     const result = validateDetailsStep({ ...validRiderDetails, isDriving: false, detourTime: 45, numSeats: 20 });
     expect(result.detourTimeErr).toBe('');
     expect(result.numSeatsErr).toBe('');
-    expect(result.resetDetourTime).toBe(true);
+    expect(result.valid).toBe(true);
+  });
+
+  test('a rider with no detour set is still valid', () => {
+    const result = validateDetailsStep({ ...validRiderDetails, isDriving: false, detourTime: 0 });
+    expect(result.detourTimeErr).toBe('');
+    expect(result.valid).toBe(true);
   });
 });
 
 describe('validateDetailsStep - driver', () => {
   const validDriverDetails = { ...validRiderDetails, isDriving: true, detourTime: 15, numSeats: 3 };
-
-  test('does not flag detour time for reset', () => {
-    const result = validateDetailsStep(validDriverDetails);
-    expect(result.resetDetourTime).toBe(false);
-  });
 
   test('requires a positive detour time', () => {
     const result = validateDetailsStep({ ...validDriverDetails, detourTime: 0 });
