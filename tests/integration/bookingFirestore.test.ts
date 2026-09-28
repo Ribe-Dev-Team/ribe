@@ -28,6 +28,7 @@ const baseRiderBooking: Booking = {
   travelDate: futureDateStr(7),
   depTime: '08:00',
   arrTime: '09:00',
+  userId: 'mock-user-id',
 };
 
 const baseDriverBooking: Booking = {
@@ -35,6 +36,7 @@ const baseDriverBooking: Booking = {
   isDriving: true,
   detourTime: 15,
   capacity: 3,
+  userId: 'mock-user-id',
 };
 
 describe('addRideRequest', () => {
@@ -43,19 +45,19 @@ describe('addRideRequest', () => {
 
     const snapshot = await getDoc(doc(db, 'rideRequests', id));
     expect(snapshot.exists()).toBe(true);
-    const data = snapshot.data();
-    expect(data.address).toBe('123 Main St');
-    expect(data.toUni).toBe(true);
-    expect(data.departureTime).toBe('08:00');
-    expect(data.arrivalTime).toBe('09:00');
+    const data = snapshot.data()!;
+    expect(data['address']).toBe('123 Main St');
+    expect(data['toUni']).toBe(true);
+    expect(data['departureTime']).toBe('08:00');
+    expect(data['arrivalTime']).toBe('09:00');
     // the doc is stamped with its own generated id after creation
-    expect(data.requestID).toBe(id);
+    expect(data['requestID']).toBe(id);
   });
 
   test('trims whitespace from the address before saving', async () => {
     const id = await addRideRequest({ ...baseRiderBooking, address: '  123 Main St  ' });
     const snapshot = await getDoc(doc(db, 'rideRequests', id));
-    expect(snapshot.data().address).toBe('123 Main St');
+    expect(snapshot.data()!['address']).toBe('123 Main St');
   });
 
   test('rejects a past travel date', async () => {
@@ -96,10 +98,10 @@ describe('addRideOffer', () => {
 
     const snapshot = await getDoc(doc(db, 'rideOffers', id));
     expect(snapshot.exists()).toBe(true);
-    const data = snapshot.data();
-    expect(data.maxDetourTime).toBe(15);
-    expect(data.seatCapacity).toBe(3);
-    expect(data.offerID).toBe(id);
+    const data = snapshot.data()!;
+    expect(data['maxDetourTime']).toBe(15);
+    expect(data['seatCapacity']).toBe(3);
+    expect(data['offerID']).toBe(id);
   });
 
   test('requires a detour time', async () => {
