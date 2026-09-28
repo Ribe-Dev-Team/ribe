@@ -212,12 +212,12 @@ function AppContent() {
       snapshot.docChanges().forEach((change) => {
         if (
           change.type === 'removed' ||
-          (change.type === 'modified' && change.doc.data().status === 'cancelled')
+          (change.type === 'modified' && change.doc.data()['status'] === 'cancelled')
         ) {
           const data = change.doc.data();
           pendingCancellations.push({
             id: `cancel-req-${change.doc.id}-${Date.now()}`,
-            text: `Ride request to ${getDestination(data)} on ${formatDate(data.date)} at ${data.departureTime || 'scheduled time'} was cancelled.`,
+            text: `Ride request to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] || 'scheduled time'} was cancelled.`,
             type: 'cancellation',
           });
         }
@@ -233,12 +233,12 @@ function AppContent() {
       snapshot.docChanges().forEach((change) => {
         if (
           change.type === 'removed' ||
-          (change.type === 'modified' && change.doc.data().status === 'cancelled')
+          (change.type === 'modified' && change.doc.data()['status'] === 'cancelled')
         ) {
           const data = change.doc.data();
           pendingCancellations.push({
             id: `cancel-offer-${change.doc.id}-${Date.now()}`,
-            text: `Drive offer to ${getDestination(data)} on ${formatDate(data.date)} at ${data.departureTime || 'scheduled time'} was cancelled.`,
+            text: `Drive offer to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] || 'scheduled time'} was cancelled.`,
             type: 'cancellation',
           });
         }

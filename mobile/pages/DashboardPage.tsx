@@ -165,7 +165,7 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
 
       {loading ? (
         <View style={localStyles.loadingState}><ActivityIndicator color={colors.white} size="small" /></View>
-      ) : lanes.map((lane) => {
+      ) : currentLanes.map((lane) => {
         const rides: RideCardProps[] = dataset
           .filter((r: RideCardProps) => r.status === lane.status)
           .sort((a: RideCardProps, b: RideCardProps) => a.date.getTime() - b.date.getTime());

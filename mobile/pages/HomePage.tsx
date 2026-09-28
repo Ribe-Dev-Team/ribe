@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import { useAuth } from '../auth/useAuth';
 import RideCard, { RideCardProps } from '../components/RideCard';
-import { buildRideCard, FirestoreRideRecord, fetchUserRides } from '../services/rideData';
+import { buildRideCard, FirestoreRideRecord } from '../services/rideData';
 import { deleteRideRequest, deleteRideOffer } from './schema/firebaseBookingMethods';
 import { NotificationItem } from '../App';
 import { db } from '../firebaseConfig';

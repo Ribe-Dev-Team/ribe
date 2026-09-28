@@ -53,6 +53,7 @@ const statusDetails: Record<RideStatus, { label: string; color: string }> = {
   pending: { label: 'Pending Ride', color: colors.pending },
   awaiting: { label: 'Awaiting Confirmation', color: colors.awaiting },
   confirmed: { label: 'Confirmed Ride', color: colors.confirmed },
+  cancelled: { label: 'Cancelled Ride', color: '#888' },
 };
 
 interface CalendarPageProps {
