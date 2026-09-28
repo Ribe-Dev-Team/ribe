@@ -370,4 +370,4 @@ const localStyles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 18,
   },
-}); 
+});
