@@ -3,8 +3,10 @@ import {
   OnBoardRider, TravelTimeMatrix,
 } from './types';
 import { hardFilter, waypointOf } from './filter';
-import { scorePairing, clamp01, ScoreWeights, DEFAULT_WEIGHTS } from './score';
-import { bestInsertion, departureOf, DepartureTime, evaluateRoute, RouteEvaluation } from './route';
+import {
+  arrivalSlackMinutes, driverLatestArrival, scoreFromMetrics, scorePairing, ScoreWeights, DEFAULT_WEIGHTS,
+} from './score';
+import { departureOf, DepartureTime, evaluateRoute, RouteEvaluation } from './route';
 import { MatchRunResult, ProposedMatch, computeAcceptDeadline } from './match';
 
 /**
@@ -39,9 +41,9 @@ import { MatchRunResult, ProposedMatch, computeAcceptDeadline } from './match';
  * Mechanism, one proposal at a time:
  *   1. An unassigned rider proposes to whichever untried, structurally
  *      compatible trip currently scores best for THEM (reqScore).
- *   2. The proposer is placed on that trip's fixed baseline (bestInsertion,
- *      KEY-138 — which still re-checks every confirmed rider's own detour cap
- *      and arrival time). Infeasible there, and the rider moves on.
+ *   2. The proposer is placed on that trip's fixed baseline (addPassenger,
+ *      KEY-138 — which still re-checks every confirmed rider's own detour cap,
+ *      arrival time and pickup window). Infeasible there, and the rider moves on.
  *   3. The trip's single slot goes to whichever of (current holder, new
  *      proposer) costs the driver fewer marginal minutes. A tie keeps the
  *      holder. This is a BINARY COMPARISON, not a subset search.
@@ -101,7 +103,7 @@ export function runMatchingProvisional(
   // A view of each offer holding ONLY its fixed riders, frozen for the whole
   // run. This is what every candidate is scored AND placed against — never the
   // live, currently-mutating `offer`, whose onBoard may already hold another
-  // rider provisionally. `bestInsertion` has no seat-capacity check of its own
+  // rider provisionally. `addPassenger` has no seat-capacity check of its own
   // (capacity is the caller's `slotsByOffer` check), so placing against a trip
   // that already looks occupied would evaluate the nonsensical "insert on top of
   // the current holder" route instead of "how would I fare against the confirmed
@@ -120,7 +122,7 @@ export function runMatchingProvisional(
     rankingOfferByOffer.set(o.offerId, { ...o, onBoard: fixed, seatsFilled: fixed.length, currTripDuration });
   }
 
-  const { candidates, rejected } = hardFilter(requests, liveOffers, cfg, departAt, now);
+  const { candidates, rejected } = hardFil                                        ter(requests, liveOffers, cfg, departAt, now);
   const remaining = new Map<string, Set<string>>();
   for (const { req, offer } of candidates) {
     if (!remaining.has(req.reqId)) remaining.set(req.reqId, new Set());
@@ -182,16 +184,24 @@ export function runMatchingProvisional(
     // make a candidate's cost depend on the order proposals happened to
     // arrive in, which is the property the one-new-rider rule exists to kill.
     const challenger = placeOnBaseline(
-      rankingOfferByOffer.get(bestOfferId)!, req, departureOf(departAt, offer), t,
+      rankingOfferByOffer.get(bestOfferId)!, req, departureOf(departAt, offer), t, weights,
     );
     if (!challenger) continue; // infeasible against the confirmed baseline
 
     const holder = held.get(bestOfferId) ?? null;
 
     // The slot holds exactly one unconfirmed rider, so this is a two-way
-    // comparison on marginal driver cost. Both numbers are measured against
-    // the same fixed baseline, so they are directly comparable. A tie keeps
-    // the holder — no churn for no gain, and it keeps the run deterministic.
+    // comparison on marginal driver minutes. Both are measured against the same
+    // fixed baseline, so they are directly comparable. A tie keeps the holder —
+    // no churn for no gain, and it keeps the run deterministic.
+    //
+    // Deliberately NOT offerScore, even though that now includes slack. Slack
+    // penalises a rider with a tight deadline, and those are the hardest riders
+    // to place: in the worked example (test/deferredAcceptance.test.ts) B costs
+    // D1 half a minute but must be on campus 30 s after the car arrives, so a
+    // slack-aware D1 keeps A instead and B - who can reach no other trip - is
+    // stranded. Two matches become one. Match rate is the binding constraint, so
+    // slack ranks drivers for riders (reqScore), not riders for drivers.
     const challengerWins = holder === null || challenger.cost < holder.cost;
 
     if (challengerWins) {
@@ -242,9 +252,20 @@ export function runMatchingProvisional(
       const withoutEv = evaluateRoute(offer.start, withoutWaypoints, offer.end, offerDepartAt, t);
       const marginal = fullEv.totalMinutes - withoutEv.totalMinutes;
 
-      const { offerScore, reqScore } = scoreFromMetrics(
-        req, offer, riderDetour, marginal, fullEv.driverAddedMinutes, fullEv.finalArrival, weights,
-      );
+      // Everyone else's deadlines, so slack can be compared with and without them.
+      const otherDeadlines = [
+        driverLatestArrival(offer, offerDepartAt, t),
+        ...finalOrder.filter((_, j) => j !== i).map((r) => r.arriveBy),
+      ];
+      const { offerScore, reqScore } = scoreFromMetrics({
+        riderDetour,
+        riderMaxDetour: req.maxDetour,
+        riderBuffer: (req.arriveBy.getTime() - fullEv.finalArrival.getTime()) / 60_000,
+        marginalDriverMinutes: marginal,
+        driverRemainingDetour: offer.maxDetour - (fullEv.driverAddedMinutes - marginal),
+        slackBefore: arrivalSlackMinutes(otherDeadlines, withoutEv.finalArrival),
+        slackAfter: arrivalSlackMinutes([...otherDeadlines, req.arriveBy], fullEv.finalArrival),
+      }, weights);
 
       matches.push({
         offerId: offer.offerId,
@@ -331,32 +352,6 @@ function minSlackOf(offer: MatchOffer): number {
   return Math.min(...offer.onBoard.map((r) => r.maxDetour - r.currentDetour));
 }
 
-/**
- * offerScore/reqScore for a rider given final route metrics — the same
- * formulas as `scorePairing` (score.ts), factored out so both the
- * single-insertion path (match.ts, via scorePairing) and this module's
- * post-convergence, whole-route accounting agree on one definition.
- */
-function scoreFromMetrics(
-  req: MatchRequest,
-  offer: MatchOffer,
-  riderDetour: number,
-  marginalDriverMinutes: number,
-  totalDriverAddedMinutes: number,
-  finalArrival: Date,
-  w: ScoreWeights,
-): { offerScore: number; reqScore: number } {
-  const detourScore = clamp01(1 - riderDetour / Math.max(1, req.maxDetour));
-  const bufferMin = (req.arriveBy.getTime() - finalArrival.getTime()) / 60_000;
-  const arrivalScore = clamp01(bufferMin / 30);
-  const reqScore = w.riderDetourWeight * detourScore + w.riderArrivalWeight * arrivalScore;
-
-  const remaining = Math.max(1, offer.maxDetour - (totalDriverAddedMinutes - marginalDriverMinutes));
-  const offerScore = clamp01(1 - marginalDriverMinutes / remaining);
-
-  return { offerScore, reqScore };
-}
-
 interface HeldCandidate {
   /** The unconfirmed rider holding the trip's single new-rider slot. */
   req: MatchRequest;
@@ -374,10 +369,10 @@ interface HeldCandidate {
  * This replaces the old subset search. Under the one-new-rider-per-run rule a
  * trip never carries two unconfirmed riders at once, so there is no
  * combination of riders to search over — only where this single rider slots in
- * among the confirmed ones, which is exactly `bestInsertion`'s job (KEY-138).
- * It still re-checks every confirmed rider's own detour cap and arrival time
- * at every candidate position, so adding this rider cannot degrade someone a
- * human already accepted.
+ * among the confirmed ones, which is exactly `addPassenger`'s job (KEY-138).
+ * It still re-checks every confirmed rider's own detour cap, arrival time and
+ * pickup window at every candidate position, so adding this rider cannot
+ * degrade someone a human already accepted.
  *
  * `baseline` MUST be the frozen fixed-riders-only view of the offer, never the
  * live one: measuring against whoever currently holds the slot would make a
@@ -389,14 +384,13 @@ function placeOnBaseline(
   req: MatchRequest,
   departAt: Date,
   t: TravelTimeMatrix,
+  weights: ScoreWeights,
 ): HeldCandidate | null {
-  const insertion = bestInsertion(
-    baseline, waypointOf(req), req.maxDetour, req.arriveBy, departAt, t,
-  );
-  if (!insertion.feasible || !insertion.evaluation) return null;
+  const scored = scorePairing(req, baseline, departAt, t, weights);
+  if (!scored) return null;
 
-  const ev = insertion.evaluation;
-  const idx = insertion.insertionIndex;
+  const ev = scored.evaluation;
+  const idx = scored.insertionIndex;
 
   const onBoard: OnBoardRider[] = [
     ...baseline.onBoard.slice(0, idx).map((r) => ({ ...r })),
@@ -407,6 +401,7 @@ function placeOnBaseline(
       arriveBy: req.arriveBy,
       maxDetour: req.maxDetour,
       currentDetour: ev.riderDetours[idx],
+      earliest: req.travelWindow.start,
     },
     ...baseline.onBoard.slice(idx).map((r) => ({ ...r })),
   ];
@@ -414,5 +409,5 @@ function placeOnBaseline(
   // from the evaluation rather than leaving stale values on the copies.
   onBoard.forEach((r, i) => { r.currentDetour = ev.riderDetours[i]; });
 
-  return { req, cost: insertion.marginalDriverMinutes ?? 0, onBoard, ev };
+  return { req, cost: scored.driverAddedMinutes, onBoard, ev };
 }

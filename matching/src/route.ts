@@ -92,23 +92,34 @@ export interface InsertionResult {
     | 'RIDER_DETOUR_CAP'
     | 'DRIVER_DETOUR_CAP'
     | 'ARRIVAL_WINDOW'
+    | 'PICKUP_BEFORE_READY'
     | 'NO_FEASIBLE_INSERTION';
 }
 
+/** The rider being added, as `addPassenger` needs them. */
+export interface NewPassenger {
+  /** Pickup going to campus, drop-off coming from it (`waypointOf(req)`). */
+  waypoint: Coord;
+  maxDetour: number;
+  arriveBy: Date;
+  /** Earliest they can be collected (`req.travelWindow.start`). Omit to skip
+   *  the time-window check for this rider. */
+  earliest?: Date;
+}
+
 /**
- * KEY-138. Try every insertion position for a new rider and return the cheapest
- * one that keeps EVERYONE valid.
+ * KEY-138. Try every position for a new passenger and return the cheapest one
+ * that keeps EVERYONE valid. Named after David's `addPassenger`
+ * (backend/server/tripAdditions.ts), which it replaces.
  *
  * The critical rule: adding rider N must not break riders already on board.
  * Rider 1 consented to a 10-minute detour on a solo trip; they did not consent
  * to 25 minutes because two more people were added afterwards. Checking only
  * the newcomer is the classic bug here.
  */
-export function bestInsertion(
+export function addPassenger(
   offer: MatchOffer,
-  newWaypoint: Coord,
-  newRiderMaxDetour: number,
-  newRiderArriveBy: Date,
+  passenger: NewPassenger,
   departAt: Date,
   t: TravelTimeMatrix,
 ): InsertionResult {
@@ -122,7 +133,7 @@ export function bestInsertion(
   for (let idx = 0; idx <= existing.length; idx++) {
     const waypoints = [
       ...existing.slice(0, idx).map((r) => r.waypoint),
-      newWaypoint,
+      passenger.waypoint,
       ...existing.slice(idx).map((r) => r.waypoint),
     ];
 
@@ -135,11 +146,7 @@ export function bestInsertion(
     }
 
     // Every rider's detour cap — existing riders included.
-    const riders = [
-      ...existing.slice(0, idx),
-      { maxDetour: newRiderMaxDetour, arriveBy: newRiderArriveBy },
-      ...existing.slice(idx),
-    ];
+    const riders = [...existing.slice(0, idx), passenger, ...existing.slice(idx)];
 
     let capOk = true;
     let arrivalOk = true;
@@ -149,6 +156,9 @@ export function bestInsertion(
     }
     if (!capOk)     { sawCapViolation ??= 'RIDER_DETOUR_CAP'; continue; }
     if (!arrivalOk) { sawCapViolation ??= 'ARRIVAL_WINDOW';   continue; }
+    if (!withinTimeWindows(offer, riders, ev, departAt)) {
+      sawCapViolation ??= 'PICKUP_BEFORE_READY'; continue;
+    }
 
     // Cheapest feasible insertion wins, measured by marginal driver cost.
     const marginal = ev.totalMinutes - (offer.currTripDuration || baseDirect);
@@ -166,6 +176,36 @@ export function bestInsertion(
 
   if (!best.feasible && sawCapViolation) best.reason = sawCapViolation;
   return best;
+}
+
+/**
+ * The car never collects anyone before they're ready. This is the forward half
+ * of David's time-window scan (scanTripToUni / scanTripFromUni in
+ * backend/server/tripAdditions.ts); the backward half - arriving too late - is
+ * the arrival check `addPassenger` already makes.
+ *
+ * His scan also has to work out when the car can leave, because his model lets
+ * departure move. Here every driver leaves at their stated time, so each stop's
+ * time is already known and the check is direct: heading to campus a rider is
+ * collected when the car reaches their door; leaving campus, everyone boards at
+ * departure.
+ *
+ * The car is NOT modelled as waiting at a door for someone who isn't ready.
+ * Waiting would delay everyone already aboard, which the detour maths doesn't
+ * count, so an early arrival is treated as infeasible rather than quietly
+ * under-reporting the detour.
+ */
+function withinTimeWindows(
+  offer: MatchOffer,
+  riders: Array<{ earliest?: Date }>,
+  ev: RouteEvaluation,
+  departAt: Date,
+): boolean {
+  return riders.every((r, i) => {
+    if (!r.earliest) return true;
+    const collectedAt = offer.direction === 'TO_CAMPUS' ? ev.waypointArrivals[i] : departAt;
+    return collectedAt >= r.earliest;
+  });
 }
 
 /**

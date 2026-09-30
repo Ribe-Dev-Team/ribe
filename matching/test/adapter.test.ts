@@ -142,6 +142,7 @@ describe('toMatchInputs', () => {
     expect(offer.onBoard.map((r) => r.reqId)).toEqual(['far', 'near']);
     expect(offer.onBoard.map((r) => r.currentDetour)).toEqual(ev.riderDetours);
     expect(offer.currTripDuration).toBeCloseTo(ev.totalMinutes);
+    expect(offer.onBoard.map((r) => r.earliest)).toEqual([melb(5, '08:00'), melb(5, '08:00')]);
     expect(offer).toMatchObject({ seatsOffered: 3, seatsFilled: 2, status: 'open', acceptingMore: true });
   });
 

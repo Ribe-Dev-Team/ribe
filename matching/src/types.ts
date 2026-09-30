@@ -85,6 +85,10 @@ export interface OnBoardRider {
   maxDetour: number;
   /** Detour in minutes this rider is currently experiencing. */
   currentDetour: number;
+  /** Earliest the rider can be collected - their stated departure time. Named
+   *  after `Waypoint.earliest` in backend/server/matching.schema.ts. Optional so
+   *  older inputs without it simply skip the check (see `addPassenger`). */
+  earliest?: Date;
 }
 
 /** A viable (offer, request) pair that survived filtering, with both scores.
@@ -120,6 +124,7 @@ export type RejectReason =
   | 'RIDER_DETOUR_CAP'
   | 'DRIVER_DETOUR_CAP'
   | 'ARRIVAL_WINDOW'
+  | 'PICKUP_BEFORE_READY'
   | 'MATCHING_CUTOFF';
 
 /** Travel time between any two points, in minutes.

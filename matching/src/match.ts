@@ -4,7 +4,7 @@ import {
 } from './types';
 import { hardFilter, waypointOf } from './filter';
 import { scorePairing, ScoredPairing, ScoreWeights, DEFAULT_WEIGHTS } from './score';
-import { bestInsertion, isAcceptingRiders, minSlackMinutes, minutesToDeparture } from './route';
+import { addPassenger, isAcceptingRiders, minSlackMinutes, minutesToDeparture } from './route';
 
 export interface ProposedMatch {
   offerId: string;
@@ -137,9 +137,12 @@ export function runMatching(
       // Re-check against the CURRENT route. The score was computed against the
       // route as it stood at the start of this pass; nothing has changed it
       // yet, but re-checking keeps this correct if that ever stops holding.
-      const insertion = bestInsertion(
-        offer, waypointOf(req), req.maxDetour, req.arriveBy, departAt, t,
-      );
+      const insertion = addPassenger(offer, {
+        waypoint: waypointOf(req),
+        maxDetour: req.maxDetour,
+        arriveBy: req.arriveBy,
+        earliest: req.travelWindow.start,
+      }, departAt, t);
       if (!insertion.feasible || !insertion.evaluation) continue;
 
       const ev = insertion.evaluation;
@@ -151,6 +154,7 @@ export function runMatching(
         arriveBy: req.arriveBy,
         maxDetour: req.maxDetour,
         currentDetour: ev.riderDetours[insertion.insertionIndex],
+        earliest: req.travelWindow.start,
       });
       // Everyone's detour shifts when the route changes.
       offer.onBoard.forEach((r, i) => { r.currentDetour = ev.riderDetours[i]; });

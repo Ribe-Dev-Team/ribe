@@ -245,7 +245,8 @@ function toMatchRequest(
  *    campus, pickups happen somewhere along the drive, so it spans departure to
  *    the latest the car could still be on the road - generous on purpose, like
  *    the corridor test, because a pair wrongly rejected here is never seen again.
- *    Arrival times are then checked precisely by `bestInsertion`.
+ *    `addPassenger` then checks precisely that nobody is collected before
+ *    they're ready and everyone arrives in time.
  */
 function toMatchOffer(
   doc: OfferDoc & { coord: Coord },
@@ -308,13 +309,15 @@ function rebuildOnBoard(
     const r = confirmedById.get(id);
     if (!r || !r.coord || !hasValidTimes(r)) return null;
     const [start, end] = endpoints(r as RequestDoc & { coord: Coord }, campus);
+    const date = calendarDateIn(r.date, timeZone);
     onBoard.push({
       reqId: r.id,
       riderId: r.userId,
       waypoint: r.coord,
-      arriveBy: zonedDateTime(calendarDateIn(r.date, timeZone), r.arrivalTime, timeZone),
+      arriveBy: zonedDateTime(date, r.arrivalTime, timeZone),
       maxDetour: deriveRiderMaxDetour(t.minutes(start, end), cfg),
       currentDetour: 0, // restated from the evaluated route by the caller
+      earliest: zonedDateTime(date, r.departureTime, timeZone),
     });
   }
   return onBoard;

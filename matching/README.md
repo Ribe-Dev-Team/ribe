@@ -7,7 +7,7 @@ Firestore, builds Google travel times, calls `src/`, and writes the matches back
 
 ```bash
 npm install
-npm test                          # 95 tests
+npm test                          # 105 tests
 npm run match -- --dry-run        # one run against Firestore, printed, nothing written
 npm run match                     # one real run - see "Running it against Firestore"
 npx ts-node test/simulate.ts      # SMART Goal 1 evidence run
@@ -21,8 +21,8 @@ npx ts-node test/compare.ts       # greedy vs provisional bumping, side by side
 | `src/types.ts` | KEY-132 — request/offer structures and matching status |
 | `src/geo.ts` | KEY-135 — haversine, bearing, 0°/360° wraparound |
 | `src/filter.ts` | KEY-133, 134, 136, 137 — time, direction, bearing, corridor, pair list |
-| `src/route.ts` | KEY-138 — insertion positions and incremental feasibility |
-| `src/score.ts` | KEY-139 — `offerScore` / `reqScore` |
+| `src/route.ts` | KEY-138 — `addPassenger`: insertion positions and incremental feasibility, including David's pickup time-window check |
+| `src/score.ts` | KEY-139 — `offerScore` / `reqScore`, via David's `calcDriverScore` / `calcPassengerScore`, including his slack |
 | `src/deferredAcceptance.ts` | KEY-41 — **the default matching loop**: provisional assignment with bumping, one new rider per trip per run |
 | `src/match.ts` | KEY-41 — one-shot greedy, kept as the comparison baseline |
 | `src/riderPolicy.ts` | derives a rider's `maxDetour` — the app never asks for it |
@@ -79,13 +79,46 @@ call this Gale-Shapley in code, comments, or the report — call it provisional
 assignment, deferred assignment, or greedy with backtracking.
 
 `offerScore` is affected by this too. It used to read as "driver preference" —
-it no longer is one. Reinterpret it as the **marginal cost of this insertion**:
-still worth tracking, because cheap insertions preserve capacity for later
-riders, which is exactly the lever bumping pulls on to raise match rate. There
-is also no soft preference layered on top of it any more — gender and luggage
-were removed earlier as hard gates, and quiet-ride affinity has been removed
-too, since it never actually influenced which rider a trip kept (the bump
-decision compares raw marginal minutes) and was cosmetic at best.
+it no longer is one. Reinterpret it as the **cost of this insertion to the
+trip**: mostly marginal driving minutes, plus how much arrival slack the car
+loses (David's slack idea — see "How pairs are scored" below). There is no
+soft preference layered on top of it — gender and luggage were removed earlier
+as hard gates, and quiet-ride affinity was removed because it never influenced
+which rider a trip kept.
+
+## How pairs are scored
+
+`src/score.ts`, structured and named after David's scoring
+(`backend/server/scoring.ts`): `calcDriverScore` and `calcPassengerScore`, each
+a weighted blend of [0, 1] sub-scores.
+
+```
+offerScore = 0.8 x driving time   how little of the driver's remaining detour this rider uses
+           + 0.2 x slack          share of the car's arrival slack left afterwards
+
+reqScore   = 0.6 x detour         how little of their own detour cap the rider uses
+           + 0.2 x punctuality    spare minutes before their own arrival time (full at 30)
+           + 0.2 x slack
+```
+
+**Slack** is David's contribution: minutes to spare before the *tightest*
+deadline anyone in the car has (the driver's included), after adding the rider,
+as a share of what it was before. Two riders can cost the driver the same
+minutes while one of them has to be on campus 30 seconds after the car arrives;
+slack is what tells them apart. The driving-time score was already this
+module's `offerScore` — David's formula for it is the same quantity. The
+rider's detour term is ours, kept because SMART Goal 1 is measured in detour.
+Driver weights are David's (0.8 / 0.2); the rider split is a judgement call.
+
+**Where each score is used.** `reqScore` decides which driver a rider asks
+first. `offerScore` ranks pairs in the greedy baseline and is reported with every
+match — but the provisional run's keep-or-bump choice still compares **raw
+marginal minutes**, not `offerScore`. Letting slack decide bumps was tried and
+measurably strands riders: it penalises a tight deadline, and a rider with a
+tight deadline is exactly the one with the fewest alternatives. In the worked
+example below, a slack-aware D1 keeps A over B (B costs half a minute but
+leaves the car 30 seconds of slack), and B — who can reach no other trip — is
+left unmatched: two matches become one.
 
 ## Why bumping, measured
 
@@ -104,7 +137,7 @@ Both algorithms run on identical batches, same seed, via `test/compare.ts`:
 nReq nOff | greedy matched/rate/detour | provisional matched/rate/detour
   60   25 |  42    70%   0.45m         |  25    42%   0.00m
  100   40 |  81    81%   0.27m         |  40    40%   0.00m
- 100   30 |  67    67%   0.16m         |  30    30%   0.00m
+ 100   30 |  67    67%   0.21m         |  30    30%   0.00m
   80   35 |  66    83%   0.22m         |  35    44%   0.00m
  120   50 | 102    85%   0.25m         |  50    42%   0.00m
 ```
@@ -142,9 +175,9 @@ The mechanism, precisely: each unmatched rider proposes to whichever untried
 compatible trip scores best for **them** (`reqScore`, judged against the trip's
 confirmed baseline, never against whoever is currently just holding the
 provisional slot). The proposer is then placed on that trip's fixed baseline via
-`bestInsertion` — which re-checks every confirmed rider's own detour cap and
-arrival time at each candidate position, so a newcomer can never degrade someone
-a human already accepted. The trip's single slot then goes to whichever of
+`addPassenger` — which re-checks every confirmed rider's own detour cap,
+arrival time and pickup window at each candidate position, so a newcomer can
+never degrade someone a human already accepted. The trip's single slot then goes to whichever of
 (current holder, new proposer) costs the driver fewer marginal minutes; a tie
 keeps the holder, which avoids churn and keeps the run deterministic. The loser
 returns to the pool and tries its next untried trip. It terminates because each
@@ -219,22 +252,28 @@ Supply sweep, 100 riders:
 
 | Drivers | Seats | Matched | Match rate | Seat utilisation |
 |---|---|---|---|---|
-| 30 | 90 | 70 | 70% | 78% |
-| 40 | 119 | 80 | **80%** | 67% |
+| 30 | 90 | 68 | 68% | 76% |
+| 40 | 119 | 79 | **79%** | 66% |
 | 50 | 149 | 89 | 89% | 60% |
-| 60 | 180 | 94 | 94% | 52% |
+| 60 | 180 | 95 | 95% | 53% |
 
 This sweep runs with `useBearingFilter: false` on purpose, to isolate the
 supply-cap finding from the bearing filter's own effect (measured separately
 below) — so these numbers are the algorithm's floor, before that filter even
 runs.
 
+These moved by one or two riders when David's slack joined the scores (before:
+70 / 80 / 89 / 94, and average detour roughly doubled from ~0.5% to ~1%, still far
+under 15%). `simulate.ts` runs the greedy baseline, which ranks pairs by the
+combined scores, so slack changes which pairs it locks in first. The default
+provisional algorithm's single-run results (`compare.ts`) did not change.
+
 **The 80% target needs roughly one driver per 2.5 riders.** At 30 drivers the
-batch is supply-capped at 70% no matter how good the matching is. That is a
+batch is supply-capped at 68-70% no matter how good the matching is. That is a
 finding about the service, not the algorithm, and it belongs in the report —
 your match-rate goal is partly a driver-recruitment goal.
 
-At 40 drivers with the default bearing filter (90°) on: **81% matched, 0.9%
+At 40 drivers with the default bearing filter (90°) on: **81% matched, 1.1%
 average detour** against a <15% target — see the next section.
 
 ## The bearing filter (KEY-135/136)
@@ -396,13 +435,14 @@ source file has a companion test file that exercises it directly:
 |---|---|
 | `test/geo.test.ts` | `haversineKm`, `bearingDegrees`, `bearingDifference` (KEY-135) — including the 350°/10° wraparound case |
 | `test/filter.test.ts` | `windowsOverlap` (KEY-133), `corridorDetourKm`, and `hardFilter`'s reject-reason ordering (KEY-137) |
-| `test/route.test.ts` | `evaluateRoute`'s waiting+riding detour math (the "last rider scores zero" bug) and `bestInsertion`'s re-check of every existing rider (KEY-138) |
+| `test/route.test.ts` | `evaluateRoute`'s waiting+riding detour math (the "last rider scores zero" bug) and `addPassenger`'s re-check of every existing rider and its pickup time-window check (KEY-138) |
 | `test/match.test.ts` | `runMatching` end to end — the greedy assignment loop, stats, `acceptDeadline` clamping |
 | `test/deferredAcceptance.test.ts` | `runMatchingProvisional` end to end — the worked bumping example (greedy strands a rider, provisional relocates them), confirmed riders never being bumped, capacity/detour caps still holding |
 | `test/travelTime.test.ts` | `SyntheticTravelTime`, and both Google clients (Routes and legacy Distance Matrix) — batching, dedup, request shape, and fallback on failed legs |
 | `test/melbourneTime.test.ts` | stored local-midnight dates and `"HH:mm"` times across the daylight-saving change |
 | `test/adapter.test.ts` | batching, every skip reason, rider/driver windows and detour caps, confirmed riders rebuilt in pickup order |
 | `test/writes.test.ts` | every reason a match write is refused, and what an expiry changes |
+| `test/score.test.ts` | each sub-score, the 0.8 / 0.2 driver blend, and slack telling apart two riders who cost the same minutes |
 | `test/runOnce.test.ts` | the whole run against an in-memory store: match → wait → accept → fill the next seat in pickup order; expiry freeing a driver; dry run; one failing batch |
 
 The runner's Firestore layer (`runner/firestore.ts`) is the one piece these tests
@@ -490,22 +530,24 @@ Three ways to poke at the algorithm without writing a Jest test:
   comparison baseline, not because it's a viable alternative default — see
   "Why bumping, measured". Its own known limitation: no global optimality
   guarantee, since it never revisits an early placement.
-- Insertion search (`bestInsertion`, used by both algorithms) is exhaustive
+- Insertion search (`addPassenger`, used by both algorithms) is exhaustive
   over positions. Fine to ~6 seats; beyond that it needs a heuristic.
 - `SyntheticTravelTime` noise is one-sided (legs only ever get slower). Two-sided
   noise lets a detour come out faster than the direct route, which is
   geometrically impossible and produces negative detours in the statistics.
 - **Leaving campus, riders are judged against the driver's arrival home.**
-  `bestInsertion` checks every rider's `arriveBy` against `finalArrival`, and a
+  `addPassenger` checks every rider's `arriveBy` against `finalArrival`, and a
   rider's detour includes the "riding" leg after the drop-off. Both are right
   heading TO campus, where everyone gets out together. FROM campus, riders get
   out earlier, so both are stricter than necessary: that costs matches, not
   safety. Fixing it touches detour decision #4, so it is left for a decision
   rather than changed quietly.
-- **No precise "picked up before you're ready" check heading to campus.** The time
-  filter keeps a driver whose car is on the road during the rider's departure
-  window, and arrival is then checked exactly — but nothing checks the actual
-  pickup time against the rider's earliest departure. Leaving campus it is exact,
-  because everyone boards at the driver's departure time.
+- **The car never waits at a door.** `addPassenger` refuses any position where
+  the car would reach a rider before their stated departure time (David's
+  time-window scan). A real driver could simply wait a few minutes, but waiting
+  delays everyone already aboard and the detour maths doesn't count idle time,
+  so an early arrival is treated as infeasible rather than under-reporting
+  detour. This costs some matches where the driver lives further out and leaves
+  early.
 - Only the rider can accept. Driver-side approval, cancelling a confirmed ride,
   and `firestore.rules` do not exist yet.

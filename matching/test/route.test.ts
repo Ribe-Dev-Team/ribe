@@ -1,4 +1,4 @@
-import { bestInsertion, evaluateRoute, isAcceptingRiders, minSlackMinutes } from '../src/route';
+import { addPassenger, evaluateRoute, isAcceptingRiders, minSlackMinutes } from '../src/route';
 import { SyntheticTravelTime } from '../src/travelTime';
 import { DEFAULT_CONFIG } from '../src/types';
 import { CAMPUS, at, makeOffer, ring } from './fixtures';
@@ -51,7 +51,7 @@ describe('incremental feasibility', () => {
       currTripDuration: 0,
     });
 
-    const res = bestInsertion(offer, wayOff, 600, at(23), at(8), t);
+    const res = addPassenger(offer, { waypoint: wayOff, maxDetour: 600, arriveBy: at(23) }, at(8), t);
     expect(res.feasible).toBe(false);
     expect(res.reason).toBe('RIDER_DETOUR_CAP');
   });
@@ -74,7 +74,7 @@ describe('incremental feasibility', () => {
       currTripDuration: 0,
     });
 
-    const res = bestInsertion(offer, wayOff, 600, at(23), at(8), t);
+    const res = addPassenger(offer, { waypoint: wayOff, maxDetour: 600, arriveBy: at(23) }, at(8), t);
     // No ordering can keep the existing rider inside a 1-minute cap here,
     // so the insertion is correctly refused rather than silently breaking them.
     expect(res.feasible).toBe(false);
@@ -96,7 +96,7 @@ describe('incremental feasibility', () => {
       currTripDuration: 0,
     });
 
-    const res = bestInsertion(offer, wayOff, 90, at(10), at(8), t);
+    const res = addPassenger(offer, { waypoint: wayOff, maxDetour: 90, arriveBy: at(10) }, at(8), t);
     expect(res.feasible).toBe(true);
   });
 
@@ -104,7 +104,7 @@ describe('incremental feasibility', () => {
     const origin = { lat: CAMPUS.lat + 0.15, lon: CAMPUS.lon };
     const wayOff = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon + 0.25 };
     const offer = makeOffer({ offerId: 'o1', start: origin, maxDetour: 1 });
-    const res = bestInsertion(offer, wayOff, 999, at(12), at(8), t);
+    const res = addPassenger(offer, { waypoint: wayOff, maxDetour: 999, arriveBy: at(12) }, at(8), t);
     expect(res.feasible).toBe(false);
     expect(res.reason).toBe('DRIVER_DETOUR_CAP');
   });
@@ -148,5 +148,39 @@ describe('matching cutoff', () => {
     });
     const now = at(7, 55); // 5 minutes out
     expect(isAcceptingRiders(offer, DEFAULT_CONFIG, departAt, now)).toBe(false);
+  });
+});
+
+describe("addPassenger — nobody is collected before they're ready (David's time-window scan)", () => {
+  // t is 2.1 min per km, straight lines.
+  const north = (km: number) => ({ lat: CAMPUS.lat + km / 110.57, lon: CAMPUS.lon });
+  const toCampus = makeOffer({ offerId: 'o', start: north(20), maxDetour: 30 });
+
+  it("refuses when the car would reach a to-campus rider before they're ready", () => {
+    // Leaves 8:00, reaches the rider 21 minutes later, at 8:21.
+    const res = addPassenger(toCampus, {
+      waypoint: north(10), maxDetour: 20, arriveBy: at(10), earliest: at(8, 30),
+    }, at(8), t);
+    expect(res.feasible).toBe(false);
+    expect(res.reason).toBe('PICKUP_BEFORE_READY');
+  });
+
+  it('accepts once the rider is ready by the time the car arrives', () => {
+    const res = addPassenger(toCampus, {
+      waypoint: north(10), maxDetour: 20, arriveBy: at(10), earliest: at(8, 15),
+    }, at(8), t);
+    expect(res.feasible).toBe(true);
+  });
+
+  it('leaving campus, checks the one moment everyone boards: departure', () => {
+    const fromCampus = makeOffer({
+      offerId: 'o', direction: 'FROM_CAMPUS', start: CAMPUS, end: north(20), maxDetour: 30,
+    });
+    const rider = { waypoint: north(10), maxDetour: 20, arriveBy: at(23) };
+
+    expect(addPassenger(fromCampus, { ...rider, earliest: at(17, 30) }, at(17), t).reason)
+      .toBe('PICKUP_BEFORE_READY');
+    expect(addPassenger(fromCampus, { ...rider, earliest: at(16, 45) }, at(17), t).feasible)
+      .toBe(true);
   });
 });
