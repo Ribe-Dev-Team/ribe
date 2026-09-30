@@ -8,7 +8,7 @@ import type { MatchRequest, Trip, Waypoint } from "./matching.schema";
 import { calcDist } from "../../mobile/utility/distances";
 import { subMins, addMins } from "../../mobile/utility/times";
 import { getEndTime, getStartTime, insertAt, isBookingToUni } from "./matching";
-import { GOOGLE_MAPS_API_KEY, isPlacesConfigured, MONASH_CLAYTON_LOCATION, ResolvedPlace } from '../../mobile/services/googlePlaces';
+import { GOOGLE_MAPS_API_KEY, isPlacesConfigured } from '../../mobile/services/googlePlaces';
 import { RoutesReqOptions, computeRoute } from "../../mobile/services/googleRoutes";
 
 /**

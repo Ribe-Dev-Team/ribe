@@ -36,8 +36,11 @@ export function isBookingToUni(r: MatchRequest | MatchOffer) {
 }
 
 export function insertAt<T>(l: T[], add: T[], ind: number, replace: number = 0): T[] {
-  const left = l.splice(0, ind);
-  const right = l.splice(ind + replace, -1);
+  if (l.length < ind) throw new Error(`Index out of range. Cannot insert to index ${ind} in list with ${l.length} elements.`);
+  if (replace < 0) throw new Error(`Cannot replace negative number (${replace}) of items.`);
+  if (l.length < ind + replace) throw new Error(`Index out of range. Tried to replace ${replace} items after index ${ind} but only ${l.length - ind} exist.`);
+  const left = l.slice(0, ind);
+  const right = l.slice(ind + replace);
   const combined = [...left, ...add, ...right];
   return combined;
 }

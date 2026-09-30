@@ -27,6 +27,7 @@ interface MatchOffer {
   start: Coord,
   end: Coord,
   directTime: number, // number of minutes for driver without passengers
+  directDist: number, // number of KMs for driver without passengers
   capacity: number,
   window: {
     start: Date,
