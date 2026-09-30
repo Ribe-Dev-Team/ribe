@@ -1,5 +1,5 @@
 import {
-  buildGoogleTravelTimeMatrix, PrecomputedTravelTime, SyntheticTravelTime,
+  buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, PrecomputedTravelTime, SyntheticTravelTime,
 } from '../src/travelTime';
 import { CAMPUS } from './fixtures';
 
@@ -116,5 +116,114 @@ describe('buildGoogleTravelTimeMatrix', () => {
     await expect(
       buildGoogleTravelTimeMatrix([A, B], { apiKey: 'k', fetchImpl: impl }),
     ).rejects.toThrow(/500/);
+  });
+});
+
+/** Fakes computeRouteMatrix: a POSTed JSON body in, a flat element list out, in
+ *  Google's documented shape (empty `status` on success, duration as "123s"). */
+function fakeRoutesFetch(seconds: (originIdx: number, destIdx: number) => number | null) {
+  const calls: Array<{ url: string; init: RequestInit; body: any }> = [];
+  const impl = (jest.fn(async (url: string, init: RequestInit) => {
+    const body = JSON.parse(init.body as string);
+    calls.push({ url, init, body });
+    const elements = body.origins.flatMap((_: unknown, i: number) =>
+      body.destinations.map((_: unknown, j: number) => {
+        const s = seconds(i, j);
+        return s === null
+          ? { originIndex: i, destinationIndex: j, status: {}, condition: 'ROUTE_NOT_FOUND' }
+          : { originIndex: i, destinationIndex: j, status: {}, condition: 'ROUTE_EXISTS', duration: `${s}s` };
+      }));
+    return { ok: true, status: 200, statusText: 'OK', json: async () => elements, text: async () => '' };
+  }) as unknown) as typeof fetch;
+  return { impl, calls };
+}
+
+describe('buildRoutesTravelTimeMatrix', () => {
+  it('answers minutes() from the matrix, converting "Ns" durations to minutes', async () => {
+    const { impl } = fakeRoutesFetch((i, j) => (i === j ? 0 : 600));
+
+    const t = await buildRoutesTravelTimeMatrix([A, B, C], { apiKey: 'k', fetchImpl: impl });
+
+    expect(t.minutes(A, B)).toBeCloseTo(10, 6);
+    expect(t.minutes(C, A)).toBeCloseTo(10, 6);
+    expect(t.minutes(B, B)).toBe(0);
+  });
+
+  it('sends the key and field mask as headers, and lat/lng waypoints in the body', async () => {
+    const { impl, calls } = fakeRoutesFetch(() => 60);
+
+    await buildRoutesTravelTimeMatrix([A, B], { apiKey: 'secret', fetchImpl: impl });
+
+    expect(calls).toHaveLength(1);
+    const { url, init, body } = calls[0];
+    expect(url).toBe('https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toMatchObject({
+      'X-Goog-Api-Key': 'secret',
+      'X-Goog-FieldMask': 'originIndex,destinationIndex,status,condition,duration',
+    });
+    expect(body.travelMode).toBe('DRIVE');
+    expect(body.origins[1]).toEqual({ waypoint: { location: { latLng: { latitude: B.lat, longitude: B.lon } } } });
+  });
+
+  it('reads a response that leaves out zero indices', async () => {
+    const impl = (jest.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      json: async () => [
+        { status: {}, condition: 'ROUTE_EXISTS', duration: '0s' },
+        { destinationIndex: 1, status: {}, condition: 'ROUTE_EXISTS', duration: '300s' },
+        { originIndex: 1, status: {}, condition: 'ROUTE_EXISTS', duration: '240s' },
+        { originIndex: 1, destinationIndex: 1, status: {}, condition: 'ROUTE_EXISTS', duration: '0s' },
+      ],
+    })) as unknown) as typeof fetch;
+
+    const t = await buildRoutesTravelTimeMatrix([A, B], { apiKey: 'k', fetchImpl: impl });
+
+    expect(t.minutes(A, B)).toBeCloseTo(5, 6);
+    expect(t.minutes(B, A)).toBeCloseTo(4, 6);
+  });
+
+  it('dedupes and chunks exactly like the legacy client', async () => {
+    const points = Array.from({ length: 25 }, (_, i) => ({ lat: CAMPUS.lat + i * 0.001, lon: CAMPUS.lon }));
+    const { impl, calls } = fakeRoutesFetch(() => 60);
+
+    await buildRoutesTravelTimeMatrix([...points, ...points], { apiKey: 'k', fetchImpl: impl, chunkSize: 10 });
+
+    expect(calls).toHaveLength(9);
+    for (const { body } of calls) {
+      expect(body.origins.length * body.destinations.length).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it('leaves out legs with no route, falling back or throwing only on lookup', async () => {
+    const { impl } = fakeRoutesFetch((i, j) => (i === 0 && j === 1 ? null : 120));
+    const fallback = new SyntheticTravelTime({ jitter: 0 });
+
+    const withFallback = await buildRoutesTravelTimeMatrix([A, B], { apiKey: 'k', fetchImpl: impl, fallback });
+    expect(withFallback.minutes(B, A)).toBeCloseTo(2, 6);
+    expect(withFallback.minutes(A, B)).toBeCloseTo(fallback.minutes(A, B), 6);
+
+    const without = await buildRoutesTravelTimeMatrix([A, B], { apiKey: 'k', fetchImpl: impl });
+    expect(() => without.minutes(A, B)).toThrow(/No travel time for leg/);
+  });
+
+  it('treats an element carrying an error status as unrouted', async () => {
+    const impl = (jest.fn(async () => ({
+      ok: true, status: 200, statusText: 'OK',
+      json: async () => [{ originIndex: 0, destinationIndex: 1, status: { code: 5 }, condition: 'ROUTE_EXISTS', duration: '60s' }],
+    })) as unknown) as typeof fetch;
+
+    const t = await buildRoutesTravelTimeMatrix([A, B], { apiKey: 'k', fetchImpl: impl });
+    expect(() => t.minutes(A, B)).toThrow(/No travel time for leg/);
+  });
+
+  it("throws with Google's explanation when the request is refused", async () => {
+    const impl = (jest.fn(async () => ({
+      ok: false, status: 403, statusText: 'Forbidden',
+      text: async () => 'Routes API has not been used in project 123 before or it is disabled.',
+    })) as unknown) as typeof fetch;
+
+    await expect(buildRoutesTravelTimeMatrix([A, B], { apiKey: 'k', fetchImpl: impl }))
+      .rejects.toThrow(/403.*Routes API has not been used/);
   });
 });

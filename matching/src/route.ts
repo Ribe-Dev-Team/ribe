@@ -205,3 +205,19 @@ export function isAcceptingRiders(
 export function minutesToDeparture(departAt: Date, now: Date): number {
   return (departAt.getTime() - now.getTime()) / 60_000;
 }
+
+/**
+ * When a trip leaves: one time shared by the whole batch, or a per-offer lookup.
+ *
+ * A single time is fine for tests and simulations, where every driver leaves
+ * together. Real batches (a day's trips in one direction) mix drivers leaving at
+ * 7:30 and 8:15, and routing everyone from one shared time would check a late
+ * driver's arrivals as if they had left early — reporting infeasible trips as
+ * feasible. Every use of departure is already per offer, so a lookup slots in
+ * without changing the algorithm.
+ */
+export type DepartureTime = Date | ((offer: MatchOffer) => Date);
+
+export function departureOf(departAt: DepartureTime, offer: MatchOffer): Date {
+  return departAt instanceof Date ? departAt : departAt(offer);
+}

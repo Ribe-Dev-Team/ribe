@@ -14,8 +14,13 @@ function formatCountdown(remainingMs: number) {
   return `${hours}h ${minutes}m`;
 }
 
-function useApprovalCountdown(matchedAt?: Date) {
-  const deadline = matchedAt ? matchedAt.getTime() + APPROVAL_WINDOW_MS : null;
+// Counts down to the matcher's own acceptDeadline when there is one: that is the
+// deadline the runner enforces, and it is clamped to the matching cutoff, so it
+// is often much sooner than 12h. matchedAt + 12h is only a fallback.
+function useApprovalCountdown(matchedAt?: Date, acceptDeadline?: Date) {
+  const deadline = acceptDeadline
+    ? acceptDeadline.getTime()
+    : matchedAt ? matchedAt.getTime() + APPROVAL_WINDOW_MS : null;
   const [remainingMs, setRemainingMs] = useState(() => (deadline ? deadline - Date.now() : 0));
 
   useEffect(() => {
@@ -98,6 +103,8 @@ export interface RideCardProps {
   plate: string;
   /** When a driver match was found - only used for 'awaiting' cards to show a 12h approval countdown */
   matchedAt?: Date;
+  /** The matcher's enforced accept-by time; when present the countdown runs to this instead */
+  acceptDeadline?: Date;
   /** Only relevant for 'confirmed' cards - driver's phone, masked until 12h before pickup */
   driverPhone?: string;
   /** Exact pickup date/time - used to decide when driverPhone gets revealed */
@@ -125,6 +132,7 @@ export default function RideCard({
   driver,
   plate,
   matchedAt,
+  acceptDeadline,
   driverPhone,
   pickupDateTime,
   onAccept,
@@ -135,7 +143,10 @@ export default function RideCard({
   onOpenDriverProfile,
 }: RideCardProps) {
   const accent = statusAccent[status];
-  const remainingMs = useApprovalCountdown(status === 'awaiting' ? matchedAt : undefined);
+  const remainingMs = useApprovalCountdown(
+    status === 'awaiting' ? matchedAt : undefined,
+    status === 'awaiting' ? acceptDeadline : undefined,
+  );
   const msUntilPickup = useTimeUntil(status === 'confirmed' ? pickupDateTime : undefined);
   const phoneRevealed = msUntilPickup <= PHONE_REVEAL_WINDOW_MS;
   const [showCostInfo, setShowCostInfo] = useState(false);

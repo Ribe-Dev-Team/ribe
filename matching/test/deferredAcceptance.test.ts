@@ -227,3 +227,29 @@ describe('one new rider per trip per run', () => {
     expect(res.matches).toHaveLength(0);
   });
 });
+
+describe('runMatchingProvisional — each driver routed from their own departure', () => {
+  // t is 2.1 min per km. The rider is 21 min out and must be on campus by 8:40.
+  const north = (km: number) => ({ lat: CAMPUS.lat + km / 110.57, lon: CAMPUS.lon });
+  const rider = makeRequest({
+    reqId: 'r', start: north(10), arriveBy: at(8, 40), travelWindow: { start: at(7, 30), end: at(8, 19) },
+  });
+  // Leaves 8:00 from a little further out: reaches campus about 8:25.
+  const early = makeOffer({ offerId: 'early', start: north(12), travelWindow: { start: at(8), end: at(8, 40) } });
+  // Nearly at the rider's door, but leaves 8:19: reaches campus about 8:41 - late.
+  const late = makeOffer({ offerId: 'late', start: north(10.5), travelWindow: { start: at(8, 19), end: at(8, 50) } });
+  const ownDeparture = (o: { travelWindow: { start: Date } }) => o.travelWindow.start;
+
+  it("never places a rider with a driver who leaves too late to get them there", () => {
+    const res = runMatchingProvisional('b', [rider], [early, late], ownDeparture, at(0), t);
+    expect(res.matches.map((m) => m.offerId)).toEqual(['early']);
+    // The deadline clamps against THIS driver's departure: 8:00 minus the 2h cutoff.
+    expect(res.matches[0].acceptDeadline).toEqual(at(6));
+  });
+
+  it('which one shared batch departure time gets wrong', () => {
+    // Routed as if everyone left at 8:00, the late driver looks faster and wins.
+    const res = runMatchingProvisional('b', [rider], [early, late], at(8), at(0), t);
+    expect(res.matches.map((m) => m.offerId)).toEqual(['late']);
+  });
+});

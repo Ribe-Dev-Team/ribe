@@ -108,3 +108,8 @@ _build
 # Google Drive syncing (David)
 */desktop.ini
 *.ini
+
+# Firebase Admin service-account keys (the matching runner) - full database access, never commit
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+service-account*.json

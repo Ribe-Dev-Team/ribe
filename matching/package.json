@@ -1,12 +1,13 @@
 {
   "name": "ribe-matching",
   "version": "0.1.0",
-  "description": "Ride matching for Ribe (R5 / KEY-68). Pure TypeScript, no database.",
+  "description": "Ride matching for Ribe (R5 / KEY-68). Pure TypeScript algorithm in src/, Firestore runner in runner/.",
   "type": "commonjs",
   "scripts": {
     "build": "tsc",
     "test": "jest",
-    "simulate": "ts-node test/simulate.ts"
+    "simulate": "ts-node test/simulate.ts",
+    "match": "ts-node runner/run.ts"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
@@ -15,5 +16,8 @@
     "ts-jest": "^29.1.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.10.0"
   }
 }

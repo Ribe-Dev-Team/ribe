@@ -25,17 +25,18 @@ export interface RideRequest {
   createdAt?: string;
 
   /*
-  Match result, written by the matcher (see applyMatch in
-  firebaseBookingMethods.ts) and read back by rideData.ts to render the card.
-  All absent until this request is matched; all cleared again if the rider or
-  driver declines, so their presence is what distinguishes "matched" from
-  "still searching" independently of `status`.
+  Match result, written by the matching runner (matching/runner/firestore.ts)
+  and read back by rideData.ts to render the card. All absent until this request
+  is matched; all cleared again if the rider or driver declines, so their
+  presence is what distinguishes "matched" from "still searching" independently
+  of `status`.
   */
   matchedOfferId?: string;   // rideOffers doc id this rider was placed on
   matchedDriverId?: string;  // driver's uid -> drivers/{uid} for name, vehicle, plate
   matchedAt?: Timestamp;     // when the matcher produced the match, NOT when it was read
   acceptDeadline?: Timestamp; // matcher's own clamped deadline; drives the approval countdown
   riderDetourMinutes?: number; // this rider's own detour on the shared route
+  routeIndex?: number;       // pickup position among the offer's confirmed riders; used by acceptMatch
 }
 
 export interface RideOffer {
@@ -59,26 +60,12 @@ export interface RideOffer {
   single new rider per run (see matching/src/deferredAcceptance.ts) — accepting
   is a human decision, so a driver is never asked to judge two strangers at
   once. `confirmedRequestIds` accumulates across runs as riders accept, and is
-  what makes a partly-full trip still matchable on the next run.
+  what makes a partly-full trip still matchable on the next run. It is kept in
+  PICKUP ORDER (acceptMatch inserts at the rider's routeIndex), because the next
+  run rebuilds the car's route from it.
   */
   pendingRequestId?: string | null;
   confirmedRequestIds?: string[];
   matchedAt?: Timestamp;
   acceptDeadline?: Timestamp;
-}
-
-/**
- * One match, as the matching module produces it, reduced to just the fields
- * Firestore needs. Declared structurally rather than imported from
- * matching/src so mobile does not bundle the matching package — the same
- * reason matchStatus.ts duplicates its status union.
- */
-export interface MatchWriteInput {
-  reqId: string;
-  offerId: string;
-  riderId: string;
-  driverId: string;
-  matchedAt: Date;
-  acceptDeadline: Date;
-  riderDetourMinutes: number;
 }

@@ -20,6 +20,8 @@ interface DashboardPageProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
+  /** The real Accept/Decline handlers (App's buildRideActions) for a card's own buttons. */
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline'>;
 }
 
 type ViewMode = 'rider' | 'driver';
@@ -75,7 +77,7 @@ const DRIVER_LANES: LaneConfig[] = [
 
 const CARD_GAP = 12;
 
-export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriverProfile }: DashboardPageProps) {
+export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriverProfile, rideActions }: DashboardPageProps) {
   const { user } = useAuth();
   const [mode, setMode] = useState<ViewMode>('rider');
   const [riderRides, setRiderRides] = useState<RideCardProps[]>([]);
@@ -193,20 +195,8 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
                   >
                     <RideCard
                       {...ride}
-                      onAccept={() =>
-                        Alert.alert(
-                          mode === 'rider' ? 'Ride accepted' : 'Drive confirmed',
-                          mode === 'rider'
-                            ? `Trip with ${ride.driver.name} confirmed.`
-                            : 'Rider match confirmed for your drive.'
-                        )
-                      }
-                      onDecline={() =>
-                        Alert.alert(
-                          mode === 'rider' ? 'Ride declined' : 'Request declined',
-                          mode === 'rider' ? 'The driver has been notified.' : 'The rider has been notified.'
-                        )
-                      }
+                      // Writes to Firestore - these used to only show a success alert.
+                      {...rideActions(ride)}
                       onEdit={() =>
                         Alert.alert(
                           mode === 'rider' ? 'Edit ride request' : 'Edit driving offer',

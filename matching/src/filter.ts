@@ -3,7 +3,7 @@ import {
   RejectedPairing, RejectReason,
 } from './types';
 import { bearingDegrees, bearingDifference, haversineKm } from './geo';
-import { isAcceptingRiders, minutesToDeparture } from './route';
+import { DepartureTime, departureOf, isAcceptingRiders, minutesToDeparture } from './route';
 
 /** The end of a rider's trip that is NOT campus — the point the driver deviates to. */
 export function waypointOf(req: MatchRequest): Coord {
@@ -79,7 +79,7 @@ export function hardFilter(
   requests: MatchRequest[],
   offers: MatchOffer[],
   cfg: MatchingConfig,
-  departAt: Date,
+  departAt: DepartureTime,
   now: Date,
   avgSpeedKmh = 40,
 ): FilterResult {
@@ -93,10 +93,11 @@ export function hardFilter(
       for (const req of requests) reject(offer, req, 'OFFER_NOT_OPEN');
       continue;
     }
-    if (!isAcceptingRiders(offer, cfg, departAt, now)) {
+    const offerDepartAt = departureOf(departAt, offer);
+    if (!isAcceptingRiders(offer, cfg, offerDepartAt, now)) {
       const why: RejectReason =
         offer.seatsFilled >= offer.seatsOffered ? 'NO_SEATS' :
-        minutesToDeparture(departAt, now) <= cfg.matchingCutoffMinutes ? 'MATCHING_CUTOFF' :
+        minutesToDeparture(offerDepartAt, now) <= cfg.matchingCutoffMinutes ? 'MATCHING_CUTOFF' :
         'DRIVER_CLOSED';
       for (const req of requests) reject(offer, req, why);
       continue;

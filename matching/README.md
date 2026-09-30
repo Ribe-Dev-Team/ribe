@@ -1,14 +1,17 @@
 # Ribe matching (R5 / KEY-68)
-git com
-Pure TypeScript. No Firebase, no Google Maps, no database — the algorithm takes
-arrays in and returns matches out. The only external dependency is travel time,
-behind a one-method interface you swap for the real Distance Matrix later.
+
+Two halves. `src/` is pure TypeScript — no Firebase, no network, no database: the
+algorithm takes arrays in and returns matches out, with travel time behind a
+one-method interface. `runner/` is the thin layer that runs it for real: it reads
+Firestore, builds Google travel times, calls `src/`, and writes the matches back.
 
 ```bash
 npm install
-npm test                    # 50 tests
-npx ts-node test/simulate.ts # SMART Goal 1 evidence run
-npx ts-node test/compare.ts  # greedy vs provisional bumping, side by side
+npm test                          # 95 tests
+npm run match -- --dry-run        # one run against Firestore, printed, nothing written
+npm run match                     # one real run - see "Running it against Firestore"
+npx ts-node test/simulate.ts      # SMART Goal 1 evidence run
+npx ts-node test/compare.ts       # greedy vs provisional bumping, side by side
 ```
 
 ## Files, and the tickets they close
@@ -23,7 +26,11 @@ npx ts-node test/compare.ts  # greedy vs provisional bumping, side by side
 | `src/deferredAcceptance.ts` | KEY-41 — **the default matching loop**: provisional assignment with bumping, one new rider per trip per run |
 | `src/match.ts` | KEY-41 — one-shot greedy, kept as the comparison baseline |
 | `src/riderPolicy.ts` | derives a rider's `maxDetour` — the app never asks for it |
-| `src/travelTime.ts` | the seam where Google Maps plugs in |
+| `src/travelTime.ts` | the seam where Google Maps plugs in — Routes API matrix, plus the legacy Distance Matrix client |
+| `src/adapter.ts` | stored bookings → matcher inputs; batching by date + direction (the `batchKey`) |
+| `src/melbourneTime.ts` | stored date + `"HH:mm"` → real instants, daylight saving included |
+| `src/writes.ts` | when a match may still be written, and what an expiry changes — no SDK, so testable |
+| `runner/` | one matching run against Firestore (`npm run match`) |
 
 ## The algorithm, in one paragraph
 
@@ -302,48 +309,80 @@ past cutoff     departure inside cfg.matchingCutoffMinutes
 on the first two, `'locked'` on the last. This module doesn't decide *how often*
 to run; that's a scheduling decision independent of the algorithm (any
 frequency works with bumping), and running more often only gives an
-already-open, under-full trip more chances to fill before its cutoff. No
-scheduler, cutoff clock, or `batchKey` derivation lives in `src/` yet — that's
-still a caller-side concern.
+already-open, under-full trip more chances to fill before its cutoff. The
+`batchKey` is derived by `src/adapter.ts`; how often to run is still up to
+whatever schedules `npm run match`.
 
-## Wiring Firebase later
+## Running it against Firestore
 
-Two adapters, roughly forty lines, and nothing in `src/` changes:
+`npm run match` does one pass (`runner/runOnce.ts`):
 
-```ts
-// read
-const requests = await db.collection('rideRequests')
-  .where('batchKey', '==', key).where('status', '==', 'unassigned').get();
+1. **Expire** every match whose `acceptDeadline` has passed: the request becomes
+   `expired` (RideCard already tells the rider the trip is cancelled when the
+   countdown ends) and the driver's slot is freed — before matching, so that
+   driver can be offered someone new in the same run.
+2. **Read** every request and offer whose stored status is `pending` (the app's
+   word for "not matched yet" — see `mobile/pages/schema/matchStatus.ts`).
+3. **Batch** them by Melbourne date and direction, e.g. `2026-10-05_TO_CAMPUS`.
+   Both come from fields that never change after submission, so the key is stable
+   without being stored. Bookings with no coordinates, a malformed time, a trip
+   already under way, or a driver still waiting on a rider are left out and
+   counted in the output.
+4. **Per batch:** build one travel-time matrix, convert, run
+   `runMatchingProvisional` with each driver routed from their **own** departure
+   time, and write each match in its own transaction.
 
-// match — unchanged, pure
-const result = runMatchingProvisional(key, requests, offers, departAt, new Date(), distanceMatrix);
-
-// write: one transaction per match, decrementing seatsAvailable inside it
+```bash
+npm run match -- --dry-run      # compute and print; write nothing, expire nothing
+npm run match -- --synthetic    # estimated travel times, no Google calls
 ```
 
-`buildGoogleTravelTimeMatrix` in `src/travelTime.ts` is that client. Call it once
-per batch with every coordinate the run could query — each offer's `start`/`end`
-and every request's `waypointOf(req)` — and it returns a `PrecomputedTravelTime`
-implementing `minutes(a, b)` purely from an in-memory table:
+**Configuration** — environment variables, falling back to `mobile/.env` for the
+two values the app already has:
 
-```ts
-const points = [
-  ...offers.flatMap((o) => [o.start, o.end]),
-  ...requests.map(waypointOf),
-];
-const t = await buildGoogleTravelTimeMatrix(points, {
-  apiKey: process.env.GOOGLE_MAPS_API_KEY!,
-  fallback: new SyntheticTravelTime(), // optional: covers legs Google can't route
-});
+| Variable | |
+|---|---|
+| `FIREBASE_SERVICE_ACCOUNT` | path to a service-account key (Firebase console → Project settings → Service accounts → Generate new private key). **Keep it outside the repo** — it bypasses every security rule. `GOOGLE_APPLICATION_CREDENTIALS` works too. |
+| `FIREBASE_PROJECT_ID` | falls back to `EXPO_PUBLIC_FIREBASE_PROJECT_ID` |
+| `GOOGLE_MAPS_API_KEY` | falls back to `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`; the key's project needs the **Routes API** enabled. Without a key, travel times are synthetic estimates and the run says so. |
+| `FIRESTORE_EMULATOR_HOST` | run against the local emulator; no credentials needed |
 
-const result = runMatchingProvisional(key, requests, offers, departAt, new Date(), t);
-```
+**Scheduling** is deliberately outside the code. Anything that can run a command
+on a timer works — cron, Windows Task Scheduler, a CI schedule. Since each run
+offers a driver one new rider, running more often is what fills a 4-seat car
+before its cutoff.
 
-It batches into `chunkSize x chunkSize` requests (default 10x10) to stay under
-Google's per-request element cap, dedupes repeated points first (campus shows up
-constantly), and leaves out legs Google returns a non-OK status for — those fall
-back to `fallback` if given, or throw lazily on lookup, only if the matching run
-actually needed that leg. No API calls happen inside the matching loop itself.
+### What the runner writes, and why
+
+- **A match** (`src/writes.ts` → `planMatchWrite`): request → `awaiting` with
+  `matchedOfferId`, `matchedDriverId`, `matchedAt`, `acceptDeadline`,
+  `riderDetourMinutes` and `routeIndex`; offer → `awaiting` with
+  `pendingRequestId`. Re-checked inside the transaction, because the run works
+  from a snapshot: the rider may have cancelled, the driver's slot may have been
+  filled, or — `BASELINE_CHANGED` — the driver's confirmed riders may no longer
+  be the ones the route was computed for. Any of those skips the write.
+- **Pickup order.** `routeIndex` is where the rider sits among the driver's
+  confirmed riders. `acceptMatch` (in the app) inserts them there, so
+  `confirmedRequestIds` is always in pickup order. The next run rebuilds the
+  car's route from that list, so an append-only list would silently re-check
+  everyone's detour against the wrong route.
+
+### Travel times: Routes API, not Distance Matrix
+
+Google made the Distance Matrix API a legacy service on 1 March 2025; it cannot
+be enabled on Cloud projects created since, where every call fails with
+`REQUEST_DENIED`. `buildRoutesTravelTimeMatrix` calls its replacement,
+`computeRouteMatrix`, behind the same `PrecomputedTravelTime` interface. It
+dedupes points (campus appears constantly), sends 10×10 chunks (under every Route
+Matrix element cap), and leaves out unroutable legs, which fall back to
+`SyntheticTravelTime` in the runner. No API calls happen inside the matching loop.
+
+It uses `TRAFFIC_UNAWARE`: a batch spans a whole day of departures, so no single
+departure time describes every leg, and traffic "now" is wrong for tomorrow
+morning. **Cost grows with the square of a batch's distinct points**, which is
+why the matrix is built per batch rather than across days.
+`buildGoogleTravelTimeMatrix` (Distance Matrix) is kept for keys on older
+projects.
 
 ## Testing
 
@@ -360,7 +399,18 @@ source file has a companion test file that exercises it directly:
 | `test/route.test.ts` | `evaluateRoute`'s waiting+riding detour math (the "last rider scores zero" bug) and `bestInsertion`'s re-check of every existing rider (KEY-138) |
 | `test/match.test.ts` | `runMatching` end to end — the greedy assignment loop, stats, `acceptDeadline` clamping |
 | `test/deferredAcceptance.test.ts` | `runMatchingProvisional` end to end — the worked bumping example (greedy strands a rider, provisional relocates them), confirmed riders never being bumped, capacity/detour caps still holding |
-| `test/travelTime.test.ts` | `SyntheticTravelTime` / the Google Distance Matrix client — batching, dedup, and fallback on failed legs |
+| `test/travelTime.test.ts` | `SyntheticTravelTime`, and both Google clients (Routes and legacy Distance Matrix) — batching, dedup, request shape, and fallback on failed legs |
+| `test/melbourneTime.test.ts` | stored local-midnight dates and `"HH:mm"` times across the daylight-saving change |
+| `test/adapter.test.ts` | batching, every skip reason, rider/driver windows and detour caps, confirmed riders rebuilt in pickup order |
+| `test/writes.test.ts` | every reason a match write is refused, and what an expiry changes |
+| `test/runOnce.test.ts` | the whole run against an in-memory store: match → wait → accept → fill the next seat in pickup order; expiry freeing a driver; dry run; one failing batch |
+
+The runner's Firestore layer (`runner/firestore.ts`) is the one piece these tests
+don't reach: it is a thin transaction wrapper around the `src/writes.ts` rules,
+which are tested. Try it first with `npm run match -- --dry-run`.
+
+The app's side of the round trip — `acceptMatch` / `declineMatch` — is covered by
+`tests/integration/matchResponse.test.ts` in the app's own suite.
 
 `test/fixtures.ts` is not a test file itself. It holds shared builders
 (`makeRequest`, `makeOffer`, `ring`, `at`, `CAMPUS`) that every test file
@@ -445,3 +495,17 @@ Three ways to poke at the algorithm without writing a Jest test:
 - `SyntheticTravelTime` noise is one-sided (legs only ever get slower). Two-sided
   noise lets a detour come out faster than the direct route, which is
   geometrically impossible and produces negative detours in the statistics.
+- **Leaving campus, riders are judged against the driver's arrival home.**
+  `bestInsertion` checks every rider's `arriveBy` against `finalArrival`, and a
+  rider's detour includes the "riding" leg after the drop-off. Both are right
+  heading TO campus, where everyone gets out together. FROM campus, riders get
+  out earlier, so both are stricter than necessary: that costs matches, not
+  safety. Fixing it touches detour decision #4, so it is left for a decision
+  rather than changed quietly.
+- **No precise "picked up before you're ready" check heading to campus.** The time
+  filter keeps a driver whose car is on the road during the rider's departure
+  window, and arrival is then checked exactly — but nothing checks the actual
+  pickup time against the rider's earliest departure. Leaving campus it is exact,
+  because everyone boards at the driver's departure time.
+- Only the rider can accept. Driver-side approval, cancelling a confirmed ride,
+  and `firestore.rules` do not exist yet.

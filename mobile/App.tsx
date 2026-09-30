@@ -168,12 +168,16 @@ function AppContent() {
     setDataVersion((version) => version + 1);
   };
 
+  // The same handlers for a card's own Accept button as for its details page, so
+  // accepting from a Home or Dashboard card really writes, not just confirms on screen.
+  const rideActionsFor = (ride: RideCardProps) => buildRideActions(ride, ride.driver.name, afterRideChange);
+
   const openRideDetails = (ride: RideCardProps, backLabel: string) => {
     setSelectedRide({
       ride: toDetailRide(ride),
       date: ride.date,
       backLabel,
-      ...buildRideActions(ride, ride.driver.name, afterRideChange),
+      ...rideActionsFor(ride),
     });
   };
 
@@ -255,6 +259,7 @@ function AppContent() {
             onScroll={handleScroll}
             onSeeRideDetails={(ride) => openRideDetails(ride, 'My Rides')}
             onOpenDriverProfile={setViewingDriver}
+            rideActions={rideActionsFor}
           />
         );
       case 'profile':
@@ -273,6 +278,7 @@ function AppContent() {
             onNewRide={() => setShowBooking(true)}
             onSeeRideDetails={(ride) => openRideDetails(ride, 'Home')}
             onOpenDriverProfile={setViewingDriver}
+            rideActions={rideActionsFor}
           />
         );
     }

@@ -4,7 +4,7 @@ import {
 } from './types';
 import { hardFilter, waypointOf } from './filter';
 import { scorePairing, clamp01, ScoreWeights, DEFAULT_WEIGHTS } from './score';
-import { bestInsertion, evaluateRoute, RouteEvaluation } from './route';
+import { bestInsertion, departureOf, DepartureTime, evaluateRoute, RouteEvaluation } from './route';
 import { MatchRunResult, ProposedMatch, computeAcceptDeadline } from './match';
 
 /**
@@ -66,12 +66,16 @@ import { MatchRunResult, ProposedMatch, computeAcceptDeadline } from './match';
  * converges, which the harness does not yet do. Expect `matched` to equal the
  * driver count and average detour to be ~0 in a single run: every matched rider
  * is a solo rider, and a solo rider's detour is zero by definition.
+ *
+ * `departAt` is either one time for the whole batch or a per-offer lookup (see
+ * `DepartureTime` in route.ts). Real batches pass the lookup, since drivers in
+ * one day's batch leave at different times.
  */
 export function runMatchingProvisional(
   batchKey: string,
   requests: MatchRequest[],
   offers: MatchOffer[],
-  departAt: Date,
+  departAt: DepartureTime,
   now: Date,
   t: TravelTimeMatrix,
   cfg: MatchingConfig = DEFAULT_CONFIG,
@@ -108,13 +112,13 @@ export function runMatchingProvisional(
     const fixed = fixedByOffer.get(o.offerId)!;
     let currTripDuration = 0;
     if (fixed.length > 0) {
-      const ev = evaluateRoute(o.start, fixed.map((r) => r.waypoint), o.end, departAt, t);
+      const ev = evaluateRoute(
+        o.start, fixed.map((r) => r.waypoint), o.end, departureOf(departAt, o), t,
+      );
       currTripDuration = ev.totalMinutes;
     }
     rankingOfferByOffer.set(o.offerId, { ...o, onBoard: fixed, seatsFilled: fixed.length, currTripDuration });
   }
-
-  const acceptDeadline = computeAcceptDeadline(now, departAt, cfg);
 
   const { candidates, rejected } = hardFilter(requests, liveOffers, cfg, departAt, now);
   const remaining = new Map<string, Set<string>>();
@@ -159,10 +163,11 @@ export function runMatchingProvisional(
     let bestReqScore = -Infinity;
     for (const offerId of [...remOffers]) {
       const offer = offerById.get(offerId)!;
-      if (!stillTryable(offer, cfg, departAt, now) || (slotsByOffer.get(offerId) ?? 0) < 1) {
+      const offerDepartAt = departureOf(departAt, offer);
+      if (!stillTryable(offer, cfg, offerDepartAt, now) || (slotsByOffer.get(offerId) ?? 0) < 1) {
         remOffers.delete(offerId); continue;
       }
-      const s = scorePairing(req, rankingOfferByOffer.get(offerId)!, departAt, t, weights);
+      const s = scorePairing(req, rankingOfferByOffer.get(offerId)!, offerDepartAt, t, weights);
       if (!s) continue; // infeasible even against the confirmed baseline; leave untried in case that changes
       if (s.reqScore > bestReqScore) { bestReqScore = s.reqScore; bestOfferId = offerId; }
     }
@@ -177,7 +182,7 @@ export function runMatchingProvisional(
     // make a candidate's cost depend on the order proposals happened to
     // arrive in, which is the property the one-new-rider rule exists to kill.
     const challenger = placeOnBaseline(
-      rankingOfferByOffer.get(bestOfferId)!, req, departAt, t,
+      rankingOfferByOffer.get(bestOfferId)!, req, departureOf(departAt, offer), t,
     );
     if (!challenger) continue; // infeasible against the confirmed baseline
 
@@ -219,8 +224,10 @@ export function runMatchingProvisional(
     const finalOrder = offer.onBoard;
     if (finalOrder.length === 0) continue;
 
+    const offerDepartAt = departureOf(departAt, offer);
+    const acceptDeadline = computeAcceptDeadline(now, offerDepartAt, cfg);
     const waypoints = finalOrder.map((r) => r.waypoint);
-    const fullEv = evaluateRoute(offer.start, waypoints, offer.end, departAt, t);
+    const fullEv = evaluateRoute(offer.start, waypoints, offer.end, offerDepartAt, t);
 
     for (let i = 0; i < finalOrder.length; i++) {
       const rider = finalOrder[i];
@@ -232,7 +239,7 @@ export function runMatchingProvisional(
       // Marginal cost attributable to THIS rider: what the driver's total
       // added minutes would be without them, holding everyone else's order.
       const withoutWaypoints = [...waypoints.slice(0, i), ...waypoints.slice(i + 1)];
-      const withoutEv = evaluateRoute(offer.start, withoutWaypoints, offer.end, departAt, t);
+      const withoutEv = evaluateRoute(offer.start, withoutWaypoints, offer.end, offerDepartAt, t);
       const marginal = fullEv.totalMinutes - withoutEv.totalMinutes;
 
       const { offerScore, reqScore } = scoreFromMetrics(
@@ -273,7 +280,7 @@ export function runMatchingProvisional(
     const spare = o.seatsOffered - o.seatsFilled;
     if (spare <= 0) continue;
     if (!o.acceptingMore) { closedByDriverChoice++; seatsLeftOnClosedTrips += spare; }
-    else if ((departAt.getTime() - now.getTime()) / 60_000 <= cfg.matchingCutoffMinutes) {
+    else if ((departureOf(departAt, o).getTime() - now.getTime()) / 60_000 <= cfg.matchingCutoffMinutes) {
       closedByCutoff++; seatsLeftOnClosedTrips += spare;
     } else if (minSlackOf(o) <= cfg.insertionFloorMinutes) {
       closedBySlack++; seatsLeftOnClosedTrips += spare;

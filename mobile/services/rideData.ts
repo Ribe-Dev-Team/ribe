@@ -20,7 +20,7 @@ interface FirestoreRideRecord {
   seatCapacity?: number;
   requestID?: string;
   offerID?: string;
-  // Written by the matcher (applyMatch); all absent while still unmatched.
+  // Written by the matching runner; all absent while still unmatched.
   matchedOfferId?: string;
   matchedDriverId?: string;
   matchedAt?: Timestamp | Date | string;
@@ -150,6 +150,9 @@ function buildRideCard(
     driverPhone: resolved.phone,
     // The matcher's own timestamp, not the time of this fetch.
     matchedAt: toDateOrUndefined(record.matchedAt),
+    // The deadline the runner actually enforces - often well under 12h, since
+    // it is clamped to the matching cutoff before departure.
+    acceptDeadline: toDateOrUndefined(record.acceptDeadline),
     pickupDateTime: date,
   };
 }
