@@ -1,5 +1,5 @@
 # Ribe matching (R5 / KEY-68)
-
+git com
 Pure TypeScript. No Firebase, no Google Maps, no database — the algorithm takes
 arrays in and returns matches out. The only external dependency is travel time,
 behind a one-method interface you swap for the real Distance Matrix later.
