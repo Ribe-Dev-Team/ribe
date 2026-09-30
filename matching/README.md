@@ -22,6 +22,7 @@ npx ts-node test/compare.ts  # greedy vs provisional bumping, side by side
 | `src/score.ts` | KEY-139 — `offerScore` / `reqScore` |
 | `src/deferredAcceptance.ts` | KEY-41 — **the default matching loop**: provisional assignment with bumping |
 | `src/match.ts` | KEY-41 — one-shot greedy, kept as the comparison baseline |
+| `src/riderPolicy.ts` | derives a rider's `maxDetour` — the app never asks for it |
 | `src/travelTime.ts` | the seam where Google Maps plugs in |
 
 ## The algorithm, in one paragraph
@@ -108,6 +109,44 @@ untried trip. It terminates because each (rider, trip) pair is inspected at
 most once. Confirmed riders — anyone already aboard when the run started — are
 fixed: always included, never bumped, because a human already accepted that
 trip.
+
+## Where a rider's detour cap comes from
+
+The booking form asks riders only for date, earliest departure and latest
+arrival — **not** for a detour tolerance. `MatchRequest.maxDetour` is still
+required, so `src/riderPolicy.ts` derives it as **40% of the rider's own direct
+trip, floored at 5 minutes** (`riderDetourPercent` / `riderDetourFloorMinutes`
+in `MatchingConfig`).
+
+A flat cap was rejected because it is blind to trip length: 15 minutes is a
+150% detour on a 10-minute trip but 25% on an hour-long one, and Goal 1 is
+stated as a percentage. Measured over 6 seeds, 100 riders / 30 drivers, scoring
+matches against simulated true tolerances of 8–20 min the algorithm never saw
+(`wouldDecline` = matched riders whose real tolerance was exceeded):
+
+| declared cap | matched | wouldDecline | netConfirmed | vs direct |
+|---|---|---|---|---|
+| ask the rider | 70.5 | 0.0 | 70.5 | 19.0% |
+| flat 15 min | 76.5 | 8.0 | 68.5 | 23.6% |
+| flat 20 min | 80.5 | 10.5 | 70.0 | 25.4% |
+| 35% of direct | 65.8 | 1.2 | 64.7 | 11.2% |
+| **40% of direct** | **71.2** | **2.5** | **68.7** | **14.4%** |
+| 50% of direct | 74.2 | 4.3 | 69.8 | 16.6% |
+| 60% of direct | 76.8 | 7.8 | 69.0 | 20.1% |
+
+40% is the largest share still under the 15% ceiling. Net confirmed matches are
+statistically tied with asking the rider (68.7 vs 70.5, inside seed variance),
+so the form field bought accuracy too small to measure at the cost of a
+question every rider had to answer.
+
+Note that raw `matched` is **not** the number to maximise here — a looser cap
+always raises it, because the extra matches are ones riders would reject, and a
+rejected match holds its seat for the whole approval window. Report
+`netConfirmed` and `vs direct` together.
+
+The caveat: this assumes rider tolerances genuinely vary (modelled 8–20 min,
+matching `simulate.ts`). If real riders cluster tightly, a constant would do
+just as well and this is over-engineering. That needs real users to settle.
 
 ## What a rider's "detour" means
 

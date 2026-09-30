@@ -5,7 +5,7 @@ import {
 import { bearingDegrees, bearingDifference, haversineKm } from './geo';
 import { isAcceptingRiders, minutesToDeparture } from './route';
 
-/** The end of a rider's trip that is NOT campus — the point the driver deviates to. */
+/** The end of a rider's trip that is NOT campus - the point the driver deviates to. */
 export function waypointOf(req: MatchRequest): Coord {
   return req.direction === 'TO_CAMPUS' ? req.start : req.end;
 }
@@ -27,7 +27,7 @@ export function directionsCompatible(req: MatchRequest, offer: MatchOffer): bool
  *
  * Applied ONLY when the driver has nobody on board yet. A bearing describes a
  * single segment; once there is a waypoint the route is multi-segment and no
- * single bearing describes it — which is exactly the situation KEY-138 creates.
+ * single bearing describes it - which is exactly the situation KEY-138 creates.
  *
  * Also note the threshold has no fixed physical meaning: for two points at
  * distance r from campus, separation is 2r*sin(theta/2). A 45 deg gate permits
@@ -47,7 +47,7 @@ export function bearingCompatible(
 
 /**
  * Corridor test. Measures what inserting the rider COSTS, rather than how far
- * away they are — a rider 5 km ahead on the route is nearly free, one 5 km
+ * away they are - a rider 5 km ahead on the route is nearly free, one 5 km
  * behind is expensive, and a plain distance check cannot tell them apart.
  *
  * By the triangle inequality this is always >= 0, approaching 0 when the rider
@@ -64,7 +64,7 @@ export function corridorDetourKm(req: MatchRequest, offer: MatchOffer): number {
 }
 
 export interface FilterResult {
-  candidates: Array<{ req: MatchRequest; offer: MatchOffer }>;
+  candidates: Array<{ req: MatchRequest; offer: MatchOffer; }>;
   rejected: RejectedPairing[];
 }
 
@@ -96,8 +96,8 @@ export function hardFilter(
     if (!isAcceptingRiders(offer, cfg, departAt, now)) {
       const why: RejectReason =
         offer.seatsFilled >= offer.seatsOffered ? 'NO_SEATS' :
-        minutesToDeparture(departAt, now) <= cfg.matchingCutoffMinutes ? 'MATCHING_CUTOFF' :
-        'DRIVER_CLOSED';
+          minutesToDeparture(departAt, now) <= cfg.matchingCutoffMinutes ? 'MATCHING_CUTOFF' :
+            'DRIVER_CLOSED';
       for (const req of requests) reject(offer, req, why);
       continue;
     }
@@ -106,7 +106,7 @@ export function hardFilter(
       if (req.status !== 'unassigned') continue;
       if (req.riderId === offer.driverId) { reject(offer, req, 'SAME_PERSON'); continue; }
       if (!directionsCompatible(req, offer)) { reject(offer, req, 'DIRECTION'); continue; }
-      if (!windowsOverlap(req, offer))       { reject(offer, req, 'TIME_WINDOW'); continue; }
+      if (!windowsOverlap(req, offer)) { reject(offer, req, 'TIME_WINDOW'); continue; }
       if (!bearingCompatible(req, offer, cfg)) { reject(offer, req, 'BEARING'); continue; }
 
       const detourKm = corridorDetourKm(req, offer);

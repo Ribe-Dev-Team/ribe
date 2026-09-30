@@ -3,14 +3,20 @@ Utility file to handle generic time types, masks and functions.
 */
 
 export {
+  MS_PER_MIN,
   sepTime12h,
   timePattern,
   isValid24Time,
   toMinutes,
+  subMins,
+  addMins,
   decomposeTime12h,
   formatTime12h,
   convert12hTo24h,
 };
+
+// CONVERTSION CONSTANT
+const MS_PER_MIN = 60000;
 
 /* type for decomposed 12-hours time */
 interface sepTime12h {
@@ -33,6 +39,16 @@ function isValid24Time(time: string): boolean {
 function toMinutes(time: string): number {
   const [hours, mins] = time.split(':').map(Number);
   return hours * 60 + mins;
+}
+
+/* subtract some number of minutes from a Date object */
+function subMins(t: Date, m: number): Date {
+  return new Date(t.getTime() - m * MS_PER_MIN);
+}
+
+/* subtract some number of minutes from a Date object */
+function addMins(t: Date, m: number): Date {
+  return new Date(t.getTime() + m * MS_PER_MIN);
 }
 
 /* take a 24-hr string and break it down into components of a 12-hr time */

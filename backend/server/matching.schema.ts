@@ -16,7 +16,9 @@ interface Waypoint {
 interface Trip {
   waypoints: Waypoint[],
   legs: number[], // minutes to drive between each pair of waypoints
+  legDists: number[], // km's to drive between each pair of waypoints
   currDur: number, // number of minutes
+  currDist: number, // number of km's
 };
 
 // the details for the ride offer
@@ -25,6 +27,7 @@ interface MatchOffer {
   start: Coord,
   end: Coord,
   directTime: number, // number of minutes for driver without passengers
+  directDist: number, // number of KMs for driver without passengers
   capacity: number,
   window: {
     start: Date,

@@ -149,6 +149,12 @@ export interface MatchingConfig {
    *  `acceptDeadline` can be clamped against the matching cutoff without a
    *  match ever promising more time than the batch can actually honour. */
   approvalWindowMinutes: number;
+  /** Share of a rider's own direct trip they are assumed to tolerate as
+   *  detour. Riders are NOT asked for this — see `riderPolicy.ts` for the
+   *  measurements behind 0.40. */
+  riderDetourPercent: number;
+  /** Lower bound on that derived cap, so short trips stay matchable. */
+  riderDetourFloorMinutes: number;
 }
 
 export const DEFAULT_CONFIG: MatchingConfig = {
@@ -159,4 +165,6 @@ export const DEFAULT_CONFIG: MatchingConfig = {
   maxCandidatePairs: 500,
   matchingCutoffMinutes: 120,
   approvalWindowMinutes: 720,
+  riderDetourPercent: 0.40,
+  riderDetourFloorMinutes: 5,
 };
