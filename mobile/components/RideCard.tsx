@@ -81,6 +81,12 @@ export function formatRideDate(date: Date) {
 }
 
 export interface RideCardProps {
+  /** Firestore document id of the rideRequest/rideOffer this card renders.
+   *  Accept/Decline need it to write back. Optional so hand-built sample cards
+   *  still typecheck. */
+  rideId?: string;
+  /** Which collection `rideId` belongs to. */
+  kind?: 'request' | 'offer';
   status: RideStatus;
   date: Date;
   pickup: { address: string; time: string };

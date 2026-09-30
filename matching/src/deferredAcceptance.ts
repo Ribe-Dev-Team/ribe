@@ -20,18 +20,34 @@ import { MatchRunResult, ProposedMatch, computeAcceptDeadline } from './match';
  * heuristic, not preference resolution. Do not call this Gale-Shapley in
  * code, comments, or the report.
  *
+ * ONE NEW RIDER PER TRIP PER RUN. Accepting a match is a human decision, so a
+ * driver is only ever offered a single new, unconfirmed rider per run however
+ * many seats are still empty. Riders already confirmed in an earlier run
+ * (present in offer.onBoard when this run started) are FIXED: they always
+ * stay, are never bumped, and do not consume the slot. A 4-seat car fills one
+ * passenger at a time, across as many runs as it takes.
+ *
+ * That rule is what makes a candidate's cost stable. Since no two unconfirmed
+ * riders ever share a route within a run, every candidate is measured against
+ * the trip's FIXED baseline and nothing else — so a placement can be computed
+ * once per (rider, trip) pair and can never be invalidated by what happens to
+ * some other rider later in the run. The previous model, where several new
+ * riders could share one route, had no such property: a rider's cost depended
+ * on who else happened to be aboard, which is precisely why it needed a subset
+ * search over combinations and pickup orderings.
+ *
  * Mechanism, one proposal at a time:
  *   1. An unassigned rider proposes to whichever untried, structurally
  *      compatible trip currently scores best for THEM (reqScore).
- *   2. That trip recomputes its best feasible subset from (whoever it is
- *      currently holding) + (this new proposer), size <= seats, feasible
- *      meaning every rider's detour cap AND arrival time still hold — tried
- *      across pickup orderings. Confirmed riders (present in offer.onBoard
- *      before this run started) are FIXED: always part of the subset, never
- *      bumped, because a human already accepted that trip.
- *   3. Anyone the trip drops (including possibly the rider who just
- *      proposed) returns to the pool and tries its next untried trip.
- *   4. Repeat until no rider has an untried trip left.
+ *   2. The proposer is placed on that trip's fixed baseline (bestInsertion,
+ *      KEY-138 — which still re-checks every confirmed rider's own detour cap
+ *      and arrival time). Infeasible there, and the rider moves on.
+ *   3. The trip's single slot goes to whichever of (current holder, new
+ *      proposer) costs the driver fewer marginal minutes. A tie keeps the
+ *      holder. This is a BINARY COMPARISON, not a subset search.
+ *   4. The loser — the bumped holder, or the proposer rejected outright —
+ *      returns to the pool and tries its next untried trip.
+ *   5. Repeat until no rider has an untried trip left.
  *
  * Terminates because each (rider, trip) pair is inspected at most once: a
  * trip found not currently accepting, or not currently feasible for a
@@ -41,10 +57,15 @@ import { MatchRunResult, ProposedMatch, computeAcceptDeadline } from './match';
  * not an exhaustive search — and it is what keeps the algorithm bounded and
  * simple to reason about.
  *
- * Measured against one-shot greedy on identical batches (see
- * `test/compare.ts`): bumping wins match rate in every case (+1 to +8
- * points) at the cost of ~10x higher average rider detour. Both stay well
- * under the SMART Goal 1 ceiling. Not a free win — report both numbers.
+ * A NOTE ON THE MEASUREMENTS: `test/compare.ts` runs both algorithms once, so
+ * since the one-new-rider rule landed the two columns no longer measure the
+ * same thing — greedy fills every seat of a trip in one pass, this fills one.
+ * Its output describes per-run behaviour and is NOT evidence about relative
+ * match rate. A fair comparison needs this function called repeatedly, feeding
+ * each run's accepted matches back as confirmed `onBoard` riders until it
+ * converges, which the harness does not yet do. Expect `matched` to equal the
+ * driver count and average detour to be ~0 in a single run: every matched rider
+ * is a solo rider, and a solo rider's detour is zero by definition.
  */
 export function runMatchingProvisional(
   batchKey: string,
@@ -74,15 +95,14 @@ export function runMatchingProvisional(
   );
 
   // A view of each offer holding ONLY its fixed riders, frozen for the whole
-  // run. Used to score a rider's OWN ranking of untried trips — never the
-  // live, currently-mutating `offer`, whose onBoard may already hold other
-  // provisional riders. `bestInsertion` has no seat-capacity check of its
-  // own (bestFeasibleSubset is where capacity and bumping are decided), so
-  // scoring against a trip that already looks full-with-provisionals would
-  // evaluate the nonsensical "insert on top of everyone currently held"
-  // route instead of "how would I fare against the confirmed baseline" —
-  // silently reporting an occupied trip as infeasible for a rider who could
-  // perfectly well bump their way in.
+  // run. This is what every candidate is scored AND placed against — never the
+  // live, currently-mutating `offer`, whose onBoard may already hold another
+  // rider provisionally. `bestInsertion` has no seat-capacity check of its own
+  // (capacity is the caller's `slotsByOffer` check), so placing against a trip
+  // that already looks occupied would evaluate the nonsensical "insert on top of
+  // the current holder" route instead of "how would I fare against the confirmed
+  // baseline" — silently reporting an occupied trip as infeasible for a rider who
+  // could perfectly well bump their way in.
   const rankingOfferByOffer = new Map<string, MatchOffer>();
   for (const o of liveOffers) {
     const fixed = fixedByOffer.get(o.offerId)!;
@@ -103,11 +123,17 @@ export function runMatchingProvisional(
     remaining.get(req.reqId)!.add(offer.offerId);
   }
 
-  // Provisional (non-fixed) riders currently held per offer, in acceptance
-  // order — NOT necessarily their final pickup order, which bestFeasibleSubset
-  // re-derives every time the held set changes.
-  const held = new Map<string, MatchRequest[]>();
-  for (const o of liveOffers) held.set(o.offerId, []);
+  // The single unconfirmed rider each offer currently holds, together with the
+  // placement and cost it was accepted on. null = slot still empty.
+  const held = new Map<string, HeldCandidate | null>();
+  for (const o of liveOffers) held.set(o.offerId, null);
+
+  // Seats free over and above the confirmed riders, constant for the whole run.
+  // A trip fills at most ONE of them here, but a trip whose confirmed riders
+  // already occupy every seat can take nobody at all.
+  const slotsByOffer = new Map(
+    liveOffers.map((o) => [o.offerId, o.seatsOffered - fixedByOffer.get(o.offerId)!.length]),
+  );
 
   // Riders with at least one structurally compatible trip, in input order —
   // deterministic given deterministic inputs.
@@ -123,16 +149,19 @@ export function runMatchingProvisional(
 
     const req = requestById.get(reqId)!;
 
-    // Scan untried trips, cross off any no longer structurally reachable at
-    // all, and propose to whichever remaining one scores best for THIS
-    // rider. Deliberately NOT `isAcceptingRiders` here: that gates on seats
-    // remaining, and a FULL trip is exactly the case bumping needs to keep
-    // considering — capacity is enforced inside bestFeasibleSubset instead.
+    // Scan untried trips, cross off any no longer reachable at all, and
+    // propose to whichever remaining one scores best for THIS rider.
+    // Deliberately NOT `isAcceptingRiders` here: that gates on seats, and a
+    // trip whose slot is already taken is exactly the case bumping needs to
+    // keep considering. What IS permanent is a trip with no free seat over its
+    // confirmed riders — it can never hold anyone this run, so cross it off.
     let bestOfferId: string | null = null;
     let bestReqScore = -Infinity;
     for (const offerId of [...remOffers]) {
       const offer = offerById.get(offerId)!;
-      if (!stillTryable(offer, cfg, departAt, now)) { remOffers.delete(offerId); continue; }
+      if (!stillTryable(offer, cfg, departAt, now) || (slotsByOffer.get(offerId) ?? 0) < 1) {
+        remOffers.delete(offerId); continue;
+      }
       const s = scorePairing(req, rankingOfferByOffer.get(offerId)!, departAt, t, weights);
       if (!s) continue; // infeasible even against the confirmed baseline; leave untried in case that changes
       if (s.reqScore > bestReqScore) { bestReqScore = s.reqScore; bestOfferId = offerId; }
@@ -142,27 +171,38 @@ export function runMatchingProvisional(
     remOffers.delete(bestOfferId); // propose once, whatever the outcome
 
     const offer = offerById.get(bestOfferId)!;
-    const fixedRiders = fixedByOffer.get(bestOfferId)!;
-    const pool = [...held.get(bestOfferId)!, req];
 
-    const subset = bestFeasibleSubset(offer, fixedRiders, pool, departAt, t);
-    const keptIds = new Set(subset.kept.map((r) => r.reqId));
+    // Place the proposer on the trip's FIXED baseline — never on top of
+    // whoever currently holds the slot. Measuring against the holder would
+    // make a candidate's cost depend on the order proposals happened to
+    // arrive in, which is the property the one-new-rider rule exists to kill.
+    const challenger = placeOnBaseline(
+      rankingOfferByOffer.get(bestOfferId)!, req, departAt, t,
+    );
+    if (!challenger) continue; // infeasible against the confirmed baseline
 
-    held.set(bestOfferId, subset.kept);
-    offer.onBoard = subset.onBoard;
-    offer.seatsFilled = subset.onBoard.length;
-    offer.currTripDuration = subset.ev.totalMinutes;
-    // Status stays 'open' here even at full capacity — closing early would
-    // stop this same trip from being proposed to again, and bumping a full
-    // trip is the whole point. Finalized once, after the run converges.
+    const holder = held.get(bestOfferId) ?? null;
 
-    // Everyone in the pool not in the winning subset is bumped (or, for the
-    // rider who just proposed, rejected outright) and goes back to the pool,
-    // provided they still have an untried trip to try next.
-    for (const candidate of pool) {
-      if (keptIds.has(candidate.reqId)) continue;
-      if ((remaining.get(candidate.reqId)?.size ?? 0) > 0) free.push(candidate.reqId);
+    // The slot holds exactly one unconfirmed rider, so this is a two-way
+    // comparison on marginal driver cost. Both numbers are measured against
+    // the same fixed baseline, so they are directly comparable. A tie keeps
+    // the holder — no churn for no gain, and it keeps the run deterministic.
+    const challengerWins = holder === null || challenger.cost < holder.cost;
+
+    if (challengerWins) {
+      held.set(bestOfferId, challenger);
+      offer.onBoard = challenger.onBoard;
+      offer.seatsFilled = challenger.onBoard.length;
+      offer.currTripDuration = challenger.ev.totalMinutes;
+      // Status stays 'open' even once the slot is taken — closing here would
+      // stop this trip being proposed to again, and bumping is the whole
+      // point. Finalized once, after the run converges.
     }
+
+    // The loser — the bumped holder, or the proposer rejected outright — goes
+    // back to the pool if it still has an untried trip left.
+    const displaced = challengerWins ? holder?.req.reqId : req.reqId;
+    if (displaced && (remaining.get(displaced)?.size ?? 0) > 0) free.push(displaced);
   }
 
   // Finalize status now that the run has converged — a trip that reached
@@ -266,9 +306,11 @@ export function runMatchingProvisional(
  * Whether a trip is still worth proposing to DURING a run — permanent
  * exclusions only (closed/locked/cancelled, driver locked it, past cutoff).
  * Unlike `isAcceptingRiders` (route.ts), this does NOT gate on seats or
- * slack: a full trip must remain reachable so a cheaper proposer can still
- * bump a held rider. Capacity and slack are enforced by bestFeasibleSubset,
- * per proposal, not by excluding the trip outright.
+ * slack: a trip whose slot is already taken must remain reachable so a
+ * cheaper proposer can still bump the holder. The one permanent seat
+ * exclusion — no free seat at all over the confirmed riders — is applied by
+ * the caller via `slotsByOffer`; detour caps and arrival times are enforced
+ * per proposal by `placeOnBaseline`.
  */
 function stillTryable(offer: MatchOffer, cfg: MatchingConfig, departAt: Date, now: Date): boolean {
   if (offer.status !== 'open') return false;
@@ -308,122 +350,62 @@ function scoreFromMetrics(
   return { offerScore, reqScore };
 }
 
-interface SubsetResult {
-  /** Newly accepted (non-fixed) riders in this offer's winning subset. */
-  kept: MatchRequest[];
+interface HeldCandidate {
+  /** The unconfirmed rider holding the trip's single new-rider slot. */
+  req: MatchRequest;
+  /** Marginal driver minutes this rider costs over the trip's FIXED baseline. */
+  cost: number;
+  /** Confirmed riders plus this one, in final pickup order. */
   onBoard: OnBoardRider[];
   ev: RouteEvaluation;
 }
 
 /**
- * The best feasible subset of `pool` (currently-held provisional riders plus
- * one new proposer) a trip can add on top of its fixed, confirmed riders —
- * size <= seats, feasible meaning every rider's detour cap and arrival time
- * still hold. Tries the LARGEST feasible count first (raising match rate is
- * the point of bumping), tie-broken by lowest total driver-added minutes
- * (cheap insertions preserve capacity for later riders).
+ * Place ONE new rider on a trip's fixed, confirmed baseline and report what it
+ * costs the driver, or null if there is no feasible position.
  *
- * `pool` is always small — bounded by seats offered plus one, since only a
- * single new proposer is ever added at a time — so brute-forcing every
- * subset and every pickup permutation (<= 4 seats => <= 24 orderings) is
- * cheap. Fixed riders keep their relative order; only where new riders slot
- * in among them varies, via repeated `bestInsertion` (KEY-138) rather than
- * permuting fixed riders too, which would reopen a route a human already
- * accepted for no correctness benefit.
+ * This replaces the old subset search. Under the one-new-rider-per-run rule a
+ * trip never carries two unconfirmed riders at once, so there is no
+ * combination of riders to search over — only where this single rider slots in
+ * among the confirmed ones, which is exactly `bestInsertion`'s job (KEY-138).
+ * It still re-checks every confirmed rider's own detour cap and arrival time
+ * at every candidate position, so adding this rider cannot degrade someone a
+ * human already accepted.
+ *
+ * `baseline` MUST be the frozen fixed-riders-only view of the offer, never the
+ * live one: measuring against whoever currently holds the slot would make a
+ * candidate's cost depend on the arrival order of proposals, and the whole
+ * point of the rule is that it does not.
  */
-function bestFeasibleSubset(
-  offer: MatchOffer,
-  fixedRiders: OnBoardRider[],
-  pool: MatchRequest[],
+function placeOnBaseline(
+  baseline: MatchOffer,
+  req: MatchRequest,
   departAt: Date,
   t: TravelTimeMatrix,
-): SubsetResult {
-  const available = Math.max(0, offer.seatsOffered - fixedRiders.length);
-  const maxK = Math.min(available, pool.length);
-
-  for (let k = maxK; k >= 0; k--) {
-    let best: SubsetResult | null = null;
-    for (const combo of combinations(pool, k)) {
-      for (const perm of permutations(combo)) {
-        const result = evaluateOrder(offer, fixedRiders, perm, departAt, t);
-        if (!result) continue;
-        if (!best || result.ev.driverAddedMinutes < best.ev.driverAddedMinutes) {
-          best = { kept: combo, onBoard: result.onBoard, ev: result.ev };
-        }
-      }
-    }
-    if (best) return best;
-  }
-
-  // Fixed riders alone are always feasible: they were feasible entering this
-  // run, and nothing above makes their own route any harder.
-  const fallbackEv = evaluateRoute(
-    offer.start, fixedRiders.map((r) => r.waypoint), offer.end, departAt, t,
+): HeldCandidate | null {
+  const insertion = bestInsertion(
+    baseline, waypointOf(req), req.maxDetour, req.arriveBy, departAt, t,
   );
-  return { kept: [], onBoard: fixedRiders.map((r) => ({ ...r })), ev: fallbackEv };
-}
+  if (!insertion.feasible || !insertion.evaluation) return null;
 
-/**
- * Insert `order` one rider at a time (via `bestInsertion`) on top of
- * `fixedRiders`, which keep their original relative order throughout. Fails
- * as soon as any insertion has no feasible position — `bestInsertion`
- * already re-checks every rider seated so far, fixed or not, at each step.
- */
-function evaluateOrder(
-  offer: MatchOffer,
-  fixedRiders: OnBoardRider[],
-  order: MatchRequest[],
-  departAt: Date,
-  t: TravelTimeMatrix,
-): { onBoard: OnBoardRider[]; ev: RouteEvaluation } | null {
-  let onBoard: OnBoardRider[] = fixedRiders.map((r) => ({ ...r }));
-  let tripDuration = 0;
-  if (onBoard.length > 0) {
-    const baseEv = evaluateRoute(offer.start, onBoard.map((r) => r.waypoint), offer.end, departAt, t);
-    tripDuration = baseEv.totalMinutes;
-    onBoard.forEach((r, i) => { r.currentDetour = baseEv.riderDetours[i]; });
-  }
+  const ev = insertion.evaluation;
+  const idx = insertion.insertionIndex;
 
-  for (const req of order) {
-    const tempOffer: MatchOffer = { ...offer, onBoard, currTripDuration: tripDuration, seatsFilled: onBoard.length };
-    const insertion = bestInsertion(tempOffer, waypointOf(req), req.maxDetour, req.arriveBy, departAt, t);
-    if (!insertion.feasible || !insertion.evaluation) return null;
+  const onBoard: OnBoardRider[] = [
+    ...baseline.onBoard.slice(0, idx).map((r) => ({ ...r })),
+    {
+      reqId: req.reqId,
+      riderId: req.riderId,
+      waypoint: waypointOf(req),
+      arriveBy: req.arriveBy,
+      maxDetour: req.maxDetour,
+      currentDetour: ev.riderDetours[idx],
+    },
+    ...baseline.onBoard.slice(idx).map((r) => ({ ...r })),
+  ];
+  // Detours shift for everyone once the route changes, so restate them all
+  // from the evaluation rather than leaving stale values on the copies.
+  onBoard.forEach((r, i) => { r.currentDetour = ev.riderDetours[i]; });
 
-    const ev = insertion.evaluation;
-    onBoard = [
-      ...onBoard.slice(0, insertion.insertionIndex),
-      {
-        reqId: req.reqId,
-        riderId: req.riderId,
-        waypoint: waypointOf(req),
-        arriveBy: req.arriveBy,
-        maxDetour: req.maxDetour,
-        currentDetour: ev.riderDetours[insertion.insertionIndex],
-      },
-      ...onBoard.slice(insertion.insertionIndex),
-    ];
-    onBoard.forEach((r, i) => { r.currentDetour = ev.riderDetours[i]; });
-    tripDuration = ev.totalMinutes;
-  }
-
-  const finalEv = evaluateRoute(offer.start, onBoard.map((r) => r.waypoint), offer.end, departAt, t);
-  return { onBoard, ev: finalEv };
-}
-
-function* combinations<T>(items: T[], k: number): Generator<T[]> {
-  if (k === 0) { yield []; return; }
-  if (k > items.length) return;
-  for (let i = 0; i <= items.length - k; i++) {
-    for (const rest of combinations(items.slice(i + 1), k - 1)) {
-      yield [items[i], ...rest];
-    }
-  }
-}
-
-function* permutations<T>(items: T[]): Generator<T[]> {
-  if (items.length === 0) { yield []; return; }
-  for (let i = 0; i < items.length; i++) {
-    const rest = [...items.slice(0, i), ...items.slice(i + 1)];
-    for (const p of permutations(rest)) yield [items[i], ...p];
-  }
+  return { req, cost: insertion.marginalDriverMinutes ?? 0, onBoard, ev };
 }

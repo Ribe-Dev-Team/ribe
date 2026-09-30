@@ -18,6 +18,9 @@ export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
 //TODO: make past days greyed out.
 
 export interface Ride {
+  /** Firestore doc id, carried through so Accept/Decline can write back. */
+  rideId?: string;
+  kind?: 'request' | 'offer';
   status: RideStatus;
   date?: Date;
   time: string;
@@ -85,6 +88,8 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
 
         const allTrips: Ride[] = [
           ...requests.map((ride: RideCardProps) => ({
+            rideId: ride.rideId,
+            kind: ride.kind,
             status: ride.status,
             date: ride.date,
             time: ride.pickup.time,
@@ -96,6 +101,8 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             vehicle: ride.driver.vehicle,
           })),
           ...offers.map((ride: RideCardProps) => ({
+            rideId: ride.rideId,
+            kind: ride.kind,
             status: ride.status,
             date: ride.date,
             time: ride.pickup.time,

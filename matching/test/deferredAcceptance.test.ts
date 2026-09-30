@@ -138,3 +138,92 @@ describe('runMatchingProvisional — capacity and detour caps still hold', () =>
     expect(res.matches[0].acceptDeadline.getTime()).toBe(expectedCutoff.getTime());
   });
 });
+
+describe('one new rider per trip per run', () => {
+  const near = { lat: CAMPUS.lat + 0.03, lon: CAMPUS.lon };
+
+  /**
+   * The rule: accepting a match is a human decision, so a driver is offered
+   * exactly ONE new unconfirmed rider per run regardless of how many seats sit
+   * empty. Greedy has no such rule and fills the car in a single pass — the
+   * contrast is the point, so both are asserted here.
+   */
+  it('fills one seat of a four-seat trip, where greedy fills four', () => {
+    const riders = [0, 1, 2, 3, 4].map((i) =>
+      makeRequest({
+        reqId: `r${i}`,
+        start: { lat: near.lat + i * 0.002, lon: near.lon + i * 0.002 },
+        maxDetour: 60,
+      }),
+    );
+    const offer = makeOffer({
+      offerId: 'o1', start: { lat: CAMPUS.lat + 0.09, lon: CAMPUS.lon },
+      seatsOffered: 4, maxDetour: 200,
+    });
+
+    const prov = runMatchingProvisional('b', riders, [offer], at(8), at(0), t);
+    expect(prov.matches).toHaveLength(1);
+
+    const greedy = runMatching('b', riders, [offer], at(8), at(0), t);
+    expect(greedy.matches.length).toBeGreaterThan(1);
+  });
+
+  it('gives the slot to the cheaper rider and returns the other to the pool', () => {
+    // Two riders, one trip. Only one can hold the slot; the loser is reported
+    // as unmatched rather than silently dropped.
+    const cheap = makeRequest({ reqId: 'cheap', start: near, maxDetour: 60 });
+    const dear = makeRequest({
+      reqId: 'dear',
+      start: { lat: near.lat, lon: near.lon + 0.05 },
+      maxDetour: 60,
+    });
+    const offer = makeOffer({
+      offerId: 'o1', start: { lat: CAMPUS.lat + 0.09, lon: CAMPUS.lon },
+      seatsOffered: 4, maxDetour: 200,
+    });
+
+    const res = runMatchingProvisional('b', [cheap, dear], [offer], at(8), at(0), t);
+    expect(res.matches).toHaveLength(1);
+    expect(res.unmatchedRequestIds).toHaveLength(1);
+    // Whoever won, the two lists must partition the batch — no rider lost.
+    expect([...res.matches.map((m) => m.reqId), ...res.unmatchedRequestIds].sort())
+      .toEqual(['cheap', 'dear']);
+  });
+
+  it('does not let the new rider displace a confirmed rider', () => {
+    // A confirmed rider from a previous run occupies one seat and is fixed.
+    // The slot is for a NEW rider, so the trip ends up with both.
+    const confirmed = {
+      reqId: 'old', riderId: 'rider-old',
+      waypoint: { lat: CAMPUS.lat + 0.05, lon: CAMPUS.lon },
+      arriveBy: at(10), maxDetour: 90, currentDetour: 0,
+    };
+    const offer = makeOffer({
+      offerId: 'o1', start: { lat: CAMPUS.lat + 0.09, lon: CAMPUS.lon },
+      seatsOffered: 4, maxDetour: 200, seatsFilled: 1, onBoard: [confirmed],
+    });
+    const fresh = makeRequest({ reqId: 'new', start: near, maxDetour: 60 });
+
+    const res = runMatchingProvisional('b', [fresh], [offer], at(8), at(0), t);
+    // The confirmed rider is never re-reported as a new match...
+    expect(res.matches.map((m) => m.reqId)).toEqual(['new']);
+    // ...but is still aboard, so the trip now carries two.
+    expect(res.matches[0].insertionIndex).toBeGreaterThanOrEqual(0);
+  });
+
+  it('takes nobody when confirmed riders already fill every seat', () => {
+    const full = [0, 1].map((i) => ({
+      reqId: `old${i}`, riderId: `rider-old${i}`,
+      waypoint: { lat: CAMPUS.lat + 0.04 + i * 0.002, lon: CAMPUS.lon },
+      arriveBy: at(10), maxDetour: 90, currentDetour: 0,
+    }));
+    const offer = makeOffer({
+      offerId: 'o1', start: { lat: CAMPUS.lat + 0.09, lon: CAMPUS.lon },
+      seatsOffered: 2, maxDetour: 200, seatsFilled: 2, onBoard: full,
+    });
+    const fresh = makeRequest({ reqId: 'new', start: near, maxDetour: 60 });
+
+    const res = runMatchingProvisional('b', [fresh], [offer], at(8), at(0), t);
+    expect(res.matches).toHaveLength(0);
+  });
+});

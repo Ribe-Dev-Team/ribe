@@ -1,8 +1,10 @@
-import { collection, addDoc, updateDoc, doc, Timestamp } from 'firebase/firestore';
+import {
+  collection, addDoc, updateDoc, doc, Timestamp, runTransaction, arrayUnion, deleteField,
+} from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import { Booking, Coord } from './booking.schema';
-import { RideRequest, RideOffer } from './firebaseBooking.schema';
-import { BOOKING_STATUSES, isBookingStatus } from './matchStatus';
+import { RideRequest, RideOffer, MatchWriteInput } from './firebaseBooking.schema';
+import { BOOKING_STATUSES, isBookingStatus, isMatchable } from './matchStatus';
 import { timePattern, toMinutes } from '../../utility/times';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
 
@@ -208,14 +210,176 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
   return docRef.id;
 };
 
-
 // TODO: extract validation checks to separate file to reduce repetition in update and delete methods
-
-// export async function updateRideRequest(requestID: string, updates: Partial<RideRequest>): Promise<void> {
-//   validateRideRequest(updates);
-// }
 
 // export async function deleteRideRequest(requestID: string): Promise<void> {
 //   const docRef = doc(db, 'rideRequests', requestID);
 //   await docRef.delete();
 // }
+
+/* ---------------------------------------------------------------------------
+Match persistence.
+
+These functions are the whole write side of matching: applyMatch records what the
+matcher decided, and accept/decline resolve it. Nothing else in the app writes a
+booking's status after creation.
+--------------------------------------------------------------------------- */
+
+/**
+ * Record one match: the rider's request moves to 'awaiting' (the app's word for
+ * "matched, waiting on a human"), and the driver's offer holds that rider in its
+ * single pending slot.
+ *
+ * Runs in a transaction, and re-reads the request inside it, because the matcher
+ * works from a snapshot: between the batch being read and this write landing, the
+ * rider may have cancelled or been matched by an overlapping run. Writing blindly
+ * is exactly the double-booking matchStatus.ts's status mapping exists to prevent,
+ * and a status check outside a transaction would not prevent it.
+ *
+ * Returns false when the match was dropped for that reason, so a caller can count
+ * how many of a run's matches actually landed rather than assuming all of them did.
+ */
+export async function applyMatch(match: MatchWriteInput): Promise<boolean> {
+  const requestRef = doc(db, 'rideRequests', match.reqId);
+  const offerRef = doc(db, 'rideOffers', match.offerId);
+
+  return runTransaction(db, async (tx) => {
+    const requestSnap = await tx.get(requestRef);
+    const offerSnap = await tx.get(offerRef);
+    if (!requestSnap.exists() || !offerSnap.exists()) return false;
+
+    const request = requestSnap.data() as RideRequest;
+    const offer = offerSnap.data() as RideOffer;
+
+    // Still looking? 'pending' is the app's word for unmatched (see matchStatus.ts).
+    if (!isMatchable(request.status)) return false;
+    // The driver's one slot must be free - another run may have filled it.
+    if (offer.pendingRequestId) return false;
+    // And there must still be a seat to put this rider in.
+    if ((offer.confirmedRequestIds?.length ?? 0) >= offer.seatCapacity) return false;
+
+    tx.update(requestRef, {
+      status: 'awaiting',
+      matchedOfferId: match.offerId,
+      matchedDriverId: match.driverId,
+      matchedAt: Timestamp.fromDate(match.matchedAt),
+      acceptDeadline: Timestamp.fromDate(match.acceptDeadline),
+      riderDetourMinutes: match.riderDetourMinutes,
+    });
+
+    tx.update(offerRef, {
+      status: 'awaiting',
+      pendingRequestId: match.reqId,
+      matchedAt: Timestamp.fromDate(match.matchedAt),
+      acceptDeadline: Timestamp.fromDate(match.acceptDeadline),
+    });
+
+    return true;
+  });
+}
+
+/**
+ * Write a whole run's matches. Sequential, not parallel: each one is its own
+ * transaction, and two matches from the same run can contend for one offer.
+ */
+export async function applyMatches(matches: MatchWriteInput[]): Promise<number> {
+  let applied = 0;
+  for (const match of matches) {
+    if (await applyMatch(match)) applied += 1;
+  }
+  return applied;
+}
+
+/**
+ * The rider accepts: their request becomes 'confirmed' and they join the offer's
+ * confirmed list.
+ *
+ * The offer deliberately returns to 'pending' rather than 'confirmed' while it
+ * still has an empty seat. 'pending' is the only status the matcher treats as
+ * matchable (MATCHABLE_BOOKING_STATUSES), and a trip must stay matchable across
+ * runs for the one-new-rider-per-run rule to ever fill a 4-seat car. It becomes
+ * 'confirmed' only once full.
+ */
+export async function acceptMatch(requestID: string): Promise<void> {
+  const requestRef = doc(db, 'rideRequests', requestID);
+
+  await runTransaction(db, async (tx) => {
+    const requestSnap = await tx.get(requestRef);
+    if (!requestSnap.exists()) throw new Error('No ride request ' + requestID);
+
+    const request = requestSnap.data() as RideRequest;
+    if (request.status !== 'awaiting') {
+      throw new Error('Ride request ' + requestID + " is '" + request.status + "', not awaiting approval.");
+    }
+    if (!request.matchedOfferId) throw new Error('Ride request ' + requestID + ' has no matched offer.');
+
+    const offerRef = doc(db, 'rideOffers', request.matchedOfferId);
+    const offerSnap = await tx.get(offerRef);
+    if (!offerSnap.exists()) throw new Error('No ride offer ' + request.matchedOfferId);
+
+    const offer = offerSnap.data() as RideOffer;
+    const confirmedCount = (offer.confirmedRequestIds?.length ?? 0) + 1;
+
+    tx.update(requestRef, { status: 'confirmed' });
+    tx.update(offerRef, {
+      confirmedRequestIds: arrayUnion(requestID),
+      pendingRequestId: null,
+      status: confirmedCount >= offer.seatCapacity ? 'confirmed' : 'pending',
+    });
+  });
+}
+
+/**
+ * The rider (or driver) declines: the request goes back to 'pending' so the next
+ * run can rematch it, and every match field is REMOVED rather than set to null.
+ * Leaving stale ids behind would make rideData.ts render a driver the rider just
+ * rejected, and a stale acceptDeadline would keep counting down on a card that is
+ * no longer matched at all.
+ */
+export async function declineMatch(requestID: string): Promise<void> {
+  const requestRef = doc(db, 'rideRequests', requestID);
+
+  await runTransaction(db, async (tx) => {
+    const requestSnap = await tx.get(requestRef);
+    if (!requestSnap.exists()) throw new Error('No ride request ' + requestID);
+
+    const request = requestSnap.data() as RideRequest;
+    const offerId = request.matchedOfferId;
+
+    const offerSnap = offerId ? await tx.get(doc(db, 'rideOffers', offerId)) : null;
+
+    tx.update(requestRef, {
+      status: 'pending',
+      matchedOfferId: deleteField(),
+      matchedDriverId: deleteField(),
+      matchedAt: deleteField(),
+      acceptDeadline: deleteField(),
+      riderDetourMinutes: deleteField(),
+    });
+
+    if (offerId && offerSnap && offerSnap.exists()) {
+      const offer = offerSnap.data() as RideOffer;
+      // Only release the slot if it is still this rider's - a later run may
+      // already have put someone else in it.
+      if (offer.pendingRequestId === requestID) {
+        tx.update(doc(db, 'rideOffers', offerId), {
+          pendingRequestId: null,
+          status: 'pending',
+          matchedAt: deleteField(),
+          acceptDeadline: deleteField(),
+        });
+      }
+    }
+  });
+}
+
+/**
+ * Partial update of a stored request. Kept narrow on purpose: status changes go
+ * through applyMatch/acceptMatch/declineMatch so the offer side stays in step.
+ */
+export async function updateRideRequest(
+  requestID: string,
+  updates: Partial<Omit<RideRequest, 'requestID' | 'status'>>,
+): Promise<void> {
+  await updateDoc(doc(db, 'rideRequests', requestID), updates);
+}

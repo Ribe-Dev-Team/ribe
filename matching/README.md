@@ -6,7 +6,7 @@ behind a one-method interface you swap for the real Distance Matrix later.
 
 ```bash
 npm install
-npm test                    # 39 tests
+npm test                    # 50 tests
 npx ts-node test/simulate.ts # SMART Goal 1 evidence run
 npx ts-node test/compare.ts  # greedy vs provisional bumping, side by side
 ```
@@ -20,7 +20,7 @@ npx ts-node test/compare.ts  # greedy vs provisional bumping, side by side
 | `src/filter.ts` | KEY-133, 134, 136, 137 — time, direction, bearing, corridor, pair list |
 | `src/route.ts` | KEY-138 — insertion positions and incremental feasibility |
 | `src/score.ts` | KEY-139 — `offerScore` / `reqScore` |
-| `src/deferredAcceptance.ts` | KEY-41 — **the default matching loop**: provisional assignment with bumping |
+| `src/deferredAcceptance.ts` | KEY-41 — **the default matching loop**: provisional assignment with bumping, one new rider per trip per run |
 | `src/match.ts` | KEY-41 — one-shot greedy, kept as the comparison baseline |
 | `src/riderPolicy.ts` | derives a rider's `maxDetour` — the app never asks for it |
 | `src/travelTime.ts` | the seam where Google Maps plugs in |
@@ -34,6 +34,23 @@ comes along later it drops the current holder back into the pool to try its next
 trip. `src/match.ts`'s one-shot greedy (place a rider, never revisit) is kept
 specifically as the comparison baseline — see "Why bumping, measured" below for
 why it isn't the default anymore.
+
+**One new rider per trip, per run.** Accepting a match is a human decision, so a
+driver is only ever offered a single new, unconfirmed rider per run however many
+seats sit empty. Riders confirmed in an earlier run are fixed inputs: they stay,
+are never bumped, and don't consume the slot. A 4-seat car therefore fills one
+passenger at a time, across as many runs as it takes.
+
+That rule is what makes a candidate's cost stable, and it is the reason the
+algorithm no longer searches over subsets of riders. Because no two unconfirmed
+riders ever share a route within a run, every candidate is measured against the
+trip's fixed baseline and nothing else — so a placement can be computed once per
+(rider, trip) pair and can never be invalidated by what happens to some other
+rider later in the run. Under the previous model, where several new riders could
+share one route, a rider's cost depended on who else happened to be aboard, which
+is exactly why it needed a search over combinations and pickup orderings. The
+practical consequence: a **precomputed score list is now correct**, not merely
+convenient, which is what the scoring handoff assumes.
 
 ## Why not Gale–Shapley
 
@@ -65,31 +82,48 @@ decision compares raw marginal minutes) and was cosmetic at best.
 
 ## Why bumping, measured
 
+> **These numbers are for a SINGLE run, and since the one-new-rider rule landed
+> the two columns no longer measure the same thing.** Greedy fills every seat of
+> a trip in one pass; provisional fills one. Read the table as a description of
+> per-run behaviour, *not* as evidence that one algorithm matches more riders
+> than the other. A like-for-like comparison needs provisional run repeatedly,
+> feeding each run's accepted matches back as confirmed `onBoard` riders until it
+> converges. `test/compare.ts` does not do that yet — that is the single most
+> important gap in the measurement story.
+
 Both algorithms run on identical batches, same seed, via `test/compare.ts`:
 
 ```
-nReq nOff | greedy matched/rate/detour     | provisional matched/rate/detour
-  60   25 |  42    70%   0.45m            |  47    78%   3.27m
- 100   40 |  81    81%   0.27m            |  83    83%   3.41m
- 100   30 |  67    67%   0.16m            |  68    68%   3.31m
-  80   35 |  66    83%   0.22m            |  65    81%   3.17m
- 120   50 | 102    85%   0.25m            | 109    91%   3.45m
+nReq nOff | greedy matched/rate/detour | provisional matched/rate/detour
+  60   25 |  42    70%   0.45m         |  25    42%   0.00m
+ 100   40 |  81    81%   0.27m         |  40    40%   0.00m
+ 100   30 |  67    67%   0.16m         |  30    30%   0.00m
+  80   35 |  66    83%   0.22m         |  35    44%   0.00m
+ 120   50 | 102    85%   0.25m         |  50    42%   0.00m
 ```
 
-Bumping wins match rate in most cases (up to +8 points) at the cost of roughly
-10x higher average rider detour — and it is not a strict win: at 80 requests /
-35 offers this particular seed comes out one match *behind* greedy, a reminder
-that this is a heuristic with no optimality guarantee in either direction. As a
-percentage of each rider's own direct trip, provisional's detour runs
-13.8%–15.6% against the <15% Goal 1 ceiling — comfortably under in most rows,
-but over it in one (100 requests / 30 offers). Report both numbers; this is a
-real trade, not a free win, and the ceiling is worth watching rather than
-assuming.
+Two things to read off this, both consequences of the rule rather than surprises:
 
-Why bumping wins, worked example (see `test/deferredAcceptance.test.ts` for
-the runnable version, with exact numbers): riders A and B, drivers D1 and D2
-with one seat each. B can only reach D1; A can reach both, and D1 is also A's
-own best option. One-shot greedy sorts by combined score and takes the
+**Provisional matches exactly one rider per driver — `matched` equals `nOff` in
+every row.** A single run therefore cannot beat `nDrivers / nRiders`, so the 80%
+Goal 1 target is *unreachable in one run* at these supply levels, by
+construction. Hitting 80% now depends on how many runs happen before departure,
+which makes scheduling frequency a first-class part of meeting the goal rather
+than the "independent decision" the lifecycle section below calls it.
+
+**Average detour is 0.00m because every matched rider is a solo rider.** With one
+new rider on an empty trip, the driver absorbs the whole first-passenger cost and
+the rider's own detour is zero by definition — the same property documented under
+"What a rider's detour means". It is not evidence of a better route; it is the
+absence of any sharing to measure. Detour only becomes meaningful again once a
+trip carries a confirmed rider from a previous run, which single-run `compare.ts`
+never produces.
+
+Why bumping still earns its place, worked example (see
+`test/deferredAcceptance.test.ts` for the runnable version, with exact numbers):
+riders A and B, drivers D1 and D2 with one seat each. B can only reach D1; A can
+reach both, and D1 is also A's own best option. One-shot greedy sorts by combined
+score and takes the
 globally highest pair first — (A, D1) — locking D1 before B is ever considered.
 B has nowhere else to go: **one match**. Provisional assignment lets A propose
 to D1 first too, but when B proposes afterwards, D1 re-evaluates its best
@@ -98,17 +132,23 @@ so it bumps A back to the pool, where A lands on D2 on its next try:
 **two matches**.
 
 The mechanism, precisely: each unmatched rider proposes to whichever untried
-compatible trip scores best for **them** (`reqScore`, judged against the
-trip's confirmed baseline, never against who else is currently just holding a
-provisional spot). Each trip, on receiving a proposal, recomputes the best
-feasible subset of (currently held riders + this new proposer) — size bounded
-by seats, feasible meaning every rider's detour cap and arrival time still
-hold — preferring the largest matched count, tie-broken by lowest total
-marginal driver cost. Riders dropped return to the pool and try their next
-untried trip. It terminates because each (rider, trip) pair is inspected at
-most once. Confirmed riders — anyone already aboard when the run started — are
-fixed: always included, never bumped, because a human already accepted that
-trip.
+compatible trip scores best for **them** (`reqScore`, judged against the trip's
+confirmed baseline, never against whoever is currently just holding the
+provisional slot). The proposer is then placed on that trip's fixed baseline via
+`bestInsertion` — which re-checks every confirmed rider's own detour cap and
+arrival time at each candidate position, so a newcomer can never degrade someone
+a human already accepted. The trip's single slot then goes to whichever of
+(current holder, new proposer) costs the driver fewer marginal minutes; a tie
+keeps the holder, which avoids churn and keeps the run deterministic. The loser
+returns to the pool and tries its next untried trip. It terminates because each
+(rider, trip) pair is inspected at most once. Confirmed riders — anyone already
+aboard when the run started — are fixed: always included, never bumped, and they
+do not occupy the slot.
+
+Note what this is *not*: a search over subsets of riders. That is what the
+previous model needed, because a rider's cost there depended on which other new
+riders shared the route. The comparison is now strictly two-way, which is why
+`bestFeasibleSubset` and its combination/permutation generators are gone.
 
 ## Where a rider's detour cap comes from
 
@@ -375,20 +415,27 @@ Three ways to poke at the algorithm without writing a Jest test:
 
 ## Known limitations
 
+- **`test/compare.ts` measures single runs, so it no longer compares like with
+  like.** Greedy fills every seat in one pass, provisional fills one slot. Until
+  the harness loops provisional — feeding accepted matches back as confirmed
+  `onBoard` riders until it converges — its match-rate and detour columns say
+  nothing about relative algorithm quality. The same applies to
+  `test/simulate.ts`, which still runs the greedy baseline. This is the biggest
+  outstanding gap in the evidence.
+- **A single run cannot exceed one match per driver.** That is the rule working
+  as intended, not a defect, but it means the 80% Goal 1 target depends on run
+  frequency before departure, which nothing in this module controls.
 - Provisional assignment is a heuristic, not an exhaustive search: a trip
   found infeasible for a rider (or a rider it's already tried) is crossed off
   for that rider for the rest of the run, even though it could in principle
-  loosen up later if the trip bumps someone else first. This bounds runtime
+  loosen up later if the trip bumps its holder first. This bounds runtime
   and gives the algorithm's termination argument, at the cost of occasionally
-  missing an arrangement an exhaustive search would find — see the "not a
-  strict win" result in "Why bumping, measured" above.
+  missing an arrangement an exhaustive search would find.
 - Within a trip, fixed (confirmed) riders keep their original relative pickup
-  order; only where new riders slot in among them is searched. Full
-  permutation search covers just the new riders being added in a given
-  proposal (bounded by seats, so ≤ 24 orderings at 4 seats) — reordering
-  confirmed riders relative to each other is deliberately out of scope, since
-  nothing about correctness requires reopening a route a human already
-  accepted.
+  order; only where the one new rider slots in among them is searched.
+  Reordering confirmed riders relative to each other is deliberately out of
+  scope, since nothing about correctness requires reopening a route a human
+  already accepted.
 - One-shot greedy (`src/match.ts`) is still around specifically as the
   comparison baseline, not because it's a viable alternative default — see
   "Why bumping, measured". Its own known limitation: no global optimality
