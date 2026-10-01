@@ -109,10 +109,11 @@ describe('toMatchInputs', () => {
     expect(r).toMatchObject({ reqId: 'r', riderId: 'rider-r', direction: 'TO_CAMPUS', status: 'unassigned' });
     expect(r.start).toEqual(north(8));
     expect(r.end).toEqual(CAMPUS);
-    expect(r.arriveBy).toEqual(melb(5, '09:00'));
+    // "On campus by 9:00" is planned as 8:50 (arrivalMarginMinutes).
+    expect(r.arriveBy).toEqual(melb(5, '08:50'));
     expect(r.travelWindow.start).toEqual(melb(5, '08:00'));
-    // Latest departure that still arrives by 9:00 going direct.
-    expect(r.travelWindow.end.getTime()).toBeCloseTo(melb(5, '09:00').getTime() - direct * 60_000, -1);
+    // Latest departure that still arrives by 8:50 going direct.
+    expect(r.travelWindow.end.getTime()).toBeCloseTo(melb(5, '08:50').getTime() - direct * 60_000, -1);
     expect(r.maxDetour).toBeCloseTo(deriveRiderMaxDetour(direct, DEFAULT_CONFIG));
   });
 

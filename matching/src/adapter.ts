@@ -213,7 +213,7 @@ function toMatchRequest(
   const [start, end] = endpoints(doc, campus);
   const date = calendarDateIn(doc.date, timeZone);
   const earliest = zonedDateTime(date, doc.departureTime, timeZone);
-  const arriveBy = zonedDateTime(date, doc.arrivalTime, timeZone);
+  const arriveBy = plannedArrival(zonedDateTime(date, doc.arrivalTime, timeZone), cfg);
   const direct = t.minutes(start, end);
   const latest = new Date(Math.max(earliest.getTime(), arriveBy.getTime() - direct * 60_000));
 
@@ -295,6 +295,11 @@ function toMatchOffer(
   };
 }
 
+/** A rider's stated arrival time pulled earlier by `arrivalMarginMinutes`. */
+function plannedArrival(stated: Date, cfg: MatchingConfig): Date {
+  return new Date(stated.getTime() - cfg.arrivalMarginMinutes * 60_000);
+}
+
 /** Confirmed riders in stored pickup order, or null if any can't be rebuilt. */
 function rebuildOnBoard(
   ids: string[],
@@ -314,7 +319,7 @@ function rebuildOnBoard(
       reqId: r.id,
       riderId: r.userId,
       waypoint: r.coord,
-      arriveBy: zonedDateTime(date, r.arrivalTime, timeZone),
+      arriveBy: plannedArrival(zonedDateTime(date, r.arrivalTime, timeZone), cfg),
       maxDetour: deriveRiderMaxDetour(t.minutes(start, end), cfg),
       currentDetour: 0, // restated from the evaluated route by the caller
       earliest: zonedDateTime(date, r.departureTime, timeZone),

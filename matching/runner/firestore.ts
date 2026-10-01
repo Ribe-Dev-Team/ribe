@@ -3,7 +3,7 @@ import { DocumentSnapshot, FieldValue, Firestore, getFirestore, Timestamp } from
 import { readFileSync } from 'fs';
 import { MATCHABLE_APP_STATUS, OfferDoc, RequestDoc } from '../src/adapter';
 import {
-  FieldUpdate, MatchWrite, MatchWriteSkip, planExpiry, planMatchWrite, StoredOffer, StoredRequest,
+  FieldUpdate, MatchWrite, MatchWriteSkip, planMatchWrite, planSettle, Settled, StoredOffer, StoredRequest,
 } from '../src/writes';
 
 /**
@@ -114,37 +114,35 @@ export async function loadRequestsById(db: Firestore, ids: string[]): Promise<Ma
 }
 
 /**
- * Expire every match whose accept deadline has passed, releasing the driver's
- * slot. Runs before matching so a freed driver can be offered someone new in
- * the same run. Returns the expired request ids.
+ * Settle every matched request against its offer (src/writes.ts → planSettle):
+ * expire the matches past their deadline, and return riders to the pool when
+ * their driver removed the offer. Runs before matching so a freed driver or
+ * rider can be matched again in the same run.
  */
-export async function expireOverdue(db: Firestore, now: Date): Promise<string[]> {
-  const awaiting = await db.collection(REQUESTS).where('status', '==', 'awaiting').get();
-  const overdue = awaiting.docs.filter((s) => {
-    const deadline = toDate(s.get('acceptDeadline'));
-    return deadline !== undefined && deadline <= now;
-  });
+export async function settleMatched(db: Firestore, now: Date): Promise<Settled> {
+  const matched = await db.collection(REQUESTS).where('status', 'in', ['awaiting', 'confirmed']).get();
 
-  const expired: string[] = [];
-  for (const snap of overdue) {
-    const done = await db.runTransaction(async (tx) => {
+  const settled: Settled = { released: [], expired: [] };
+  for (const snap of matched.docs) {
+    const outcome = await db.runTransaction(async (tx) => {
       const requestRef = db.collection(REQUESTS).doc(snap.id);
       const requestSnap = await tx.get(requestRef);
       const request = toStoredRequest(requestSnap);
-      if (!request) return false;
+      if (!request) return null;
 
       const offerRef = request.matchedOfferId ? db.collection(OFFERS).doc(request.matchedOfferId) : null;
       const offer = offerRef ? toStoredOffer(await tx.get(offerRef)) : undefined;
 
-      const plan = planExpiry(snap.id, request, offer, now);
-      if (!plan) return false;
+      const plan = planSettle(snap.id, request, offer, now);
+      if (!plan) return null;
       tx.update(requestRef, toFirestoreUpdate(plan.request));
       if (plan.offer && offerRef) tx.update(offerRef, toFirestoreUpdate(plan.offer));
-      return true;
+      return plan.outcome;
     });
-    if (done) expired.push(snap.id);
+    if (outcome === 'RELEASED') settled.released.push(snap.id);
+    if (outcome === 'EXPIRED') settled.expired.push(snap.id);
   }
-  return expired;
+  return settled;
 }
 
 /**

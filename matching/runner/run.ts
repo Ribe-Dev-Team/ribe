@@ -36,7 +36,7 @@ import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, SyntheticTravelTime,
 } from '../src/travelTime';
 import { envValue } from './env';
-import { connect, expireOverdue, loadPending, loadRequestsById, writeMatches } from './firestore';
+import { connect, settleMatched, loadPending, loadRequestsById, writeMatches } from './firestore';
 import { MatchingStore, RunReport, runOnce } from './runOnce';
 
 /** Why a driver didn't take a rider, in words. A Record so a new reason
@@ -62,8 +62,12 @@ const WHY: Record<RejectReason, string> = {
 };
 
 function printReport(report: RunReport, dryRun: boolean): void {
-  if (report.expired.length) {
-    console.log(`Expired ${report.expired.length} match(es) past their accept deadline: ${report.expired.join(', ')}`);
+  const { released, expired } = report.settled;
+  if (released.length) {
+    console.log(`Returned ${released.length} rider(s) to the pool after their driver removed the offer: ${released.join(', ')}`);
+  }
+  if (expired.length) {
+    console.log(`Expired ${expired.length} match(es) past their accept deadline: ${expired.join(', ')}`);
   }
 
   if (report.skipped.length) {
@@ -111,7 +115,7 @@ async function main(): Promise<number> {
   });
 
   const store: MatchingStore = {
-    expireOverdue: (now) => expireOverdue(db, now),
+    settleMatched: (now) => settleMatched(db, now),
     loadPending: () => loadPending(db),
     loadRequestsById: (ids) => loadRequestsById(db, ids),
     writeMatches: (writes) => writeMatches(db, writes),

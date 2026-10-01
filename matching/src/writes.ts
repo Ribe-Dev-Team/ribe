@@ -28,10 +28,20 @@ export interface StoredOffer {
   confirmedRequestIds?: string[];
 }
 
+/** A car's timetable as stored on its offer: the driver's own departure and
+ *  arrival, and every rider in pickup order. */
+export interface StoredSchedule {
+  departAt: Date;
+  arriveAt: Date;
+  stops: Array<{ requestId: string; pickupAt: Date; arriveAt: Date }>;
+}
+
 /** One match, reduced to what Firestore needs. */
 export interface MatchWrite {
   reqId: string;
   offerId: string;
+  /** The rider's user id - stored on the offer as `matchedRiderId`. */
+  riderId: string;
   driverId: string;
   matchedAt: Date;
   acceptDeadline: Date;
@@ -41,6 +51,12 @@ export interface MatchWrite {
   routeIndex: number;
   /** The confirmed riders, in order, this route was computed against. */
   baseline: string[];
+  /** This rider's own estimated pickup and arrival. */
+  pickupAt: Date;
+  arriveAt: Date;
+  /** The car's timetable if this rider accepts - confirmed riders' times
+   *  included, since picking up the new rider can shift them. */
+  schedule: StoredSchedule;
 }
 
 /**
@@ -53,6 +69,7 @@ export function toMatchWrites(matches: ProposedMatch[], offers: MatchOffer[]): M
   return matches.map((m) => ({
     reqId: m.reqId,
     offerId: m.offerId,
+    riderId: m.riderId,
     driverId: m.driverId,
     matchedAt: m.matchedAt,
     acceptDeadline: m.acceptDeadline,
@@ -61,6 +78,13 @@ export function toMatchWrites(matches: ProposedMatch[], offers: MatchOffer[]): M
     // one added, so its index in the final route is its index among them.
     routeIndex: m.insertionIndex,
     baseline: baselineByOffer.get(m.offerId) ?? [],
+    pickupAt: m.pickupAt,
+    arriveAt: m.arriveAt,
+    schedule: {
+      departAt: m.departAt,
+      arriveAt: m.finalArrival,
+      stops: m.schedule.map((s) => ({ requestId: s.reqId, pickupAt: s.pickupAt, arriveAt: s.arriveAt })),
+    },
   }));
 }
 
@@ -105,6 +129,11 @@ export function planMatchWrite(
         acceptDeadline: m.acceptDeadline,
         riderDetourMinutes: m.riderDetourMinutes,
         routeIndex: m.routeIndex,
+        // The rider's own times as of this match. The offer's schedule stays
+        // current as later riders join; these are what the card falls back to
+        // if it can't read the offer.
+        pickupAt: m.pickupAt,
+        arriveAt: m.arriveAt,
       },
       remove: [],
     },
@@ -112,38 +141,76 @@ export function planMatchWrite(
       set: {
         status: 'awaiting',
         pendingRequestId: m.reqId,
+        // The published Firestore rules let a user update someone else's offer
+        // only when `matchedRiderId` is their uid - and accepting or declining
+        // runs on the rider's phone and updates the driver's offer. Without
+        // this, Accept fails with "Missing or insufficient permissions".
+        matchedRiderId: m.riderId,
         matchedAt: m.matchedAt,
         acceptDeadline: m.acceptDeadline,
+        // Not `schedule` yet: that is the confirmed riders' timetable until this
+        // rider accepts, and acceptMatch moves this into its place.
+        pendingSchedule: m.schedule,
       },
       remove: [],
     },
   };
 }
 
+/** A request's match fields, removed when it goes back to looking. */
+export const REQUEST_MATCH_FIELDS = [
+  'matchedOfferId', 'matchedDriverId', 'matchedAt', 'acceptDeadline', 'riderDetourMinutes',
+  'routeIndex', 'pickupAt', 'arriveAt',
+];
+
+/** An offer's pending-slot fields, removed when the slot is freed. */
+export const OFFER_SLOT_FIELDS = ['matchedRiderId', 'matchedAt', 'acceptDeadline', 'pendingSchedule'];
+
+export type Settlement = 'RELEASED' | 'EXPIRED';
+
+/** Request ids settled by one pass, by outcome. */
+export interface Settled {
+  released: string[];
+  expired: string[];
+}
+
 /**
- * A match nobody accepted in time. The request becomes 'expired' - RideCard
- * already tells the rider the trip is cancelled once the countdown ends - and
- * the driver's slot is released so the next run can offer them someone else.
+ * Bring a matched request (awaiting approval or confirmed) in line with its
+ * offer. Only the rider answers a match, and the driver can't write the
+ * rider's booking - so when something happens on the driver's side, the
+ * rider's request catches up here:
  *
- * Returns null when there is nothing to do: not awaiting, no deadline, or the
- * deadline hasn't passed.
+ *   RELEASED  the driver removed their offer (or it's gone, or no longer has
+ *             this rider): back to looking, every match field removed, so the
+ *             next run can find them someone else
+ *   EXPIRED   the rider didn't answer by the deadline: the request expires -
+ *             RideCard already tells the rider the trip is cancelled - and the
+ *             driver's slot is freed for the next run
+ *
+ * Returns null when there is nothing to do.
  */
-export function planExpiry(
+export function planSettle(
   requestId: string,
   request: StoredRequest,
   offer: StoredOffer | undefined,
   now: Date,
-): { request: FieldUpdate; offer?: FieldUpdate } | null {
-  if (request.status !== 'awaiting' || !request.acceptDeadline) return null;
-  if (request.acceptDeadline > now) return null;
+): { outcome: Settlement; request: FieldUpdate; offer?: FieldUpdate } | null {
+  const released = { outcome: 'RELEASED' as const, request: { set: { status: 'pending' }, remove: REQUEST_MATCH_FIELDS } };
+  const offerLive = offer !== undefined && offer.status !== 'cancelled';
 
-  // Only release the slot if it is still this rider's.
-  const releaseOffer = offer && offer.status === 'awaiting' && offer.pendingRequestId === requestId;
+  if (request.status === 'confirmed') {
+    const seated = offerLive && (offer.confirmedRequestIds ?? []).includes(requestId);
+    return seated ? null : released;
+  }
 
+  if (request.status !== 'awaiting') return null;
+  const holding = offerLive && offer.status === 'awaiting' && offer.pendingRequestId === requestId;
+  if (!holding) return released;
+
+  if (!request.acceptDeadline || request.acceptDeadline > now) return null;
   return {
+    outcome: 'EXPIRED',
     request: { set: { status: 'expired' }, remove: [] },
-    ...(releaseOffer
-      ? { offer: { set: { status: 'pending', pendingRequestId: null }, remove: ['matchedAt', 'acceptDeadline'] } }
-      : {}),
+    offer: { set: { status: 'pending', pendingRequestId: null }, remove: OFFER_SLOT_FIELDS },
   };
 }

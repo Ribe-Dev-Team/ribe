@@ -21,8 +21,8 @@ interface HomePageProps {
   onNewRide: () => void;
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
-  /** The real Accept/Decline handlers (App's buildRideActions) for a card's own buttons. */
-  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline'>;
+  /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel'>;
 }
 
 const notifications = [

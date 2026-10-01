@@ -1,6 +1,6 @@
 import {
   MatchOffer, MatchRequest, MatchingConfig, DEFAULT_CONFIG, MatchRunResult,
-  OnBoardRider, ProposedMatch, RejectReason, TravelTimeMatrix,
+  OnBoardRider, ProposedMatch, RejectReason, TravelTimeMatrix, TripStop,
 } from './types';
 import { hardFilter, passengerOf, waypointOf } from './filter';
 import {
@@ -241,6 +241,14 @@ export function runMatchingProvisional(
     const fullEv = evaluateRoute(offer.start, waypoints, offer.end, offerDepartAt, t, offer.direction);
     const driverDeadline = driverLatestArrival(offer, offerDepartAt, t);
 
+    // The car's timetable with this run's rider in it. Leaving campus, everyone
+    // boards at the driver's departure.
+    const schedule: TripStop[] = finalOrder.map((r, j) => ({
+      reqId: r.reqId,
+      pickupAt: offer.direction === 'TO_CAMPUS' ? fullEv.waypointArrivals[j] : offerDepartAt,
+      arriveAt: fullEv.riderArrivals[j],
+    }));
+
     for (let i = 0; i < finalOrder.length; i++) {
       const rider = finalOrder[i];
       if (fixedIds.has(rider.reqId)) continue; // already matched in a prior run
@@ -278,8 +286,12 @@ export function runMatchingProvisional(
         driverAddedMinutes: marginal,
         offerScore,
         reqScore,
+        departAt: offerDepartAt,
         finalArrival: fullEv.finalArrival,
         totalTripMinutes: fullEv.totalMinutes,
+        pickupAt: schedule[i].pickupAt,
+        arriveAt: schedule[i].arriveAt,
+        schedule,
         matchedAt: now,
         acceptDeadline,
       });

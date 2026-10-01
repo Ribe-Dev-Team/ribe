@@ -24,7 +24,7 @@ import RideDetailPage from './pages/RideDetailPage';
 import DriverProfilePage from './pages/DriverProfilePage';
 import DriverRegistrationPage from './pages/DriverRegistrationPage';
 import BookingPage from './pages/BookingPage';
-import { acceptMatch, declineMatch } from './pages/schema/firebaseBookingMethods';
+import { acceptMatch, cancelOffer, declineMatch } from './pages/schema/firebaseBookingMethods';
 
 // Adapts a rich Home/Dashboard ride card into the simpler shape RideDetailPage
 // (built for Calendar) expects, so both entry points share the same detail screen.
@@ -67,11 +67,27 @@ function buildRideActions(
   driverName: string,
   onChanged: () => void,
 ) {
+  // A driver never answers a match - only the rider does. What a driver can do,
+  // whatever state the offer is in, is remove it.
+  if (ride.kind === 'offer') {
+    return {
+      onCancel: async () => {
+        if (!ride.rideId) {
+          Alert.alert('Not available yet', 'Removing an offer from this view is not wired up.');
+          return;
+        }
+        try {
+          await cancelOffer(ride.rideId);
+          Alert.alert('Offer removed', 'Any rider matched to this drive will be found another driver.');
+          onChanged();
+        } catch (error) {
+          Alert.alert('Could not remove offer', errorMessage(error));
+        }
+      },
+    };
+  }
   if (ride.status === 'awaiting') {
-    // Only the rider's own request is approvable here. An offer card is the
-    // driver's half of the same match, and the driver-side approval does not
-    // exist yet — see the two-sided statuses in backend/server/matching.schema.ts.
-    const approvable = Boolean(ride.rideId) && ride.kind === 'request';
+    const approvable = Boolean(ride.rideId);
 
     return {
       onAccept: async () => {
@@ -94,9 +110,8 @@ function buildRideActions(
         }
         try {
           await declineMatch(ride.rideId!);
-          // Declining returns the request to the pool, so it goes back to
-          // Pending Requests rather than disappearing.
-          Alert.alert('Ride declined', 'Your request is searching for another driver.');
+          // Declining cancels the request; the rider books again to be rematched.
+          Alert.alert('Ride declined', 'Your request has been cancelled. Book again to find another driver.');
           onChanged();
         } catch (error) {
           Alert.alert('Could not decline ride', errorMessage(error));
@@ -104,8 +119,8 @@ function buildRideActions(
       },
     };
   }
-  // NOTE: cancel is still a local alert only — cancelling has no Firestore write
-  // yet, so a cancelled ride reappears on the next fetch.
+  // NOTE: a rider cancelling is still a local alert only — it has no Firestore
+  // write yet, so a cancelled ride reappears on the next fetch.
   if (ride.status === 'confirmed') {
     return {
       onCancel: () => Alert.alert('Ride canceled', 'This ride has been canceled.'),

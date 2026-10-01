@@ -97,6 +97,9 @@ export interface RideCardProps {
   pickup: { address: string; time: string };
   destination: { address: string; eta: string };
   etaMinutes: number;
+  /** When a matched rider should be waiting - a buffer before the estimated
+   *  pickup. Absent until the matcher has planned a pickup time. */
+  readyBy?: string;
   cost: string;
   co2SavedKg: number;
   driver: { uid?: string; name: string; vehicle: string; avatarUri?: string };
@@ -122,11 +125,13 @@ export interface RideCardProps {
 }
 
 export default function RideCard({
+  kind,
   status,
   date,
   pickup,
   destination,
   etaMinutes,
+  readyBy,
   cost,
   co2SavedKg,
   driver,
@@ -152,6 +157,18 @@ export default function RideCard({
   const [showCostInfo, setShowCostInfo] = useState(false);
   const [showPhoneInfo, setShowPhoneInfo] = useState(false);
   const [detailsVisible, setDetailsVisible] = useState(false);
+  // Only riders answer a match. A driver is told a rider was found and how long
+  // the rider has to accept; all they can do is remove the whole offer.
+  const isDriver = kind === 'offer';
+  const confirmRemoveOffer = () =>
+    Alert.alert(
+      'Remove this drive offer?',
+      'Any rider matched to it will go back to searching for another driver.',
+      [
+        { text: 'Keep Offer', style: 'cancel' },
+        { text: 'Remove Offer', style: 'destructive', onPress: onCancel },
+      ],
+    );
 
   return (
     <View style={[styles.card, { borderLeftColor: accent }]}>
@@ -168,6 +185,7 @@ export default function RideCard({
         <Text style={styles.stopAddress} numberOfLines={1}>{pickup.address}</Text>
         <Text style={styles.stopTime}>{pickup.time}</Text>
       </View>
+      {readyBy && <Text style={styles.readyBy}>Be ready by {readyBy}</Text>}
       <View style={styles.stopConnector} />
       <View style={styles.stopRow}>
         <Ionicons name="location" size={13} color={colors.white} style={styles.stopIcon} />
@@ -179,9 +197,11 @@ export default function RideCard({
         <View style={styles.countdownBanner}>
           <Ionicons name="time-outline" size={14} color={colors.darkBlue} />
           <Text style={styles.countdownText}>
-            {remainingMs > 0
-              ? `You have ${formatCountdown(remainingMs)} to review and accept before this trip is canceled.`
-              : 'This match has expired.'}
+            {remainingMs <= 0
+              ? 'This match has expired.'
+              : isDriver
+                ? `Rider found. They have ${formatCountdown(remainingMs)} to review and accept before this match is cancelled and a new rider is searched for.`
+                : `You have ${formatCountdown(remainingMs)} to review and accept before this trip is canceled.`}
           </Text>
         </View>
       )}
@@ -224,17 +244,24 @@ export default function RideCard({
             <Ionicons name="eye-outline" size={16} color={colors.white} />
             <Text style={styles.seeDetailsText}>See Details</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
-            <Ionicons name="checkmark" size={16} color={colors.white} />
-            <Text style={styles.acceptText}>Accept</Text>
-          </TouchableOpacity>
+          {isDriver ? (
+            <TouchableOpacity style={styles.removeOfferButton} onPress={confirmRemoveOffer}>
+              <Ionicons name="close" size={16} color={colors.white} />
+              <Text style={styles.acceptText}>Remove offer</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
+              <Ionicons name="checkmark" size={16} color={colors.white} />
+              <Text style={styles.acceptText}>Accept</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : status === 'pending' ? (
         <>
           <View style={styles.footerRow}>
             <View style={styles.searchingRow}>
               <Ionicons name="search" size={14} color={colors.white} />
-              <Text style={styles.searchingText}>Searching for driver...</Text>
+              <Text style={styles.searchingText}>{isDriver ? 'Searching for riders...' : 'Searching for driver...'}</Text>
             </View>
             <View style={styles.pendingIconRow}>
               <TouchableOpacity
@@ -245,9 +272,9 @@ export default function RideCard({
                 <Ionicons name="create-outline" size={16} color={colors.white} />
               </TouchableOpacity>
               <TouchableOpacity
-                accessibilityLabel="Cancel ride request"
+                accessibilityLabel={isDriver ? 'Remove drive offer' : 'Cancel ride request'}
                 style={[styles.pendingIconButton, styles.cancelIconButton]}
-                onPress={() =>
+                onPress={() => isDriver ? confirmRemoveOffer() :
                   Alert.alert(
                     'Cancel ride request?',
                     'Are you sure you want to cancel this ride request?',
@@ -340,7 +367,22 @@ export default function RideCard({
               </Text>
             )}
 
-            {status === 'awaiting' ? (
+            {status === 'awaiting' && isDriver ? (
+              <View style={styles.modalButtonRow}>
+                <TouchableOpacity style={styles.declineButton} onPress={() => setDetailsVisible(false)}>
+                  <Text style={styles.declineText}>Close</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.declineButton}
+                  onPress={() => {
+                    setDetailsVisible(false);
+                    confirmRemoveOffer();
+                  }}
+                >
+                  <Text style={styles.declineText}>Remove offer</Text>
+                </TouchableOpacity>
+              </View>
+            ) : status === 'awaiting' ? (
               <View style={styles.modalButtonRow}>
                 <TouchableOpacity
                   style={styles.declineButton}
@@ -426,6 +468,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.85,
     marginLeft: 8,
+  },
+  readyBy: {
+    color: colors.white,
+    fontSize: 12,
+    opacity: 0.85,
+    marginLeft: 22, // under the address, past the stop icon and gap
+    marginTop: 2,
   },
   stopConnector: {
     width: 1,
@@ -611,6 +660,18 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 13,
     fontWeight: '600',
+  },
+  // Outlined rather than filled: removing an offer is the destructive choice.
+  removeOfferButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.whiteA50,
+    paddingVertical: 9,
   },
   acceptButton: {
     flex: 1,

@@ -263,26 +263,41 @@ export async function acceptMatch(requestID: string): Promise<void> {
     if (!offerSnap.exists()) throw new Error('No ride offer ' + request.matchedOfferId);
 
     const offer = offerSnap.data() as RideOffer;
+    // The driver may have removed the offer while the rider was deciding.
+    if (offer.status !== 'awaiting' || offer.pendingRequestId !== requestID) {
+      throw new Error('The driver has removed this offer. Your request will be matched again.');
+    }
     const confirmed = (offer.confirmedRequestIds ?? []).filter((id) => id !== requestID);
     // No stored position (a match written before routeIndex existed) -> last.
     const at = Math.min(Math.max(request.routeIndex ?? confirmed.length, 0), confirmed.length);
     const ordered = [...confirmed.slice(0, at), requestID, ...confirmed.slice(at)];
 
     tx.update(requestRef, { status: 'confirmed' });
+    // Allowed by the Firestore rules only because the runner set
+    // `matchedRiderId` to this rider's uid. Removed in the same write, so the
+    // rider can't go on editing the driver's offer once they've answered.
     tx.update(offerRef, {
       confirmedRequestIds: ordered,
       pendingRequestId: null,
+      matchedRiderId: deleteField(),
+      // The timetable re-planned with this rider in it. A match from before
+      // timetables were stored has none, and the old one no longer fits the
+      // car, so it's dropped and the cards fall back to each rider's own times.
+      schedule: offer.pendingSchedule ?? deleteField(),
+      pendingSchedule: deleteField(),
       status: ordered.length >= offer.seatCapacity ? 'confirmed' : 'pending',
     });
   });
 }
 
 /**
- * The rider (or driver) declines: the request goes back to 'pending' so the next
- * run can rematch it, and every match field is REMOVED rather than set to null.
- * Leaving stale ids behind would make rideData.ts render a driver the rider just
- * rejected, and a stale acceptDeadline would keep counting down on a card that is
- * no longer matched at all.
+ * The rider declines: their request is cancelled, and they book again if they
+ * still want a ride (a new booking can be matched to anyone, this driver
+ * included). Only the rider answers a match - drivers can't turn riders away,
+ * only remove their whole offer (cancelOffer).
+ *
+ * Every match field is REMOVED rather than set to null, and the driver's slot is
+ * freed so the offer goes straight back into the pool if it has seats left.
  */
 export async function declineMatch(requestID: string): Promise<void> {
   const requestRef = doc(db, 'rideRequests', requestID);
@@ -297,13 +312,15 @@ export async function declineMatch(requestID: string): Promise<void> {
     const offerSnap = offerId ? await tx.get(doc(db, 'rideOffers', offerId)) : null;
 
     tx.update(requestRef, {
-      status: 'pending',
+      status: 'cancelled',
       matchedOfferId: deleteField(),
       matchedDriverId: deleteField(),
       matchedAt: deleteField(),
       acceptDeadline: deleteField(),
       riderDetourMinutes: deleteField(),
       routeIndex: deleteField(),
+      pickupAt: deleteField(),
+      arriveAt: deleteField(),
     });
 
     if (offerId && offerSnap && offerSnap.exists()) {
@@ -313,12 +330,42 @@ export async function declineMatch(requestID: string): Promise<void> {
       if (offer.pendingRequestId === requestID) {
         tx.update(doc(db, 'rideOffers', offerId), {
           pendingRequestId: null,
+          matchedRiderId: deleteField(),
           status: 'pending',
           matchedAt: deleteField(),
           acceptDeadline: deleteField(),
+          pendingSchedule: deleteField(),
         });
       }
     }
+  });
+}
+
+/**
+ * The driver removes their whole offer - allowed at any time, with a rider
+ * awaiting approval or with riders confirmed. The offer becomes 'cancelled' and
+ * its pending slot is cleared, so a rider deciding can no longer accept it.
+ *
+ * The riders' own bookings are NOT touched here: the driver's phone can't write
+ * them. The matching runner returns each of them to the pool on its next run
+ * (matching/src/writes.ts → planSettle), and until then rideData.ts already
+ * shows them as searching again.
+ */
+export async function cancelOffer(offerID: string): Promise<void> {
+  const offerRef = doc(db, 'rideOffers', offerID);
+
+  await runTransaction(db, async (tx) => {
+    const offerSnap = await tx.get(offerRef);
+    if (!offerSnap.exists()) throw new Error('No ride offer ' + offerID);
+
+    tx.update(offerRef, {
+      status: 'cancelled',
+      pendingRequestId: null,
+      matchedRiderId: deleteField(),
+      matchedAt: deleteField(),
+      acceptDeadline: deleteField(),
+      pendingSchedule: deleteField(),
+    });
   });
 }
 

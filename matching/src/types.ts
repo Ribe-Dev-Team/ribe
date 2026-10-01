@@ -130,6 +130,16 @@ export type RejectReason =
   | 'MATCHING_CUTOFF'
   | 'LOST_SLOT';            // feasible, but the one slot went to a cheaper rider
 
+/** One rider's place in a car's timetable. */
+export interface TripStop {
+  reqId: string;
+  /** When the car collects them: at their door going to campus, at campus
+   *  departure coming from it. */
+  pickupAt: Date;
+  /** When they reach their own destination. */
+  arriveAt: Date;
+}
+
 /** One rider offered to one driver by a matching run. */
 export interface ProposedMatch {
   offerId: string;
@@ -141,8 +151,17 @@ export interface ProposedMatch {
   driverAddedMinutes: number;
   offerScore: number;
   reqScore: number;
+  /** When the driver sets off - the start of the car's timetable. */
+  departAt: Date;
   finalArrival: Date;
   totalTripMinutes: number;
+  /** This rider's own estimated pickup and arrival. */
+  pickupAt: Date;
+  arriveAt: Date;
+  /** The whole car's timetable if this match is accepted: every rider on the
+   *  route, confirmed ones included, in pickup order. Adding a rider can move
+   *  the others' times, so the car's timetable is stored, not just this rider's. */
+  schedule: TripStop[];
   /** When this batch produced the match — every match in one run shares it. */
   matchedAt: Date;
   /** By when the pair must accept, or the match lapses. Clamped to whichever
@@ -206,6 +225,12 @@ export interface MatchingConfig {
   riderDetourPercent: number;
   /** Lower bound on that derived cap, so short trips stay matchable. */
   riderDetourFloorMinutes: number;
+  /** Plan every rider's arrival this many minutes before the time they gave.
+   *  Drive times don't include traffic, and arriving late is the one outcome a
+   *  rider can't recover from, so the matcher aims early rather than exactly.
+   *  Applied by the adapter, which turns "on campus by 9:00" into a 8:50
+   *  `arriveBy`; the algorithm itself is unchanged. */
+  arrivalMarginMinutes: number;
 }
 
 export const DEFAULT_CONFIG: MatchingConfig = {
@@ -218,4 +243,5 @@ export const DEFAULT_CONFIG: MatchingConfig = {
   approvalWindowMinutes: 720,
   riderDetourPercent: 0.40,
   riderDetourFloorMinutes: 5,
+  arrivalMarginMinutes: 10,
 };

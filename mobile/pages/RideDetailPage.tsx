@@ -44,7 +44,11 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 	const [profile, setProfile] = useState<DriverProfileInfo>(fallbackDriverProfile);
 	const [loadingProfile, setLoadingProfile] = useState(Boolean(ride.driverUid));
 	const isConfirmed = ride.status === 'confirmed';
-	const status = ride.status === 'confirmed' ? 'Confirmed ride' : ride.status === 'awaiting' ? 'Awaiting confirmation' : 'Pending ride';
+	// Drivers don't answer matches, so their awaiting offer reads as a rider found.
+	const isDriver = ride.kind === 'offer';
+	const status = ride.status === 'confirmed' ? 'Confirmed ride'
+		: ride.status === 'awaiting' ? (isDriver ? 'Rider found - awaiting their confirmation' : 'Awaiting confirmation')
+		: 'Pending ride';
 	const statusColor = ride.status === 'confirmed' ? colors.confirmed : ride.status === 'awaiting' ? colors.awaiting : colors.pending;
 
 	useEffect(() => {
@@ -156,10 +160,19 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 				</View>
 			)}
 
-			{(isConfirmed || ride.status === 'pending') && onCancel && (
+			{(isConfirmed || ride.status === 'pending' || isDriver) && onCancel && (
 				<Pressable
 					onPress={() =>
-						ride.status === 'pending'
+						isDriver
+							? Alert.alert(
+								'Remove this drive offer?',
+								'Any rider matched to it will go back to searching for another driver.',
+								[
+									{ text: 'Keep Offer', style: 'cancel' },
+									{ text: 'Remove Offer', style: 'destructive', onPress: onCancel },
+								],
+							)
+							: ride.status === 'pending'
 							? Alert.alert(
 								'Cancel this ride request?',
 								'Are you sure you want to cancel this ride request?',
@@ -179,7 +192,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 					}
 					style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
 				>
-					<Text style={styles.dangerButtonText}>{ride.status === 'pending' ? 'Cancel pending ride' : 'Cancel ride'}</Text>
+					<Text style={styles.dangerButtonText}>{isDriver ? 'Remove offer' : ride.status === 'pending' ? 'Cancel pending ride' : 'Cancel ride'}</Text>
 				</Pressable>
 			)}
 		</ScrollView>

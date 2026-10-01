@@ -7,21 +7,36 @@ runner/firestore.ts makes these same decisions inside its transactions.
                    (rider gone or cancelled, slot taken, confirmed riders
                    changed or reordered, car full)
   toMatchWrites    a matcher result becomes a write, carrying the rider's
-                   pickup position and the confirmed riders it was planned around
-  planExpiry       a match left unanswered past its deadline expires and frees
-                   the driver's slot - unless someone else holds it by then
+                   pickup position, the confirmed riders it was planned around,
+                   and the car's timetable if the rider accepts
+  planSettle       a matched request catches up with its offer: back to the
+                   pool if the driver removed the offer, expired (freeing the
+                   slot) if the rider didn't answer by the deadline
 */
 
-import { planExpiry, planMatchWrite, MatchWrite, StoredOffer, StoredRequest, toMatchWrites } from '../src/writes';
+import { OFFER_SLOT_FIELDS, planMatchWrite, planSettle, MatchWrite, REQUEST_MATCH_FIELDS, StoredOffer, StoredRequest, toMatchWrites } from '../src/writes';
 import { ProposedMatch } from '../src/types';
 import { makeOffer, CAMPUS } from './fixtures';
 
 const matchedAt = new Date('2026-10-04T20:00:00Z');
 const acceptDeadline = new Date('2026-10-04T21:00:00Z');
 
+const departAt = new Date('2026-10-04T21:45:00Z');
+const at = (min: number) => new Date(departAt.getTime() + min * 60_000);
+
 const write: MatchWrite = {
-  reqId: 'r', offerId: 'o', driverId: 'd', matchedAt, acceptDeadline,
+  reqId: 'r', offerId: 'o', riderId: 'rider', driverId: 'd', matchedAt, acceptDeadline,
   riderDetourMinutes: 3.5, routeIndex: 1, baseline: ['c1', 'c2'],
+  pickupAt: at(15), arriveAt: at(30),
+  schedule: {
+    departAt,
+    arriveAt: at(30),
+    stops: [
+      { requestId: 'c1', pickupAt: at(5), arriveAt: at(30) },
+      { requestId: 'r', pickupAt: at(15), arriveAt: at(30) },
+      { requestId: 'c2', pickupAt: at(20), arriveAt: at(30) },
+    ],
+  },
 };
 const request: StoredRequest = { status: 'pending' };
 const offer: StoredOffer = { status: 'pending', seatCapacity: 4, pendingRequestId: null, confirmedRequestIds: ['c1', 'c2'] };
@@ -34,11 +49,17 @@ describe('planMatchWrite', () => {
       request: {
         set: {
           status: 'awaiting', matchedOfferId: 'o', matchedDriverId: 'd', matchedAt, acceptDeadline,
-          riderDetourMinutes: 3.5, routeIndex: 1,
+          riderDetourMinutes: 3.5, routeIndex: 1, pickupAt: at(15), arriveAt: at(30),
         },
         remove: [],
       },
-      offer: { set: { status: 'awaiting', pendingRequestId: 'r', matchedAt, acceptDeadline }, remove: [] },
+      offer: {
+        set: {
+          status: 'awaiting', pendingRequestId: 'r', matchedRiderId: 'rider', matchedAt, acceptDeadline,
+          pendingSchedule: write.schedule,
+        },
+        remove: [],
+      },
     });
   });
 
@@ -66,34 +87,52 @@ describe('toMatchWrites', () => {
     });
     const m = {
       offerId: 'o', reqId: 'r', riderId: 'rider', driverId: 'd', insertionIndex: 1, riderDetour: 3.5,
-      driverAddedMinutes: 2, offerScore: 1, reqScore: 1, finalArrival: matchedAt, totalTripMinutes: 30,
+      driverAddedMinutes: 2, offerScore: 1, reqScore: 1, departAt, finalArrival: at(30), totalTripMinutes: 30,
+      pickupAt: at(15), arriveAt: at(30),
+      schedule: [
+        { reqId: 'c1', pickupAt: at(5), arriveAt: at(30) },
+        { reqId: 'r', pickupAt: at(15), arriveAt: at(30) },
+        { reqId: 'c2', pickupAt: at(20), arriveAt: at(30) },
+      ],
       matchedAt, acceptDeadline,
     } as ProposedMatch;
     expect(toMatchWrites([m], [o])).toEqual([write]);
   });
 });
 
-describe('planExpiry', () => {
+describe('planSettle', () => {
   const now = new Date('2026-10-04T22:00:00Z');
+  const before = new Date(acceptDeadline.getTime() - 1);
   const overdue: StoredRequest = { status: 'awaiting', matchedOfferId: 'o', acceptDeadline };
   const holding: StoredOffer = { ...offer, status: 'awaiting', pendingRequestId: 'r' };
+  const released = { outcome: 'RELEASED', request: { set: { status: 'pending' }, remove: REQUEST_MATCH_FIELDS } };
 
-  it("expires the request and frees the driver's slot", () => {
-    expect(planExpiry('r', overdue, holding, now)).toEqual({
+  it("expires an unanswered match and frees the driver's slot", () => {
+    expect(planSettle('r', overdue, holding, now)).toEqual({
+      outcome: 'EXPIRED',
       request: { set: { status: 'expired' }, remove: [] },
-      offer: { set: { status: 'pending', pendingRequestId: null }, remove: ['matchedAt', 'acceptDeadline'] },
+      offer: { set: { status: 'pending', pendingRequestId: null }, remove: OFFER_SLOT_FIELDS },
     });
   });
 
-  it('leaves a slot alone once it belongs to someone else', () => {
-    expect(planExpiry('r', overdue, { ...holding, pendingRequestId: 'other' }, now)).toEqual({
-      request: { set: { status: 'expired' }, remove: [] },
-    });
+  it('returns a rider awaiting approval to the pool when the driver removed the offer', () => {
+    expect(planSettle('r', overdue, { ...holding, status: 'cancelled' }, before)).toEqual(released);
+    expect(planSettle('r', overdue, undefined, before)).toEqual(released);
+    expect(planSettle('r', overdue, { ...holding, pendingRequestId: 'other' }, before)).toEqual(released);
   });
 
-  it('does nothing before the deadline, or to a request not awaiting approval', () => {
-    expect(planExpiry('r', overdue, holding, new Date(acceptDeadline.getTime() - 1))).toBeNull();
-    expect(planExpiry('r', { ...overdue, status: 'confirmed' }, holding, now)).toBeNull();
-    expect(planExpiry('r', { status: 'awaiting' }, holding, now)).toBeNull();
+  it('returns a confirmed rider to the pool when the driver removed the offer', () => {
+    const confirmed: StoredRequest = { status: 'confirmed', matchedOfferId: 'o' };
+    const seated: StoredOffer = { ...offer, confirmedRequestIds: ['c1', 'r'] };
+    expect(planSettle('r', confirmed, seated, now)).toBeNull();
+    expect(planSettle('r', confirmed, { ...seated, status: 'cancelled' }, now)).toEqual(released);
+    expect(planSettle('r', confirmed, undefined, now)).toEqual(released);
+  });
+
+  it('waits while the rider still has time, and ignores requests not matched', () => {
+    expect(planSettle('r', overdue, holding, before)).toBeNull();
+    expect(planSettle('r', { status: 'awaiting', matchedOfferId: 'o' }, holding, now)).toBeNull();
+    expect(planSettle('r', { status: 'cancelled' }, undefined, now)).toBeNull();
+    expect(planSettle('r', { status: 'pending' }, undefined, now)).toBeNull();
   });
 });

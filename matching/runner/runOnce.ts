@@ -4,12 +4,14 @@ import {
   Skipped, toMatchInputs,
 } from '../src/adapter';
 import { runMatchingProvisional } from '../src/deferredAcceptance';
-import { MatchWrite, MatchWriteSkip, toMatchWrites } from '../src/writes';
+import { MatchWrite, MatchWriteSkip, Settled, toMatchWrites } from '../src/writes';
 
 /**
  * One matching run, start to finish:
  *
- *   1. expire matches nobody accepted in time, freeing those drivers' slots
+ *   1. settle matched requests: expire matches nobody accepted in time,
+ *      freeing those drivers' slots, and return riders whose driver removed
+ *      the offer to the pool
  *   2. read every request and offer still looking for a match
  *   3. group them into batches - one date, one direction each
  *   4. per batch: build travel times once, convert, run the matcher, write
@@ -19,7 +21,7 @@ import { MatchWrite, MatchWriteSkip, toMatchWrites } from '../src/writes';
  */
 
 export interface MatchingStore {
-  expireOverdue(now: Date): Promise<string[]>;
+  settleMatched(now: Date): Promise<Settled>;
   loadPending(): Promise<{ requests: RequestDoc[]; offers: OfferDoc[] }>;
   loadRequestsById(ids: string[]): Promise<Map<string, RequestDoc>>;
   writeMatches(writes: MatchWrite[]): Promise<{
@@ -50,14 +52,17 @@ export interface BatchReport {
 }
 
 export interface RunReport {
-  expired: string[];
+  /** Matched requests this run returned to the pool or expired. */
+  settled: Settled;
   /** Bookings left out before matching, and why. */
   skipped: Skipped[];
   batches: BatchReport[];
 }
 
 export async function runOnce(store: MatchingStore, opts: RunOptions): Promise<RunReport> {
-  const expired = opts.dryRun ? [] : await store.expireOverdue(opts.now);
+  const settled: Settled = opts.dryRun
+    ? { released: [], expired: [] }
+    : await store.settleMatched(opts.now);
 
   const pending = await store.loadPending();
   const { batches, skipped } = groupIntoBatches(pending.requests, pending.offers, opts.now);
@@ -106,5 +111,5 @@ export async function runOnce(store: MatchingStore, opts: RunOptions): Promise<R
     }
   }
 
-  return { expired, skipped, batches: reports };
+  return { settled, skipped, batches: reports };
 }

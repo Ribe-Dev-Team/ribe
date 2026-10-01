@@ -8,7 +8,8 @@ who loses tries their next option.
                           and never revisiting strands one, bumping matches
                           both (hand-set travel times)
   confirmed riders        riders accepted in earlier runs are never moved or
-                          bumped, and don't use up the new-rider slot
+                          bumped, don't use up the new-rider slot, and are
+                          re-timed in the match's timetable
   capacity and deadlines  seats are never overfilled; the accept deadline is
                           the normal 12-hour window, cut short at the cutoff
                           2 hours before departure
@@ -127,6 +128,28 @@ describe('runMatchingProvisional — confirmed riders are immovable', () => {
     expect(res.matches[0].reqId).toBe('new');
     // The confirmed rider is a fixed input, not a new match this run.
     expect(res.matches.some((m) => m.reqId === 'confirmed-rider')).toBe(false);
+  });
+
+  it("records the car's timetable with every rider in it, confirmed ones included", () => {
+    const onBoard = {
+      reqId: 'confirmed-rider', riderId: 'rider-confirmed', waypoint: near,
+      arriveBy: at(9), maxDetour: 30, currentDetour: 0,
+    };
+    const offer = makeOffer({ offerId: 'o1', start: near, seatsOffered: 2, seatsFilled: 1, onBoard: [onBoard] });
+    const res = runMatchingProvisional('b', [makeRequest({ reqId: 'new', start: near, maxDetour: 30 })], [offer], at(8), at(0), t);
+
+    const m = res.matches[0];
+    expect(m.departAt).toEqual(at(8));
+    expect(m.schedule.map((s) => s.reqId).sort()).toEqual(['confirmed-rider', 'new']);
+    expect(m.schedule.findIndex((s) => s.reqId === 'new')).toBe(m.insertionIndex);
+    const mine = m.schedule[m.insertionIndex];
+    expect({ pickupAt: m.pickupAt, arriveAt: m.arriveAt }).toEqual({ pickupAt: mine.pickupAt, arriveAt: mine.arriveAt });
+    // Going to campus: collected after the driver sets off, and everyone
+    // arrives with the car.
+    for (const stop of m.schedule) {
+      expect(stop.pickupAt.getTime()).toBeGreaterThanOrEqual(at(8).getTime());
+      expect(stop.arriveAt).toEqual(m.finalArrival);
+    }
   });
 });
 

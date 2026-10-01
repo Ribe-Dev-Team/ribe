@@ -20,8 +20,8 @@ interface DashboardPageProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
-  /** The real Accept/Decline handlers (App's buildRideActions) for a card's own buttons. */
-  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline'>;
+  /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel'>;
 }
 
 type ViewMode = 'rider' | 'driver';
@@ -195,8 +195,6 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
                   >
                     <RideCard
                       {...ride}
-                      // Writes to Firestore - these used to only show a success alert.
-                      {...rideActions(ride)}
                       onEdit={() =>
                         Alert.alert(
                           mode === 'rider' ? 'Edit ride request' : 'Edit driving offer',
@@ -211,6 +209,9 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
                           mode === 'rider' ? 'This ride has been canceled.' : 'This drive offer has been canceled.'
                         )
                       }
+                      // Writes to Firestore - these used to only show a success alert.
+                      // After onCancel, so a driver's Remove offer really removes it.
+                      {...rideActions(ride)}
                       onSeeDetails={() => onSeeRideDetails(ride)}
                       onOpenDriverProfile={() => onOpenDriverProfile(ride)}
                     />

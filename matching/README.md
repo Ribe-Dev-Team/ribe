@@ -28,7 +28,7 @@ npx ts-node test/simulate.ts      # SMART Goal 1 evidence run
 | `src/travelTime.ts` | the seam where Google Maps plugs in — Distance Matrix client (the runner's default) and the Routes API client that replaces it |
 | `src/adapter.ts` | stored bookings → matcher inputs; batching by date + direction (the `batchKey`) |
 | `src/melbourneTime.ts` | stored date + `"HH:mm"` → real instants, daylight saving included |
-| `src/writes.ts` | when a match may still be written, and what an expiry changes — no SDK, so testable |
+| `src/writes.ts` | when a match may still be written, and how a matched request catches up with its offer (expiry, offer removed) — no SDK, so testable |
 | `runner/` | one matching run against Firestore (`npm run match`) |
 
 ## The algorithm, in one paragraph
@@ -59,9 +59,9 @@ convenient, which is what the scoring handoff assumes.
 
 ## Why not Gale–Shapley
 
-Ribe drivers do not rank riders. Once matched, they only ever **veto** (accept or
-decline what they're given) or **close** (set how many seats they'll take, or stop
-looking early). They never say "I prefer rider A over rider B" — there is no
+Ribe drivers do not rank riders. They don't even approve them: only the rider
+accepts or declines a match, and a driver's only move is to **close** (set how
+many seats they'll take, or remove the trip altogether). They never say "I prefer rider A over rider B" — there is no
 driver-side preference list for Gale-Shapley to resolve.
 
 That matters for stability, not just naming: a blocking pair requires **both**
@@ -216,8 +216,8 @@ and the same arrival feeds their punctuality and slack scores.
 `npx ts-node test/simulate.ts` runs the matcher the way the app uses it: the
 same batch is run repeatedly, with **every** match accepted in between, until a
 run offers nobody new (3-4 runs here). Accepting everything is the best case -
-real riders sometimes decline, and a declined match holds its seat until its
-deadline. Each rider's detour is measured on their car's **final** route, since
+real riders sometimes decline or don't answer, and an unanswered match holds its
+seat until its deadline. Each rider's detour is measured on their car's **final** route, since
 every later pickup can lengthen the detour of riders already aboard.
 
 Supply sweep, 100 riders:
@@ -324,10 +324,14 @@ whatever schedules `npm run match`.
 
 `npm run match` does one pass (`runner/runOnce.ts`):
 
-1. **Expire** every match whose `acceptDeadline` has passed: the request becomes
-   `expired` (RideCard already tells the rider the trip is cancelled when the
-   countdown ends) and the driver's slot is freed — before matching, so that
-   driver can be offered someone new in the same run.
+1. **Settle** every matched request against its offer (`planSettle`). A match
+   whose `acceptDeadline` has passed expires: the request becomes `expired`
+   (RideCard already tells the rider the trip is cancelled when the countdown
+   ends) and the driver's slot is freed. A rider whose driver removed the offer
+   — awaiting or already confirmed — goes back to `pending` with the match
+   cleared; the driver's phone can't write the rider's booking, so the runner
+   does. Both happen before matching, so everyone freed can be matched again in
+   the same run.
 2. **Read** every request and offer whose stored status is `pending` (the app's
    word for "not matched yet" — see `mobile/pages/schema/matchStatus.ts`).
 3. **Batch** them by Melbourne date and direction, e.g. `2026-10-05_TO_CAMPUS`.
@@ -371,8 +375,10 @@ before its cutoff.
 
 - **A match** (`src/writes.ts` → `planMatchWrite`): request → `awaiting` with
   `matchedOfferId`, `matchedDriverId`, `matchedAt`, `acceptDeadline`,
-  `riderDetourMinutes` and `routeIndex`; offer → `awaiting` with
-  `pendingRequestId`. Re-checked inside the transaction, because the run works
+  `riderDetourMinutes`, `routeIndex`, `pickupAt` and `arriveAt`; offer →
+  `awaiting` with `pendingRequestId`, `matchedRiderId` (what lets the rider's
+  phone update the driver's offer under the Firestore rules) and
+  `pendingSchedule`. Re-checked inside the transaction, because the run works
   from a snapshot: the rider may have cancelled, the driver's slot may have been
   filled, or — `BASELINE_CHANGED` — the driver's confirmed riders may no longer
   be the ones the route was computed for. Any of those skips the write.
@@ -381,6 +387,18 @@ before its cutoff.
   `confirmedRequestIds` is always in pickup order. The next run rebuilds the
   car's route from that list, so an append-only list would silently re-check
   everyone's detour against the wrong route.
+- **The car's timetable.** `schedule` on the offer is the driver's departure and
+  arrival plus every confirmed rider's estimated pickup and arrival, in pickup
+  order; it's what the ride cards show instead of the booking window. Picking up
+  a new rider can move everyone else's times (never past their detour cap or
+  arrival deadline), so each match proposes a whole new timetable as
+  `pendingSchedule`, and `acceptMatch` moves it into `schedule`. It's stored on
+  the offer rather than on each request because a rider's phone can't update
+  another rider's booking. The request's own `pickupAt`/`arriveAt` are a
+  snapshot from match time, used only if the offer can't be read.
+- **Arrival margin.** Riders are planned to arrive `arrivalMarginMinutes` (10)
+  before the time they gave, because drive times don't include traffic. The
+  adapter applies it; a match that only works without the margin isn't made.
 
 ### Travel times: Distance Matrix by default, Routes ready
 
@@ -421,9 +439,9 @@ source file has a companion test file that exercises it directly:
 | `test/travelTime.test.ts` | both Google clients (Routes and legacy Distance Matrix) against a fake `fetch` — batching, dedup, request shape, and fallback on failed legs. `SyntheticTravelTime` has no tests of its own |
 | `test/melbourneTime.test.ts` | stored local-midnight dates and `"HH:mm"` times across the daylight-saving change |
 | `test/adapter.test.ts` | batching, every skip reason, rider/driver windows and detour caps, confirmed riders rebuilt in pickup order |
-| `test/writes.test.ts` | every reason a match write is refused, and what an expiry changes |
+| `test/writes.test.ts` | every reason a match write is refused; expiry, and riders returned when a driver removes the offer |
 | `test/score.test.ts` | each sub-score, the 0.8 / 0.2 driver blend, and slack telling apart two riders who cost the same minutes |
-| `test/runOnce.test.ts` | the whole run against an in-memory store: match → wait → accept → fill the next seat in pickup order; expiry freeing a driver; dry run; one failing batch |
+| `test/runOnce.test.ts` | the whole run against an in-memory store: match → wait → accept → fill the next seat in pickup order; a removed offer returning its riders; expiry freeing a driver; dry run; one failing batch |
 
 `npm run test:live` runs `test/travelTime.live.test.ts` instead: one small real
 request to each Google API (2×2 matrix, campus to Box Hill), to check the fakes
@@ -436,7 +454,7 @@ The runner's Firestore layer (`runner/firestore.ts`) is the one piece these test
 don't reach: it is a thin transaction wrapper around the `src/writes.ts` rules,
 which are tested. Try it first with `npm run match -- --dry-run`.
 
-The app's side of the round trip — `acceptMatch` / `declineMatch` — is covered by
+The app's side of the round trip — `acceptMatch` / `declineMatch` / `cancelOffer` — is covered by
 `tests/integration/matchResponse.test.ts` in the app's own suite.
 
 `test/fixtures.ts` is not a test file itself. It holds shared builders
