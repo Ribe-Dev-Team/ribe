@@ -122,7 +122,7 @@ export function runMatchingProvisional(
     rankingOfferByOffer.set(o.offerId, { ...o, onBoard: fixed, seatsFilled: fixed.length, currTripDuration });
   }
 
-  const { candidates, rejected } = hardFil                                        ter(requests, liveOffers, cfg, departAt, now);
+  const { candidates, rejected } = hardFilter(requests, liveOffers, cfg, departAt, now);
   const remaining = new Map<string, Set<string>>();
   for (const { req, offer } of candidates) {
     if (!remaining.has(req.reqId)) remaining.set(req.reqId, new Set());
