@@ -23,9 +23,16 @@ interface DashboardPageProps {
   onOpenDriverProfile: (ride: RideCardProps) => void;
   /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
   rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
+  /** Rider or driver view, held by the parent so it survives the page being
+   *  remounted - which App does after every write (Lock, Seats, Accept...) to
+   *  reload, and on the way back from a ride's details. Uncontrolled (starts on
+   *  Rider) when omitted. */
+  mode?: DashboardMode;
+  onModeChange?: (mode: DashboardMode) => void;
 }
 
-type ViewMode = 'rider' | 'driver';
+export type DashboardMode = 'rider' | 'driver';
+type ViewMode = DashboardMode;
 
 interface LaneConfig {
   status: RideStatus;
@@ -78,9 +85,16 @@ const DRIVER_LANES: LaneConfig[] = [
 
 const CARD_GAP = 12;
 
-export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriverProfile, rideActions }: DashboardPageProps) {
+export default function DashboardPage({
+  onScroll, onSeeRideDetails, onOpenDriverProfile, rideActions, mode: controlledMode, onModeChange,
+}: DashboardPageProps) {
   const { user } = useAuth();
-  const [mode, setMode] = useState<ViewMode>('rider');
+  const [ownMode, setOwnMode] = useState<ViewMode>('rider');
+  const mode = controlledMode ?? ownMode;
+  const setMode = (next: ViewMode) => {
+    setOwnMode(next);
+    onModeChange?.(next);
+  };
   const [riderRides, setRiderRides] = useState<RideCardProps[]>([]);
   const [driverDrives, setDriverDrives] = useState<RideCardProps[]>([]);
   const [loading, setLoading] = useState(true);

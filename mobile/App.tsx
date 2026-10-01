@@ -18,7 +18,7 @@ import { RideCardProps } from './components/RideCard';
 import AuthPage from './pages/AuthPage';
 import HomePage from './pages/HomePage';
 import CalendarPage, { Ride } from './pages/CalendarPage';
-import DashboardPage from './pages/DashboardPage';
+import DashboardPage, { DashboardMode } from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import RideDetailPage from './pages/RideDetailPage';
 import { rideTimeSummary } from './services/rideData';
@@ -194,6 +194,10 @@ function AppContent() {
   const [showDriverRegistration, setShowDriverRegistration] = useState(false);
   // Bumped after a write so the ride lists remount and refetch. See afterRideChange.
   const [dataVersion, setDataVersion] = useState(0);
+  // The Dashboard's Rider/Driver toggle lives here, not in the page: the page is
+  // remounted after every write (see afterRideChange) and on the way back from
+  // a ride's details, which would otherwise flip it back to Rider each time.
+  const [dashboardMode, setDashboardMode] = useState<DashboardMode>('rider');
   const lastScrollY = useRef(0);
   const wasLoggedIn = useRef(false);
 
@@ -302,6 +306,8 @@ function AppContent() {
             onSeeRideDetails={(ride) => openRideDetails(ride, 'My Rides')}
             onOpenDriverProfile={setViewingDriver}
             rideActions={rideActionsFor}
+            mode={dashboardMode}
+            onModeChange={setDashboardMode}
           />
         );
       case 'profile':
