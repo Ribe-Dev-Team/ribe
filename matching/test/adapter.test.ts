@@ -1,3 +1,21 @@
+/*
+Tests src/adapter.ts - turning stored Firestore bookings into the matcher's
+inputs. Plain objects stand in for the documents; Firestore isn't involved.
+
+  groupIntoBatches   bookings sorted into one batch per Melbourne date and
+                     direction; anything the matcher must not touch (already
+                     matched, no address, bad time, already left, driver
+                     waiting on an answer) is left out with a reason
+  toMatchInputs      a booking becomes a rider or driver: time window,
+                     deadline, detour limit, and the riders a driver has
+                     already confirmed, rebuilt in pickup order
+  batchPoints        every location a batch needs travel times for
+
+Travel times: synthetic at exactly 1 minute per km, so expected values can be
+worked out by hand. Real Google times change with the roads, which would make
+these exact checks impossible.
+*/
+
 import {
   batchPoints, groupIntoBatches, MONASH_CLAYTON as CAMPUS, OfferDoc, RequestDoc, toMatchInputs,
 } from '../src/adapter';
@@ -137,7 +155,7 @@ describe('toMatchInputs', () => {
     const doc = offerDoc({ id: 'o', confirmedRequestIds: ['far', 'near'] });
 
     const offer = toMatchInputs(batchOf([], [doc]), confirmed, t).offers[0];
-    const ev = evaluateRoute(north(20), [north(15), north(6)], CAMPUS, melb(5, '08:00'), t);
+    const ev = evaluateRoute(north(20), [north(15), north(6)], CAMPUS, melb(5, '08:00'), t, 'TO_CAMPUS');
 
     expect(offer.onBoard.map((r) => r.reqId)).toEqual(['far', 'near']);
     expect(offer.onBoard.map((r) => r.currentDetour)).toEqual(ev.riderDetours);

@@ -1,4 +1,4 @@
-import { Coord, MatchOffer, MatchingConfig, OnBoardRider, TravelTimeMatrix } from './types';
+import { Coord, Direction, MatchOffer, MatchingConfig, OnBoardRider, TravelTimeMatrix } from './types';
 
 export interface RouteEvaluation {
   /** Total driving time, origin to final destination, in minutes. */
@@ -9,7 +9,10 @@ export interface RouteEvaluation {
   riderDetours: number[];
   /** Clock time each waypoint is reached. */
   waypointArrivals: Date[];
-  /** Arrival at the final destination. */
+  /** When each rider reaches their own destination, in route order: campus
+   *  (the final stop) going to campus, their own waypoint coming from it. */
+  riderArrivals: Date[];
+  /** Arrival at the final destination - the driver's own arrival. */
   finalArrival: Date;
 }
 
@@ -20,10 +23,10 @@ export interface RouteEvaluation {
  * journey takes on the shared route than it would have taken alone. That is
  * what the rider consented to, and what SMART Goal 1 measures.
  *
- * Note the asymmetry this produces: the first waypoint sits through every
- * later pickup and so absorbs the largest detour, while the last absorbs
- * almost none. Pickup order is therefore part of feasibility, not just
- * optimisation.
+ * Direction decides where a rider's journey ends. Going to campus, the
+ * waypoint is a pickup and they ride to the final stop. Coming from campus,
+ * everyone boards at the origin and the waypoint is where they get out - the
+ * rest of the route is the driver's business, not theirs.
  */
 export function evaluateRoute(
   origin: Coord,
@@ -31,6 +34,7 @@ export function evaluateRoute(
   destination: Coord,
   departAt: Date,
   t: TravelTimeMatrix,
+  direction: Direction,
 ): RouteEvaluation {
   const seq = [origin, ...waypoints, destination];
 
@@ -41,6 +45,7 @@ export function evaluateRoute(
 
   const totalMinutes = legs.reduce((a, b) => a + b, 0);
   const directMinutes = t.minutes(origin, destination);
+  const finalArrival = new Date(departAt.getTime() + totalMinutes * 60_000);
 
   const waypointArrivals: Date[] = [];
   let cumulative = 0;
@@ -49,26 +54,25 @@ export function evaluateRoute(
     waypointArrivals.push(new Date(departAt.getTime() + cumulative * 60_000));
   }
 
-  // A rider's detour has TWO components, and using only the second is a real
-  // trap: the final pickup would then always score exactly zero, because the
-  // last leg is by definition the direct leg.
+  // The car reaches a waypoint later than it could have, because it stopped
+  // for other people first. Reference point is the earliest the driver could
+  // have got there, i.e. straight from the origin.
   //
-  //   waiting  - the car reaches them later than it could have, because it
-  //              collected other people first
-  //   riding   - once aboard, the remaining route is longer than going direct
+  // Coming from campus that delay IS the rider's detour: they boarded at the
+  // origin and the waypoint is where they get out.
   //
-  // Reference point is the earliest the driver could have reached them, i.e.
-  // straight from the driver's origin. Anything beyond that is time the rider
-  // spends because this is a shared trip.
+  // Going to campus it is only half of it - the rider also sits through every
+  // later pickup on the way in. Leaving that half out is a real trap: the final
+  // pickup would always score zero, because the last leg is the direct leg.
+  // This is also why pickup order is part of feasibility, not just
+  // optimisation: the first pickup absorbs the largest detour.
   const riderDetours = waypoints.map((w, idx) => {
-    const pickupAt = legs.slice(0, idx + 1).reduce((a, b) => a + b, 0);
-    const earliestPickup = t.minutes(origin, w);
-    const waiting = pickupAt - earliestPickup;
+    const reachedAt = legs.slice(0, idx + 1).reduce((a, b) => a + b, 0);
+    const delay = reachedAt - t.minutes(origin, w);
+    if (direction === 'FROM_CAMPUS') return delay;
 
     const remaining = legs.slice(idx + 1).reduce((a, b) => a + b, 0);
-    const riding = remaining - t.minutes(w, destination);
-
-    return waiting + riding;
+    return delay + remaining - t.minutes(w, destination);
   });
 
   return {
@@ -76,7 +80,8 @@ export function evaluateRoute(
     driverAddedMinutes: totalMinutes - directMinutes,
     riderDetours,
     waypointArrivals,
-    finalArrival: new Date(departAt.getTime() + totalMinutes * 60_000),
+    riderArrivals: direction === 'FROM_CAMPUS' ? waypointArrivals : waypoints.map(() => finalArrival),
+    finalArrival,
   };
 }
 
@@ -137,7 +142,7 @@ export function addPassenger(
       ...existing.slice(idx).map((r) => r.waypoint),
     ];
 
-    const ev = evaluateRoute(offer.start, waypoints, offer.end, departAt, t);
+    const ev = evaluateRoute(offer.start, waypoints, offer.end, departAt, t, offer.direction);
 
     // Driver's own cap, across the whole trip.
     if (ev.driverAddedMinutes > offer.maxDetour) {
@@ -152,7 +157,7 @@ export function addPassenger(
     let arrivalOk = true;
     for (let i = 0; i < riders.length; i++) {
       if (ev.riderDetours[i] > riders[i].maxDetour) { capOk = false; break; }
-      if (ev.finalArrival > riders[i].arriveBy) { arrivalOk = false; break; }
+      if (ev.riderArrivals[i] > riders[i].arriveBy) { arrivalOk = false; break; }
     }
     if (!capOk)     { sawCapViolation ??= 'RIDER_DETOUR_CAP'; continue; }
     if (!arrivalOk) { sawCapViolation ??= 'ARRIVAL_WINDOW';   continue; }

@@ -1,3 +1,13 @@
+/*
+Tests src/melbourneTime.ts - turning what the app stores into exact moments in
+Melbourne time: a travel date saved as the phone's local midnight, and times as
+"HH:mm" strings.
+
+Most cases sit either side of the daylight-saving change on 4 October 2026,
+where an hour-out bug would otherwise hide. Also checks that malformed times
+are rejected rather than guessed at.
+*/
+
 import { calendarDateIn, dateKey, isHhMm, zonedDateTime } from '../src/melbourneTime';
 
 // Melbourne daylight saving starts 2:00 am Sunday 4 October 2026 (+10 -> +11).

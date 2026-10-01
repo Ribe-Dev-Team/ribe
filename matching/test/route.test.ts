@@ -1,15 +1,38 @@
+/*
+Tests src/route.ts - a driver's route, and whether a new rider can be added to
+it without breaking anyone (KEY-138, addPassenger).
+
+  evaluateRoute             drive time, each rider's detour and when each
+                            rider arrives, for a given stop order - in both
+                            directions (to campus, everyone arrives together;
+                            from campus, each rider arrives at their own stop)
+  incremental feasibility   adding a rider never pushes someone already aboard
+                            past their detour limit, whatever the stop order,
+                            and the driver's own limit holds too
+  matching cutoff           a trip stops taking riders 2 hours before it leaves,
+                            regardless of free seats
+  time windows              the car never collects someone before they're
+                            ready, and each rider's deadline is checked where
+                            they get out (David's time-window scan)
+
+Travel times: synthetic, straight lines, 2.1 min per km, no noise, so the
+minutes quoted in comments can be checked by hand.
+*/
+
 import { addPassenger, evaluateRoute, isAcceptingRiders, minSlackMinutes } from '../src/route';
 import { SyntheticTravelTime } from '../src/travelTime';
 import { DEFAULT_CONFIG } from '../src/types';
 import { CAMPUS, at, makeOffer, ring } from './fixtures';
 
 const t = new SyntheticTravelTime({ jitter: 0, seed: 7 }); // noiseless for exact assertions
+const north = (km: number) => ({ lat: CAMPUS.lat + km / 110.57, lon: CAMPUS.lon });
+const east = (km: number) => ({ lat: CAMPUS.lat, lon: CAMPUS.lon + km / (111.32 * Math.cos(CAMPUS.lat * Math.PI / 180)) });
 
 describe('evaluateRoute', () => {
   it('charges the first pickup more detour than the last', () => {
     const pts = ring(2, 6, 3);
     const origin = { lat: CAMPUS.lat + 0.12, lon: CAMPUS.lon + 0.02 };
-    const ev = evaluateRoute(origin, pts, CAMPUS, at(8), t);
+    const ev = evaluateRoute(origin, pts, CAMPUS, at(8), t, 'TO_CAMPUS');
 
     // Detour has two parts: waiting to be collected, and riding a longer
     // route once aboard. Every rider on a shared trip pays something, and
@@ -21,9 +44,29 @@ describe('evaluateRoute', () => {
 
   it('adds no driver detour when there are no waypoints', () => {
     const origin = { lat: CAMPUS.lat + 0.1, lon: CAMPUS.lon };
-    const ev = evaluateRoute(origin, [], CAMPUS, at(8), t);
+    const ev = evaluateRoute(origin, [], CAMPUS, at(8), t, 'TO_CAMPUS');
     expect(ev.driverAddedMinutes).toBeCloseTo(0, 6);
     expect(ev.riderDetours).toHaveLength(0);
+  });
+
+  it('going to campus, every rider arrives when the car does', () => {
+    const ev = evaluateRoute(north(20), [north(15), north(6)], CAMPUS, at(8), t, 'TO_CAMPUS');
+    expect(ev.riderArrivals).toEqual([ev.finalArrival, ev.finalArrival]);
+  });
+
+  it('leaving campus, each rider arrives at their own drop-off', () => {
+    const ev = evaluateRoute(CAMPUS, [north(5), north(10)], north(20), at(17), t, 'FROM_CAMPUS');
+    expect(ev.riderArrivals).toEqual(ev.waypointArrivals);
+    expect(ev.riderArrivals[0].getTime()).toBeLessThan(ev.finalArrival.getTime());
+  });
+
+  it('leaving campus, a rider dropped off first carries no detour for the rest of the route', () => {
+    // Drop A to the east first, then swing north for B and the driver's home.
+    // A goes straight home, so A's detour is zero - the legs after A are not A's.
+    const A = east(6);
+    const ev = evaluateRoute(CAMPUS, [A, north(10)], north(20), at(17), t, 'FROM_CAMPUS');
+    expect(ev.riderDetours[0]).toBeCloseTo(0, 6);
+    expect(ev.riderDetours[1]).toBeGreaterThan(0);
   });
 });
 
@@ -153,7 +196,6 @@ describe('matching cutoff', () => {
 
 describe("addPassenger — nobody is collected before they're ready (David's time-window scan)", () => {
   // t is 2.1 min per km, straight lines.
-  const north = (km: number) => ({ lat: CAMPUS.lat + km / 110.57, lon: CAMPUS.lon });
   const toCampus = makeOffer({ offerId: 'o', start: north(20), maxDetour: 30 });
 
   it("refuses when the car would reach a to-campus rider before they're ready", () => {
@@ -182,5 +224,19 @@ describe("addPassenger — nobody is collected before they're ready (David's tim
       .toBe('PICKUP_BEFORE_READY');
     expect(addPassenger(fromCampus, { ...rider, earliest: at(16, 45) }, at(17), t).feasible)
       .toBe(true);
+  });
+
+  it("leaving campus, checks a rider's deadline at their drop-off, not the driver's home", () => {
+    // Rider is home 5 km out at about 17:10; the driver gets home 20 km out at
+    // about 17:42. A 17:15 deadline is met - the driver's later arrival is
+    // irrelevant to it.
+    const fromCampus = makeOffer({
+      offerId: 'o', direction: 'FROM_CAMPUS', start: CAMPUS, end: north(20), maxDetour: 30,
+    });
+    const rider = { waypoint: north(5), maxDetour: 10, earliest: at(17) };
+
+    expect(addPassenger(fromCampus, { ...rider, arriveBy: at(17, 15) }, at(17), t).feasible).toBe(true);
+    expect(addPassenger(fromCampus, { ...rider, arriveBy: at(17, 5) }, at(17), t).reason)
+      .toBe('ARRIVAL_WINDOW');
   });
 });

@@ -1,15 +1,26 @@
+/*
+Tests runner/runOnce.ts - a whole matching run, start to finish, against an
+in-memory stand-in for Firestore. The store applies the same planMatchWrite /
+planExpiry decisions the real runner/firestore.ts applies inside its
+transactions, so what is exercised here is everything except the SDK.
+
+  several runs in a row   match, wait for an answer, accept, then fill the
+                          next seat in pickup order
+  expiry                  an unanswered match expires and the freed driver is
+                          offered someone else in the same run
+  dry run                 matches are computed but nothing is written
+  a failing batch         one batch failing (e.g. Google refusing) is reported
+                          and doesn't stop the others
+
+Travel times: synthetic at exactly 1 minute per km.
+*/
+
 import { MatchingStore, runOnce } from '../runner/runOnce';
 import { MONASH_CLAYTON as CAMPUS, OfferDoc, RequestDoc } from '../src/adapter';
 import { zonedDateTime } from '../src/melbourneTime';
 import { SyntheticTravelTime } from '../src/travelTime';
 import { Coord } from '../src/types';
 import { FieldUpdate, planExpiry, planMatchWrite } from '../src/writes';
-
-/*
-The whole run against an in-memory stand-in for Firestore. The store applies the
-same planMatchWrite / planExpiry decisions the real runner/firestore.ts applies
-inside its transactions, so what is exercised here is everything except the SDK.
-*/
 
 type Doc = Record<string, any>;
 

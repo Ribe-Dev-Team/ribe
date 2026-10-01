@@ -1,4 +1,27 @@
-import { runMatching } from '../src/match';
+/*
+Tests src/deferredAcceptance.ts - runMatchingProvisional, the matcher the app
+actually runs. Each rider asks their best-scoring driver first; a driver's one
+open slot goes to whichever rider costs them fewer extra minutes, and the rider
+who loses tries their next option.
+
+  worked example          the case bumping exists for: placing riders once
+                          and never revisiting strands one, bumping matches
+                          both (hand-set travel times)
+  confirmed riders        riders accepted in earlier runs are never moved or
+                          bumped, and don't use up the new-rider slot
+  capacity and deadlines  seats are never overfilled; the accept deadline is
+                          the normal 12-hour window, cut short at the cutoff
+                          2 hours before departure
+  matching cutoff         within 2 hours of departure a trip takes nobody new,
+                          and the run reports why
+  one new rider per run   a driver is offered one new rider per run, however
+                          many seats are free; the loser is reported, not lost
+  own departure time      each driver is routed from their own departure, not
+                          one time shared by the whole batch
+
+Travel times: synthetic, no noise, except where a table sets exact minutes.
+*/
+
 import { runMatchingProvisional } from '../src/deferredAcceptance';
 import { FixtureTravelTime, SyntheticTravelTime, legKey } from '../src/travelTime';
 import { DEFAULT_CONFIG } from '../src/types';
@@ -9,8 +32,8 @@ const t = new SyntheticTravelTime({ jitter: 0, seed: 1 });
 describe('runMatchingProvisional — worked example from the brief', () => {
   // Two riders, two single-seat drivers. B's only reachable trip is D1
   // (D2 is corridor-rejected for B outright). A can reach both, and A's own
-  // best trip is D1 too — so a one-shot greedy pass locks A onto D1 first
-  // (globally highest combined score) and stops looking, stranding B.
+  // best trip is D1 too — so placing riders once and never revisiting locks A
+  // onto D1 first (globally highest combined score) and strands B.
   // Provisional assignment lets D1 bump A for the strictly cheaper B once B
   // proposes, then A lands on D2 on its next try — two matches instead of one.
   const cfg = { ...DEFAULT_CONFIG, useBearingFilter: false };
@@ -39,13 +62,6 @@ describe('runMatchingProvisional — worked example from the brief', () => {
     [legKey(Bstart, CAMPUS), 5.25],
   ]);
   const fixture = new FixtureTravelTime(table, new SyntheticTravelTime({ jitter: 0 }));
-
-  it('greedy locks the higher-scoring pair first and strands the other rider', () => {
-    const res = runMatching('b', [A, B], [D1, D2], at(8), at(0), fixture, cfg);
-    expect(res.matches).toHaveLength(1);
-    expect(res.matches[0].reqId).toBe('A');
-    expect(res.unmatchedRequestIds).toEqual(['B']);
-  });
 
   it('provisional bumping matches both riders by relocating the displaced one', () => {
     const res = runMatchingProvisional('b', [A, B], [D1, D2], at(8), at(0), fixture, cfg);
@@ -126,9 +142,27 @@ describe('runMatchingProvisional — capacity and detour caps still hold', () =>
     expect(res.stats.matchesMade).toBeLessThanOrEqual(1);
   });
 
-  it('respects acceptDeadline clamping identically to the greedy path', () => {
+  it('uses the normal approval window when matching happens well ahead of the cutoff', () => {
+    // Matched more than (approval window + cutoff) before departure, so the
+    // approval window itself is the binding constraint, not the cutoff.
+    const departAt = at(8, 0, 16);
+    const matchedAt = at(0, 0, 15); // 32 hours before departure
+    const window = { start: at(7, 0, 16), end: at(8, 30, 16) };
+    const offer = makeOffer({ offerId: 'o1', start: near, travelWindow: window });
+    const req = makeRequest({ reqId: 'r1', start: near, travelWindow: window, arriveBy: at(9, 0, 16) });
+
+    const res = runMatchingProvisional('b', [req], [offer], departAt, matchedAt, t);
+    expect(res.matches).toHaveLength(1);
+    const expected = new Date(matchedAt.getTime() + DEFAULT_CONFIG.approvalWindowMinutes * 60_000);
+    expect(res.matches[0].acceptDeadline.getTime()).toBe(expected.getTime());
+    expect(res.matches[0].acceptDeadline.getTime()).toBeLessThan(departAt.getTime());
+  });
+
+  it('cuts the accept deadline short at the matching cutoff', () => {
+    // Matched only 3 hours before departure: the full 12-hour approval window
+    // would promise a deadline long after the trip has already left.
     const departAt = at(8);
-    const matchedAt = at(5); // 3 hours out — within the approval window but not the cutoff
+    const matchedAt = at(5);
     const offer = makeOffer({ offerId: 'o1', start: near });
     const req = makeRequest({ reqId: 'r1', start: near });
 
@@ -139,16 +173,34 @@ describe('runMatchingProvisional — capacity and detour caps still hold', () =>
   });
 });
 
+describe('runMatchingProvisional — matching cutoff', () => {
+  it('locks every open trip once departure is within the cutoff, however many seats are free', () => {
+    const near = { lat: CAMPUS.lat + 0.05, lon: CAMPUS.lon };
+    const departAt = at(8);
+    const now = at(7); // 60 minutes out, inside the 120-minute default cutoff
+
+    const res = runMatchingProvisional(
+      'b', [makeRequest({ reqId: 'r', start: near })],
+      [makeOffer({ offerId: 'o', start: near, seatsOffered: 4, seatsFilled: 0 })],
+      departAt, now, t,
+    );
+
+    expect(res.matches).toHaveLength(0);
+    expect(res.unmatchedRequestIds).toEqual(['r']);
+    expect(res.stats.closedByCutoff).toBe(1);
+    expect(res.rejected.some((rj) => rj.reason === 'MATCHING_CUTOFF')).toBe(true);
+  });
+});
+
 describe('one new rider per trip per run', () => {
   const near = { lat: CAMPUS.lat + 0.03, lon: CAMPUS.lon };
 
   /**
    * The rule: accepting a match is a human decision, so a driver is offered
    * exactly ONE new unconfirmed rider per run regardless of how many seats sit
-   * empty. Greedy has no such rule and fills the car in a single pass — the
-   * contrast is the point, so both are asserted here.
+   * empty. Five riders fit this car; one run still offers only one of them.
    */
-  it('fills one seat of a four-seat trip, where greedy fills four', () => {
+  it('fills one seat of a four-seat trip per run', () => {
     const riders = [0, 1, 2, 3, 4].map((i) =>
       makeRequest({
         reqId: `r${i}`,
@@ -161,11 +213,8 @@ describe('one new rider per trip per run', () => {
       seatsOffered: 4, maxDetour: 200,
     });
 
-    const prov = runMatchingProvisional('b', riders, [offer], at(8), at(0), t);
-    expect(prov.matches).toHaveLength(1);
-
-    const greedy = runMatching('b', riders, [offer], at(8), at(0), t);
-    expect(greedy.matches.length).toBeGreaterThan(1);
+    const res = runMatchingProvisional('b', riders, [offer], at(8), at(0), t);
+    expect(res.matches).toHaveLength(1);
   });
 
   it('gives the slot to the cheaper rider and returns the other to the pool', () => {

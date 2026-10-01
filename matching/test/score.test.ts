@@ -1,3 +1,17 @@
+/*
+Tests src/score.ts - how good a rider/driver pairing is from each side, after
+David's calcDriverScore / calcPassengerScore. Scores run 0 to 1, higher is better.
+
+  sub-scores     each ingredient on its own: share of the driver's detour left,
+                 slack left (minutes to spare before the tightest deadline in
+                 the car, each person measured where they get out), and that
+                 each side's weights add up to 1
+  scorePairing   the full score for a real pairing: two riders who cost the
+                 driver the same minutes are told apart by slack
+
+Travel times: synthetic, straight lines, 2.1 min per km, no noise.
+*/
+
 import {
   arrivalSlackMinutes, calcDrivingTimeScore, calcSlackScore, DEFAULT_WEIGHTS, scorePairing,
 } from '../src/score';
@@ -20,7 +34,18 @@ describe('sub-scores', () => {
   });
 
   it('measures slack to the tightest deadline in the car', () => {
-    expect(arrivalSlackMinutes([at(9), at(8, 50), at(9, 30)], at(8, 40))).toBeCloseTo(10);
+    const arrival = at(8, 40);
+    expect(arrivalSlackMinutes([at(9), at(8, 50), at(9, 30)].map((deadline) => ({ deadline, arrival }))))
+      .toBeCloseTo(10);
+  });
+
+  it('measures each person against their own arrival', () => {
+    // Dropped off at 17:10 with a 17:15 deadline: 5 minutes, even though the
+    // driver - due home by 18:00 - only gets there at 17:42.
+    expect(arrivalSlackMinutes([
+      { deadline: at(18), arrival: at(17, 42) },
+      { deadline: at(17, 15), arrival: at(17, 10) },
+    ])).toBeCloseTo(5);
   });
 
   it("weights each side's sub-scores to a total of 1", () => {

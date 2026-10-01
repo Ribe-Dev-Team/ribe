@@ -1,3 +1,13 @@
+/*
+Tests src/riderPolicy.ts - how much detour a rider is assumed to accept, since
+the app never asks them. The rule is 40% of their own direct trip, never less
+than 5 minutes.
+
+Checks the percentage, the 5-minute floor, where the two cross over (12.5-minute
+trips), junk input (0, negative, NaN, infinity), and that the shipped 40% / 5 min
+can't change without a test failing.
+*/
+
 import { deriveRiderMaxDetour } from '../src/riderPolicy';
 import { DEFAULT_CONFIG } from '../src/types';
 

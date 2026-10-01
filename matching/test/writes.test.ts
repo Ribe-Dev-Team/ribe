@@ -1,5 +1,19 @@
+/*
+Tests src/writes.ts - deciding what to change in Firestore, without Firestore.
+runner/firestore.ts makes these same decisions inside its transactions.
+
+  planMatchWrite   a new match moves rider and driver to 'awaiting', or is
+                   refused if the documents changed since the run read them
+                   (rider gone or cancelled, slot taken, confirmed riders
+                   changed or reordered, car full)
+  toMatchWrites    a matcher result becomes a write, carrying the rider's
+                   pickup position and the confirmed riders it was planned around
+  planExpiry       a match left unanswered past its deadline expires and frees
+                   the driver's slot - unless someone else holds it by then
+*/
+
 import { planExpiry, planMatchWrite, MatchWrite, StoredOffer, StoredRequest, toMatchWrites } from '../src/writes';
-import { ProposedMatch } from '../src/match';
+import { ProposedMatch } from '../src/types';
 import { makeOffer, CAMPUS } from './fixtures';
 
 const matchedAt = new Date('2026-10-04T20:00:00Z');

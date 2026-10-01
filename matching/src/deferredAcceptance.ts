@@ -1,17 +1,24 @@
 import {
-  MatchOffer, MatchRequest, MatchingConfig, DEFAULT_CONFIG,
-  OnBoardRider, TravelTimeMatrix,
+  MatchOffer, MatchRequest, MatchingConfig, DEFAULT_CONFIG, MatchRunResult,
+  OnBoardRider, ProposedMatch, TravelTimeMatrix,
 } from './types';
 import { hardFilter, waypointOf } from './filter';
 import {
-  arrivalSlackMinutes, driverLatestArrival, scoreFromMetrics, scorePairing, ScoreWeights, DEFAULT_WEIGHTS,
+  driverLatestArrival, routeSlackMinutes, scoreFromMetrics, scorePairing, ScoreWeights, DEFAULT_WEIGHTS,
 } from './score';
 import { departureOf, DepartureTime, evaluateRoute, RouteEvaluation } from './route';
-import { MatchRunResult, ProposedMatch, computeAcceptDeadline } from './match';
+/** Never promise a match more time to accept than the batch can actually
+ *  honour before the trip locks. */
+export function computeAcceptDeadline(now: Date, departAt: Date, cfg: MatchingConfig): Date {
+  return new Date(Math.min(
+    now.getTime() + cfg.approvalWindowMinutes * 60_000,
+    departAt.getTime() - cfg.matchingCutoffMinutes * 60_000,
+  ));
+}
 
 /**
- * Provisional assignment with bumping (KEY-41, superseding one-shot greedy
- * as the default path — see README "Why not Gale-Shapley").
+ * Provisional assignment with bumping (KEY-41) — see README "Why not
+ * Gale-Shapley".
  *
  * NOT Gale-Shapley. Drivers do not rank riders — they are allocated riders
  * and may only veto or close. With one-sided preferences no blocking pair
@@ -59,15 +66,9 @@ import { MatchRunResult, ProposedMatch, computeAcceptDeadline } from './match';
  * not an exhaustive search — and it is what keeps the algorithm bounded and
  * simple to reason about.
  *
- * A NOTE ON THE MEASUREMENTS: `test/compare.ts` runs both algorithms once, so
- * since the one-new-rider rule landed the two columns no longer measure the
- * same thing — greedy fills every seat of a trip in one pass, this fills one.
- * Its output describes per-run behaviour and is NOT evidence about relative
- * match rate. A fair comparison needs this function called repeatedly, feeding
- * each run's accepted matches back as confirmed `onBoard` riders until it
- * converges, which the harness does not yet do. Expect `matched` to equal the
- * driver count and average detour to be ~0 in a single run: every matched rider
- * is a solo rider, and a solo rider's detour is zero by definition.
+ * One run says little about match rate on its own: it matches at most one
+ * rider per driver. `test/simulate.ts` measures it the way the app uses it,
+ * over repeated runs with each run's matches accepted in between.
  *
  * `departAt` is either one time for the whole batch or a per-offer lookup (see
  * `DepartureTime` in route.ts). Real batches pass the lookup, since drivers in
@@ -115,7 +116,7 @@ export function runMatchingProvisional(
     let currTripDuration = 0;
     if (fixed.length > 0) {
       const ev = evaluateRoute(
-        o.start, fixed.map((r) => r.waypoint), o.end, departureOf(departAt, o), t,
+        o.start, fixed.map((r) => r.waypoint), o.end, departureOf(departAt, o), t, o.direction,
       );
       currTripDuration = ev.totalMinutes;
     }
@@ -237,7 +238,8 @@ export function runMatchingProvisional(
     const offerDepartAt = departureOf(departAt, offer);
     const acceptDeadline = computeAcceptDeadline(now, offerDepartAt, cfg);
     const waypoints = finalOrder.map((r) => r.waypoint);
-    const fullEv = evaluateRoute(offer.start, waypoints, offer.end, offerDepartAt, t);
+    const fullEv = evaluateRoute(offer.start, waypoints, offer.end, offerDepartAt, t, offer.direction);
+    const driverDeadline = driverLatestArrival(offer, offerDepartAt, t);
 
     for (let i = 0; i < finalOrder.length; i++) {
       const rider = finalOrder[i];
@@ -249,22 +251,21 @@ export function runMatchingProvisional(
       // Marginal cost attributable to THIS rider: what the driver's total
       // added minutes would be without them, holding everyone else's order.
       const withoutWaypoints = [...waypoints.slice(0, i), ...waypoints.slice(i + 1)];
-      const withoutEv = evaluateRoute(offer.start, withoutWaypoints, offer.end, offerDepartAt, t);
+      const withoutEv = evaluateRoute(
+        offer.start, withoutWaypoints, offer.end, offerDepartAt, t, offer.direction,
+      );
       const marginal = fullEv.totalMinutes - withoutEv.totalMinutes;
 
-      // Everyone else's deadlines, so slack can be compared with and without them.
-      const otherDeadlines = [
-        driverLatestArrival(offer, offerDepartAt, t),
-        ...finalOrder.filter((_, j) => j !== i).map((r) => r.arriveBy),
-      ];
+      // Everyone else, in route order, so slack can be compared with and without them.
+      const others = finalOrder.filter((_, j) => j !== i);
       const { offerScore, reqScore } = scoreFromMetrics({
         riderDetour,
         riderMaxDetour: req.maxDetour,
-        riderBuffer: (req.arriveBy.getTime() - fullEv.finalArrival.getTime()) / 60_000,
+        riderBuffer: (req.arriveBy.getTime() - fullEv.riderArrivals[i].getTime()) / 60_000,
         marginalDriverMinutes: marginal,
         driverRemainingDetour: offer.maxDetour - (fullEv.driverAddedMinutes - marginal),
-        slackBefore: arrivalSlackMinutes(otherDeadlines, withoutEv.finalArrival),
-        slackAfter: arrivalSlackMinutes([...otherDeadlines, req.arriveBy], fullEv.finalArrival),
+        slackBefore: routeSlackMinutes(driverDeadline, others, withoutEv),
+        slackAfter: routeSlackMinutes(driverDeadline, finalOrder, fullEv),
       }, weights);
 
       matches.push({

@@ -127,6 +127,47 @@ export type RejectReason =
   | 'PICKUP_BEFORE_READY'
   | 'MATCHING_CUTOFF';
 
+/** One rider offered to one driver by a matching run. */
+export interface ProposedMatch {
+  offerId: string;
+  reqId: string;
+  riderId: string;
+  driverId: string;
+  insertionIndex: number;
+  riderDetour: number;
+  driverAddedMinutes: number;
+  offerScore: number;
+  reqScore: number;
+  finalArrival: Date;
+  totalTripMinutes: number;
+  /** When this batch produced the match — every match in one run shares it. */
+  matchedAt: Date;
+  /** By when the pair must accept, or the match lapses. Clamped to whichever
+   *  comes first: the normal approval window, or the matching cutoff — a
+   *  match proposed late must never promise more time to accept than the
+   *  batch can actually give it before the trip locks. */
+  acceptDeadline: Date;
+}
+
+export interface MatchRunResult {
+  batchKey: string;
+  matches: ProposedMatch[];
+  rejected: RejectedPairing[];
+  unmatchedRequestIds: string[];
+  stats: {
+    requestsIn: number;
+    offersIn: number;
+    matchesMade: number;
+    matchRate: number;
+    avgRiderDetourMinutes: number;
+    avgDriverAddedMinutes: number;
+    seatsLeftOnClosedTrips: number;
+    closedByDriverChoice: number;
+    closedBySlack: number;
+    closedByCutoff: number;
+  };
+}
+
 /** Travel time between any two points, in minutes.
  *  The single seam between pure matching and the outside world. */
 export interface TravelTimeMatrix {

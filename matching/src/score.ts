@@ -1,5 +1,5 @@
 import { MatchOffer, MatchPairing, MatchRequest, TravelTimeMatrix } from './types';
-import { addPassenger, RouteEvaluation } from './route';
+import { addPassenger, evaluateRoute, RouteEvaluation } from './route';
 import { waypointOf } from './filter';
 
 /**
@@ -33,9 +33,8 @@ import { waypointOf } from './filter';
  * still prefer less of it.
  *
  * Both scores are in [0, 1], higher is better. `reqScore` decides which driver
- * each rider asks first. `offerScore` is reported with every match and ranks
- * pairs in the greedy baseline (match.ts), but the provisional run's
- * keep-or-bump choice compares raw marginal minutes instead: slack penalises
+ * each rider asks first. `offerScore` is reported with every match, but the
+ * run's keep-or-bump choice compares raw marginal minutes instead: slack penalises
  * riders with tight deadlines, who are the hardest to place, and letting it
  * decide bumps strands them (see deferredAcceptance.ts).
  *
@@ -118,13 +117,24 @@ export function driverLatestArrival(offer: MatchOffer, departAt: Date, t: Travel
 }
 
 /**
- * Minutes between the car's arrival and the tightest deadline in it. Measured
- * at the car's final arrival for everyone, the same arrival `addPassenger`
- * checks each rider's deadline against.
+ * Minutes to spare before the tightest deadline in the car. Each person is
+ * measured at their own stop - the driver at the final one, each rider where
+ * `addPassenger` checks their deadline (`RouteEvaluation.riderArrivals`).
  */
-export function arrivalSlackMinutes(deadlines: Date[], arrival: Date): number {
-  const tightest = Math.min(...deadlines.map((d) => d.getTime()));
-  return (tightest - arrival.getTime()) / 60_000;
+export function arrivalSlackMinutes(stops: Array<{ deadline: Date; arrival: Date }>): number {
+  return Math.min(...stops.map((s) => (s.deadline.getTime() - s.arrival.getTime()) / 60_000));
+}
+
+/** `arrivalSlackMinutes` for an evaluated route. `riders` in route order. */
+export function routeSlackMinutes(
+  driverDeadline: Date,
+  riders: Array<{ arriveBy: Date }>,
+  ev: RouteEvaluation,
+): number {
+  return arrivalSlackMinutes([
+    { deadline: driverDeadline, arrival: ev.finalArrival },
+    ...riders.map((r, i) => ({ deadline: r.arriveBy, arrival: ev.riderArrivals[i] })),
+  ]);
 }
 
 // --- putting it together ------------------------------------------------------
@@ -133,7 +143,7 @@ export function arrivalSlackMinutes(deadlines: Date[], arrival: Date): number {
 export interface PairingMetrics {
   riderDetour: number;
   riderMaxDetour: number;
-  /** Minutes between the car's arrival and this rider's own arriveBy. */
+  /** Minutes between this rider reaching their destination and their arriveBy. */
   riderBuffer: number;
   marginalDriverMinutes: number;
   /** Driver's detour budget left before this rider was added. */
@@ -177,19 +187,23 @@ export function scorePairing(
   const riderDetour = insertion.newRiderDetour ?? 0;
   const marginal = insertion.marginalDriverMinutes ?? 0;
 
+  const idx = insertion.insertionIndex;
+
   // The car before this rider: its current route and everyone's deadlines.
-  const direct = t.minutes(offer.start, offer.end);
-  const deadlines = [driverLatestArrival(offer, departAt, t), ...offer.onBoard.map((r) => r.arriveBy)];
-  const arrivalBefore = new Date(departAt.getTime() + (offer.currTripDuration || direct) * 60_000);
+  const driverDeadline = driverLatestArrival(offer, departAt, t);
+  const before = evaluateRoute(
+    offer.start, offer.onBoard.map((r) => r.waypoint), offer.end, departAt, t, offer.direction,
+  );
+  const ridersAfter = [...offer.onBoard.slice(0, idx), req, ...offer.onBoard.slice(idx)];
 
   const { offerScore, reqScore } = scoreFromMetrics({
     riderDetour,
     riderMaxDetour: req.maxDetour,
-    riderBuffer: (req.arriveBy.getTime() - ev.finalArrival.getTime()) / 60_000,
+    riderBuffer: (req.arriveBy.getTime() - ev.riderArrivals[idx].getTime()) / 60_000,
     marginalDriverMinutes: marginal,
     driverRemainingDetour: offer.maxDetour - (offer.currTripDuration ? ev.driverAddedMinutes - marginal : 0),
-    slackBefore: arrivalSlackMinutes(deadlines, arrivalBefore),
-    slackAfter: arrivalSlackMinutes([...deadlines, req.arriveBy], ev.finalArrival),
+    slackBefore: routeSlackMinutes(driverDeadline, offer.onBoard, before),
+    slackAfter: routeSlackMinutes(driverDeadline, ridersAfter, ev),
   }, w);
 
   return {
@@ -197,7 +211,7 @@ export function scorePairing(
     reqId: req.reqId,
     offerScore,
     reqScore,
-    insertionIndex: insertion.insertionIndex,
+    insertionIndex: idx,
     riderDetour,
     driverAddedMinutes: marginal,
     req,

@@ -1,5 +1,4 @@
-import { MatchOffer } from './types';
-import { ProposedMatch } from './match';
+import { MatchOffer, ProposedMatch } from './types';
 
 /**
  * What a matching run writes back, as plain decisions with no Firebase SDK in

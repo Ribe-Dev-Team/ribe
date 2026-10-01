@@ -1,3 +1,19 @@
+/*
+Tests src/travelTime.ts - the two Google clients that fetch travel times. No
+network: each client gets a fake `fetch` answering in Google's documented
+format, so these prove a client handles that format, not that Google still
+uses it - `npm run test:live` checks the real APIs.
+
+  buildGoogleTravelTimeMatrix   legacy Distance Matrix client
+  buildRoutesTravelTimeMatrix   Routes API client (the runner's default)
+
+For both: converting Google's durations to minutes, request shape, removing
+duplicate points, splitting big requests into chunks, what happens to a leg
+Google can't route, and errors.
+
+Not tested here: SyntheticTravelTime itself, though most other test files use it.
+*/
+
 import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, PrecomputedTravelTime, SyntheticTravelTime,
 } from '../src/travelTime';

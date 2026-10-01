@@ -4,6 +4,9 @@ Runs one matching pass against Firestore. From matching/:
     npm run match                  write matches and expiries
     npm run match -- --dry-run     compute and print only, write nothing
     npm run match -- --synthetic   estimated travel times, no Google calls
+    npm run match -- --distance-matrix
+                                   legacy Distance Matrix API instead of Routes,
+                                   for a key whose project predates March 2025
 
 Configuration, from the environment, falling back to mobile/.env for the two
 values the app already has:
@@ -12,7 +15,8 @@ values the app already has:
                                GOOGLE_APPLICATION_CREDENTIALS instead)
     FIREBASE_PROJECT_ID        falls back to EXPO_PUBLIC_FIREBASE_PROJECT_ID
     GOOGLE_MAPS_API_KEY        falls back to EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
-                               needs the Routes API enabled. With no key, travel
+                               needs the Routes API enabled (or Distance Matrix,
+                               with --distance-matrix). With no key, travel
                                times are synthetic estimates.
     FIRESTORE_EMULATOR_HOST    run against the local emulator, no credentials
 
@@ -21,24 +25,14 @@ scheduling choice - cron, Task Scheduler or a CI schedule all work - and more
 frequent runs fill cars faster, since each run offers a driver one new rider.
 */
 
-import { existsSync, readFileSync } from 'fs';
-import { resolve } from 'path';
 import { SkipReason } from '../src/adapter';
 import { CAMPUS_TIME_ZONE } from '../src/melbourneTime';
-import { buildRoutesTravelTimeMatrix, SyntheticTravelTime } from '../src/travelTime';
+import {
+  buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, SyntheticTravelTime,
+} from '../src/travelTime';
+import { envValue } from './env';
 import { connect, expireOverdue, loadPending, loadRequestsById, writeMatches } from './firestore';
 import { MatchingStore, RunReport, runOnce } from './runOnce';
-
-function readMobileEnv(): Record<string, string> {
-  const path = resolve(__dirname, '..', '..', 'mobile', '.env');
-  if (!existsSync(path)) return {};
-  const out: Record<string, string> = {};
-  for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    const m = /^\s*([A-Za-z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
-    if (m) out[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
-  }
-  return out;
-}
 
 function printReport(report: RunReport, dryRun: boolean): void {
   if (report.expired.length) {
@@ -69,19 +63,19 @@ function printReport(report: RunReport, dryRun: boolean): void {
 async function main(): Promise<number> {
   const args = new Set(process.argv.slice(2));
   if (args.has('--help') || args.has('-h')) {
-    console.log('Usage: npm run match -- [--dry-run] [--synthetic]');
+    console.log('Usage: npm run match -- [--dry-run] [--synthetic | --distance-matrix]');
     return 0;
   }
   const dryRun = args.has('--dry-run');
+  const legacyMatrix = args.has('--distance-matrix');
+  if (legacyMatrix && args.has('--synthetic')) {
+    throw new Error('--synthetic and --distance-matrix both choose travel times; pass one.');
+  }
 
-  const mobileEnv = readMobileEnv();
-  const env = (name: string, fallback?: string) =>
-    process.env[name] || (fallback ? process.env[fallback] || mobileEnv[fallback] : undefined);
-
-  const apiKey = args.has('--synthetic') ? undefined : env('GOOGLE_MAPS_API_KEY', 'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY');
+  const apiKey = args.has('--synthetic') ? undefined : envValue('GOOGLE_MAPS_API_KEY', 'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY');
   const db = connect({
-    projectId: env('FIREBASE_PROJECT_ID', 'EXPO_PUBLIC_FIREBASE_PROJECT_ID'),
-    serviceAccountPath: env('FIREBASE_SERVICE_ACCOUNT'),
+    projectId: envValue('FIREBASE_PROJECT_ID', 'EXPO_PUBLIC_FIREBASE_PROJECT_ID'),
+    serviceAccountPath: envValue('FIREBASE_SERVICE_ACCOUNT'),
   });
 
   const store: MatchingStore = {
@@ -94,16 +88,19 @@ async function main(): Promise<number> {
   const now = new Date();
   const stamp = now.toLocaleString('en-AU', { timeZone: CAMPUS_TIME_ZONE });
   console.log(`Ribe matching run - ${stamp} (Melbourne)${dryRun ? ' - DRY RUN' : ''}`);
-  console.log(apiKey
-    ? 'Travel times: Google Routes API (Route Matrix), one matrix per batch'
-    : 'Travel times: SYNTHETIC estimates - no Google key, or --synthetic given');
+  const buildMatrix = legacyMatrix ? buildGoogleTravelTimeMatrix : buildRoutesTravelTimeMatrix;
+  console.log(!apiKey
+    ? 'Travel times: SYNTHETIC estimates - no Google key, or --synthetic given'
+    : legacyMatrix
+      ? 'Travel times: Google Distance Matrix API (legacy), one matrix per batch'
+      : 'Travel times: Google Routes API (Route Matrix), one matrix per batch');
 
   const report = await runOnce(store, {
     now,
     dryRun,
     travelTimes: async (points) => apiKey
       // Synthetic fallback only for a leg Google can't route at all.
-      ? buildRoutesTravelTimeMatrix(points, { apiKey, fallback: new SyntheticTravelTime() })
+      ? buildMatrix(points, { apiKey, fallback: new SyntheticTravelTime() })
       : new SyntheticTravelTime(),
   });
 

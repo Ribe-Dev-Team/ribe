@@ -269,7 +269,7 @@ function toMatchOffer(
 
   let currTripDuration = 0;
   if (onBoard.length > 0) {
-    const ev = evaluateRoute(start, onBoard.map((r) => r.waypoint), end, departAt, t);
+    const ev = evaluateRoute(start, onBoard.map((r) => r.waypoint), end, departAt, t, directionOf(doc));
     ev.riderDetours.forEach((d, i) => { onBoard[i].currentDetour = d; });
     currTripDuration = ev.totalMinutes;
   }
