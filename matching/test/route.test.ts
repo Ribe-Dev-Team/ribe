@@ -257,3 +257,51 @@ describe('addPassenger — says WHOSE limit blocked it', () => {
     expect(res.reason).toBe('RIDER_DETOUR_CAP');
   });
 });
+
+describe('addPassenger — trips to campus are planned from the deadline', () => {
+  // t is 2.1 min per km in a straight line. A driver 20 km out takes ~42 min,
+  // reaching a rider 10 km out halfway. They can leave from 7:00.
+  const north = (km: number) => ({ lat: CAMPUS.lat + km / 110.57, lon: CAMPUS.lon });
+  const toCampusMins = t.minutes(north(20), CAMPUS);
+  const halfwayMins = t.minutes(north(20), north(10));
+  const driver = (arriveBy?: Date) => makeOffer({ offerId: 'o', start: north(20), maxDetour: 30, arriveBy });
+  const rider = (p: { arriveBy?: Date; earliest?: Date } = {}) => ({
+    waypoint: north(10), maxDetour: 20, arriveBy: p.arriveBy ?? at(8, 50), earliest: p.earliest,
+  });
+  const leaveFor = (arrival: Date) => arrival.getTime() - toCampusMins * 60_000;
+
+  it('leaves as late as still gets everyone there by the deadline', () => {
+    const res = addPassenger(driver(at(8, 50)), rider(), at(7), t);
+    expect(res.feasible).toBe(true);
+    // On campus at 8:50, not 7:42.
+    expect(res.departAt!.getTime()).toBeCloseTo(leaveFor(at(8, 50)), -3);
+  });
+
+  it('lets the tightest deadline in the car set the time', () => {
+    const res = addPassenger(driver(at(8, 50)), rider({ arriveBy: at(8, 30) }), at(7), t);
+    expect(res.departAt!.getTime()).toBeCloseTo(leaveFor(at(8, 30)), -3);
+  });
+
+  it("can now collect a rider who isn't ready until after the driver's earliest departure", () => {
+    // Leaving at 7:00 the car would be at their door by 7:21 - too early for
+    // 8:15. Planned from 8:50, it arrives around 8:29.
+    const res = addPassenger(driver(at(8, 50)), rider({ earliest: at(8, 15) }), at(7), t);
+    expect(res.feasible).toBe(true);
+    expect(res.departAt!.getTime() + halfwayMins * 60_000).toBeGreaterThanOrEqual(at(8, 15).getTime());
+  });
+
+  it('still refuses when even the latest departure would be too early for them', () => {
+    const res = addPassenger(driver(at(8, 50)), rider({ earliest: at(8, 45) }), at(7), t);
+    expect(res.reason).toBe('PICKUP_BEFORE_READY');
+  });
+
+  it('leaves at the earliest without a driver deadline, or when leaving campus', () => {
+    expect(addPassenger(driver(), rider(), at(7), t).departAt).toEqual(at(7));
+
+    const fromCampus = makeOffer({
+      offerId: 'o', direction: 'FROM_CAMPUS', start: CAMPUS, end: north(20), maxDetour: 30, arriveBy: at(19),
+    });
+    expect(addPassenger(fromCampus, { waypoint: north(10), maxDetour: 20, arriveBy: at(19) }, at(17), t).departAt)
+      .toEqual(at(17));
+  });
+});

@@ -21,10 +21,13 @@ import CalendarPage, { Ride } from './pages/CalendarPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import RideDetailPage from './pages/RideDetailPage';
+import { rideTimeSummary } from './services/rideData';
 import DriverProfilePage from './pages/DriverProfilePage';
 import DriverRegistrationPage from './pages/DriverRegistrationPage';
 import BookingPage from './pages/BookingPage';
-import { acceptMatch, cancelOffer, declineMatch } from './pages/schema/firebaseBookingMethods';
+import {
+  acceptMatch, cancelOffer, declineMatch, setOfferLocked, updateOfferSeats,
+} from './pages/schema/firebaseBookingMethods';
 
 // Adapts a rich Home/Dashboard ride card into the simpler shape RideDetailPage
 // (built for Calendar) expects, so both entry points share the same detail screen.
@@ -33,8 +36,7 @@ function toDetailRide(ride: RideCardProps): Ride {
     rideId: ride.rideId,
     kind: ride.kind,
     status: ride.status,
-    time: ride.pickup.time,
-    duration: `${ride.etaMinutes} min`,
+    ...rideTimeSummary(ride),
     start: ride.pickup.address,
     destination: ride.destination.address,
     driver: ride.driver.name,
@@ -82,6 +84,31 @@ function buildRideActions(
           onChanged();
         } catch (error) {
           Alert.alert('Could not remove offer', errorMessage(error));
+        }
+      },
+      onSetLocked: async (locked: boolean) => {
+        if (!ride.rideId) return;
+        try {
+          await setOfferLocked(ride.rideId, locked);
+          Alert.alert(
+            locked ? 'Drive locked' : 'Drive unlocked',
+            locked
+              ? 'No more passengers will be matched to this drive.'
+              : 'Your free seats are back in matching.',
+          );
+          onChanged();
+        } catch (error) {
+          Alert.alert(locked ? 'Could not lock drive' : 'Could not unlock drive', errorMessage(error));
+        }
+      },
+      onChangeSeats: async (seats: number) => {
+        if (!ride.rideId) return;
+        try {
+          await updateOfferSeats(ride.rideId, seats);
+          Alert.alert('Seats updated', `This drive now takes ${seats} passenger${seats === 1 ? '' : 's'}.`);
+          onChanged();
+        } catch (error) {
+          Alert.alert('Could not change seats', errorMessage(error));
         }
       },
     };

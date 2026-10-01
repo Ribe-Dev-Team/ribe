@@ -350,3 +350,22 @@ describe('runMatchingProvisional — explains every rider it leaves out', () => 
     ]);
   });
 });
+
+describe('runMatchingProvisional — trips to campus are timed from the deadline', () => {
+  const north = (km: number) => ({ lat: CAMPUS.lat + km / 110.57, lon: CAMPUS.lon });
+
+  it('times the whole car to reach campus by the tightest deadline', () => {
+    // The driver could leave from 8:00 and needs to be in by 9:50; the rider by 9:00.
+    const offer = makeOffer({ offerId: 'o', start: north(20), arriveBy: at(9, 50) });
+    const rider = makeRequest({ reqId: 'r', start: north(10), arriveBy: at(9) });
+    const res = runMatchingProvisional('b', [rider], [offer], at(8), at(0), t);
+
+    const m = res.matches[0];
+    // The rider's 9:00 is the tighter deadline, so the car arrives then - not 8:42.
+    expect(m.arriveAt.getTime()).toBeCloseTo(at(9).getTime(), -3);
+    expect(m.finalArrival.getTime()).toBeCloseTo(at(9).getTime(), -3);
+    expect(m.departAt.getTime()).toBeCloseTo(at(9).getTime() - t.minutes(north(20), CAMPUS) * 60_000, -3);
+    expect(m.schedule[0].pickupAt.getTime()).toBeCloseTo(m.pickupAt.getTime());
+    expect(m.pickupAt.getTime()).toBeGreaterThan(at(8, 30).getTime());
+  });
+});

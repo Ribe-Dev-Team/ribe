@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, Timestamp, where } from 'firebase/firestore';
+import { collection, doc, DocumentData, getDoc, getDocs, query, Timestamp, where } from 'firebase/firestore';
 import { RideCardProps } from '../components/RideCard';
 import { db } from '../firebaseConfig';
 import { Coord } from '../pages/schema/booking.schema';
@@ -28,6 +28,7 @@ interface FirestoreRideRecord {
   riderDetourMinutes?: number;
   pendingRequestId?: string | null;
   confirmedRequestIds?: string[];
+  acceptingMore?: boolean; // false once the driver locks the trip
   // A request's own estimated times, as of its match.
   pickupAt?: StoredTime;
   arriveAt?: StoredTime;
@@ -49,7 +50,25 @@ interface StoredSchedule {
 type OfferView = Pick<
   FirestoreRideRecord,
   'status' | 'schedule' | 'pendingSchedule' | 'pendingRequestId' | 'confirmedRequestIds'
+  | 'seatCapacity' | 'acceptingMore'
 >;
+
+/** A car's seats as a card shows them. `open`: still being offered new
+ *  riders. `locked`: the driver stopped that, as opposed to the car being full. */
+interface SeatState {
+  filled: number;
+  total: number;
+  open: boolean;
+  locked: boolean;
+}
+
+/** A driver's car from their offer (theirs, or the one a rider is matched to). */
+function seatStateOf(offer: OfferView): SeatState | undefined {
+  if (!offer.seatCapacity) return undefined;
+  const filled = (offer.confirmedRequestIds ?? []).length;
+  const locked = offer.acceptingMore === false;
+  return { filled, total: offer.seatCapacity, open: !locked && filled < offer.seatCapacity, locked };
+}
 
 /** How long before the estimated pickup a rider is told to be ready. Covers
  *  the drive times not including traffic, and a driver running early. */
@@ -137,35 +156,60 @@ function plannedTimes(
 }
 
 /**
+ * Everything known about a driver, from both places it lives: drivers/{uid}
+ * (written by driver registration - car and plate) and users/{uid} (the
+ * account - name, bio, degree, phone, and often the car too). Anyone can offer
+ * a ride without finishing driver registration, so drivers/{uid} may not exist,
+ * and it never holds a phone, bio or degree. Each field comes from drivers/{uid}
+ * when it has a value, else users/{uid}. `{}` when neither can be read - an
+ * unreadable profile must never fail the screen showing it.
+ */
+export async function fetchDriverProfile(uid: string): Promise<DocumentData> {
+  const read = async (collectionName: string): Promise<DocumentData> => {
+    try {
+      const snap = await getDoc(doc(db, collectionName, uid));
+      return snap.exists() ? snap.data() : {};
+    } catch (error) {
+      console.warn(`Failed to load ${collectionName} profile`, uid, error);
+      return {};
+    }
+  };
+
+  const [driverDoc, userDoc] = await Promise.all([read('drivers'), read('users')]);
+  const merged: DocumentData = { ...userDoc };
+  for (const [key, value] of Object.entries(driverDoc)) {
+    if (value !== undefined && value !== null && value !== '') merged[key] = value;
+  }
+  return merged;
+}
+
+/**
  * Fetch each matched driver's profile once, keyed by uid.
  *
  * Batched here rather than fetched per card: several of a user's requests can be
- * matched to the same driver. A driver doc that is missing (the user never
- * finished driver registration) simply yields no entry, and the caller falls
- * back to placeholder text rather than failing the whole screen.
+ * matched to the same driver. Details come from fetchDriverProfile (driver
+ * registration and account merged). A driver neither describes yields no
+ * entry, and the caller shows a placeholder rather than failing the screen.
  */
 async function fetchDrivers(uids: string[]): Promise<Map<string, DriverSummary>> {
   const unique = [...new Set(uids)];
   const out = new Map<string, DriverSummary>();
 
   await Promise.all(unique.map(async (uid) => {
-    try {
-      const snap = await getDoc(doc(db, 'drivers', uid));
-      if (!snap.exists()) return;
+    const profile = await fetchDriverProfile(uid);
+    const field = (name: string) => (profile[name] || undefined) as string | undefined;
 
-      const data = snap.data() as Record<string, unknown>;
-      const vehicle = [data['vehicleMake'], data['vehicleModel']].filter(Boolean).join(' ');
+    const name = field('name');
+    const vehicle = [field('vehicleMake'), field('vehicleModel')].filter(Boolean).join(' ');
+    const plate = field('licensePlate');
+    if (!name && !vehicle && !plate) return;
 
-      out.set(uid, {
-        name: (data['name'] as string) || 'Your driver',
-        vehicle: vehicle || 'Vehicle details coming soon',
-        plate: (data['licensePlate'] as string) || 'Plate not shared',
-        phone: data['phoneNumber'] as string | undefined,
-      });
-    } catch (error) {
-      // One unreadable driver doc must not blank out the whole ride list.
-      console.warn('Failed to load driver profile', uid, error);
-    }
+    out.set(uid, {
+      name: name || 'Your driver',
+      vehicle: vehicle || 'Vehicle details coming soon',
+      plate: plate || 'Plate not shared',
+      phone: field('phoneNumber'),
+    });
   }));
 
   return out;
@@ -191,6 +235,8 @@ async function fetchOfferViews(offerIds: string[]): Promise<Map<string, OfferVie
         pendingSchedule: data.pendingSchedule,
         pendingRequestId: data.pendingRequestId,
         confirmedRequestIds: data.confirmedRequestIds,
+        seatCapacity: data.seatCapacity,
+        acceptingMore: data.acceptingMore,
       });
     } catch (error) {
       console.warn('Failed to load matched trip', id, error);
@@ -260,16 +306,31 @@ function buildRideCard(
     : undefined;
 
   // On an offer the viewer IS the driver, so their own details belong on the
-  // card. On a request the driver comes from drivers/{matchedDriverId}, and is
-  // absent only while the request is still unmatched.
+  // card. On a request the driver's profile comes from fetchDrivers. A matched
+  // ride whose driver profile can't be read still HAS a driver - only an
+  // unmatched one is searching.
   const resolved: DriverSummary = kind === 'offer'
     ? { name: 'Your driving offer', vehicle: 'Your vehicle', plate: 'Your plate' }
-    : driver ?? { name: 'Searching for a driver', vehicle: 'Vehicle pending', plate: 'Pending' };
+    : driver ?? (record.matchedDriverId
+      ? { name: 'Your driver', vehicle: 'Vehicle details coming soon', plate: 'Plate not shared' }
+      : { name: 'Searching for a driver', vehicle: 'Vehicle pending', plate: 'Pending' });
+
+  // The car's seats. A rider sees them once they're confirmed in it; a driver
+  // always sees their own (0 of 3 while still searching).
+  const seats = kind === 'offer'
+    ? seatStateOf(record)
+    : record.status === 'confirmed' && offer ? seatStateOf(offer) : undefined;
+  // A driver's trip with a passenger aboard is an upcoming drive even while it
+  // still takes more. Firestore keeps it 'pending' so the matcher can offer it
+  // more riders, but on the driver's screen it belongs with confirmed trips.
+  const status = kind === 'offer' && record.status === 'pending' && (seats?.filled ?? 0) > 0
+    ? 'confirmed'
+    : record.status;
 
   return {
     rideId: docId,
     kind,
-    status: record.status,
+    status,
     date,
     pickup: {
       address: record.address || 'Pickup location pending',
@@ -281,6 +342,14 @@ function buildRideCard(
     },
     etaMinutes: durationMinutes,
     readyBy,
+    // Nothing planned yet: show the window they gave, not times that read as
+    // a real pickup and arrival.
+    timeWindow: planned ? undefined : { from: departureTime, to: arrivalTime },
+    bookingWindow: { from: departureTime, to: arrivalTime },
+    seats,
+    // What they asked for, so a rider in a car still taking passengers can be
+    // told they'll still arrive by it.
+    arriveBy: arrivalTime,
     // PLACEHOLDER: there is no fare model and no distance-to-CO2 calculation in
     // the codebase yet, so these two are constants rather than data. They are
     // NOT derived from the match.
@@ -300,6 +369,19 @@ function buildRideCard(
     acceptDeadline: toDateOrUndefined(record.acceptDeadline),
     pickupDateTime: planned?.startAt ?? date,
   };
+}
+
+/**
+ * A ride's times on one line, for the calendar and the details page: the
+ * planned pickup and minutes in the car once matched, or the person's own
+ * window ("07:30–09:00") while still searching - the same rule RideCard uses.
+ */
+export function rideTimeSummary(
+  ride: Pick<RideCardProps, 'pickup' | 'etaMinutes' | 'timeWindow'>,
+): { time: string; duration?: string } {
+  return ride.timeWindow
+    ? { time: `${ride.timeWindow.from}–${ride.timeWindow.to}` }
+    : { time: ride.pickup.time, duration: `${ride.etaMinutes} min` };
 }
 
 export async function fetchUserRides(userId: string): Promise<UserRideBundle> {

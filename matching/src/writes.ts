@@ -1,4 +1,4 @@
-import { MatchOffer, ProposedMatch } from './types';
+import { MatchOffer, ProposedMatch, TripStop } from './types';
 
 /**
  * What a matching run writes back, as plain decisions with no Firebase SDK in
@@ -26,6 +26,22 @@ export interface StoredOffer {
   seatCapacity: number;
   pendingRequestId?: string | null;
   confirmedRequestIds?: string[];
+  /** False once the driver locks the trip: no more passengers. Absent = true. */
+  acceptingMore?: boolean;
+}
+
+/**
+ * The status an offer's seats and lock add up to, once nobody holds its
+ * pending slot. A car is done ('confirmed') when it's full, or when the driver
+ * has locked it with at least one passenger aboard; otherwise it's back in the
+ * matcher's pool ('pending'). mobile/pages/schema/firebaseBookingMethods.ts
+ * applies the same rule on the app's side.
+ */
+export function settledOfferStatus(offer: StoredOffer): 'confirmed' | 'pending' {
+  const filled = (offer.confirmedRequestIds ?? []).length;
+  if (filled >= offer.seatCapacity) return 'confirmed';
+  if (offer.acceptingMore === false && filled > 0) return 'confirmed';
+  return 'pending';
 }
 
 /** A car's timetable as stored on its offer: the driver's own departure and
@@ -34,6 +50,15 @@ export interface StoredSchedule {
   departAt: Date;
   arriveAt: Date;
   stops: Array<{ requestId: string; pickupAt: Date; arriveAt: Date }>;
+}
+
+/** A timetable (route.ts → timetableFor) in the shape the offer stores. */
+export function toStoredSchedule(t: { departAt: Date; arriveAt: Date; stops: TripStop[] }): StoredSchedule {
+  return {
+    departAt: t.departAt,
+    arriveAt: t.arriveAt,
+    stops: t.stops.map((s) => ({ requestId: s.reqId, pickupAt: s.pickupAt, arriveAt: s.arriveAt })),
+  };
 }
 
 /** One match, reduced to what Firestore needs. */
@@ -80,11 +105,7 @@ export function toMatchWrites(matches: ProposedMatch[], offers: MatchOffer[]): M
     baseline: baselineByOffer.get(m.offerId) ?? [],
     pickupAt: m.pickupAt,
     arriveAt: m.arriveAt,
-    schedule: {
-      departAt: m.departAt,
-      arriveAt: m.finalArrival,
-      stops: m.schedule.map((s) => ({ requestId: s.reqId, pickupAt: s.pickupAt, arriveAt: s.arriveAt })),
-    },
+    schedule: toStoredSchedule({ departAt: m.departAt, arriveAt: m.finalArrival, stops: m.schedule }),
   }));
 }
 
@@ -92,6 +113,7 @@ export type MatchWriteSkip =
   | 'MISSING'             // either document is gone
   | 'REQUEST_NOT_PENDING' // rider cancelled, or an overlapping run matched them
   | 'OFFER_NOT_PENDING'   // driver cancelled, filled up, or is awaiting approval
+  | 'LOCKED'              // the driver stopped taking passengers
   | 'SLOT_TAKEN'          // the driver's one pending slot is already used
   | 'BASELINE_CHANGED'    // confirmed riders changed, so the route is stale
   | 'FULL';
@@ -112,6 +134,7 @@ export function planMatchWrite(
   if (!request || !offer) return { ok: false, reason: 'MISSING' };
   if (request.status !== 'pending') return { ok: false, reason: 'REQUEST_NOT_PENDING' };
   if (offer.status !== 'pending') return { ok: false, reason: 'OFFER_NOT_PENDING' };
+  if (offer.acceptingMore === false) return { ok: false, reason: 'LOCKED' };
   if (offer.pendingRequestId) return { ok: false, reason: 'SLOT_TAKEN' };
 
   const confirmed = offer.confirmedRequestIds ?? [];
@@ -211,6 +234,33 @@ export function planSettle(
   return {
     outcome: 'EXPIRED',
     request: { set: { status: 'expired' }, remove: [] },
-    offer: { set: { status: 'pending', pendingRequestId: null }, remove: OFFER_SLOT_FIELDS },
+    // Back in the pool - unless the driver locked the trip meanwhile and has
+    // passengers, in which case it's done.
+    offer: { set: { status: settledOfferStatus(offer!), pendingRequestId: null }, remove: OFFER_SLOT_FIELDS },
   };
+}
+
+/**
+ * A confirmed car's timetable, to fill in where the stored one is missing or no
+ * longer lists the car's riders - a match written before timetables were
+ * stored, say. Ride cards read riders' pickup and arrival times from it, and
+ * without one a confirmed rider is left looking at their booking window.
+ */
+export interface ScheduleWrite {
+  offerId: string;
+  /** The confirmed riders, in pickup order, the timetable was worked out for. */
+  baseline: string[];
+  schedule: StoredSchedule;
+}
+
+/**
+ * Whether a car's confirmed timetable may still be written: only if its
+ * confirmed riders are still exactly the ones it was worked out for. Leaves the
+ * pending slot and its proposed timetable alone - `schedule` is only ever the
+ * confirmed riders' timetable.
+ */
+export function planScheduleWrite(offer: StoredOffer | undefined, w: ScheduleWrite): FieldUpdate | null {
+  if (!offer || offer.status === 'cancelled') return null;
+  if (!sameList(offer.confirmedRequestIds ?? [], w.baseline)) return null;
+  return { set: { schedule: w.schedule }, remove: [] };
 }

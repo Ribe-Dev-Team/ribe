@@ -396,9 +396,33 @@ before its cutoff.
   the offer rather than on each request because a rider's phone can't update
   another rider's booking. The request's own `pickupAt`/`arriveAt` are a
   snapshot from match time, used only if the offer can't be read.
-- **Arrival margin.** Riders are planned to arrive `arrivalMarginMinutes` (10)
-  before the time they gave, because drive times don't include traffic. The
-  adapter applies it; a match that only works without the margin isn't made.
+- **Locking and seats.** A driver can lock their drive (`acceptingMore: false`
+  on the offer) or change `seatCapacity` from their ride card. A locked offer
+  is skipped (`LOCKED`) and never written to, and once anyone is aboard it is
+  done (`confirmed`) even with seats free; unlocking puts it back in the pool.
+  Every place that frees a pending slot - accept, decline, expiry - works out
+  the offer's status the same way (`settledOfferStatus`, in `writes.ts` and
+  the app), so a locked car can't quietly reopen. A rider already deciding on a
+  match keeps their seat through a lock, and seats never drop below the
+  riders aboard plus that one.
+- **Arrival margin.** Riders and drivers are planned to arrive
+  `arrivalMarginMinutes` (10) before the time they gave, because drive times
+  don't include traffic. The adapter applies it; a match that only works
+  without the margin isn't made.
+- **Trips to campus are planned from the deadline.** A booking's departure
+  time is the *earliest* that person can leave, not when they want to. A driver
+  and rider who both said "7:00-9:00" used to be timed from 7:00 - pickup 7:15,
+  on campus at 7:30, an hour and a half early. Now the matcher checks the route
+  leaving at the earliest (anyone late even then is a no), then slides the whole
+  trip as late as the tightest deadline in the car allows (`slideMinutes` in
+  `route.ts`): leave ~8:20, pickup ~8:35, on campus 8:50. Sliding is a pure time
+  shift, so detours, pickup order and bumping are unchanged, and scores stay
+  measured from the earliest departure (otherwise slack would read zero for
+  every trip). It also matches more people: a rider who isn't ready until
+  8:15 could never be collected by a driver timed from 7:00, but can once the
+  trip is timed from 8:50 - "picked up before they're ready" is checked at the
+  slid times. Trips **from** campus don't slide: "leave from 5pm" means take me
+  home when class ends, so they keep the earliest departure.
 
 ### Travel times: Distance Matrix by default, Routes ready
 

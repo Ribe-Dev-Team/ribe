@@ -1,12 +1,12 @@
 import {
   MatchOffer, MatchRequest, MatchingConfig, DEFAULT_CONFIG, MatchRunResult,
-  OnBoardRider, ProposedMatch, RejectReason, TravelTimeMatrix, TripStop,
+  OnBoardRider, ProposedMatch, RejectReason, TravelTimeMatrix,
 } from './types';
 import { hardFilter, passengerOf, waypointOf } from './filter';
 import {
   driverLatestArrival, routeSlackMinutes, scoreFromMetrics, scorePairing, ScoreWeights, DEFAULT_WEIGHTS,
 } from './score';
-import { addPassenger, departureOf, DepartureTime, evaluateRoute, RouteEvaluation } from './route';
+import { addPassenger, departureOf, DepartureTime, evaluateRoute, RouteEvaluation, timetableFor } from './route';
 /** Never promise a match more time to accept than the batch can actually
  *  honour before the trip locks. */
 export function computeAcceptDeadline(now: Date, departAt: Date, cfg: MatchingConfig): Date {
@@ -241,13 +241,12 @@ export function runMatchingProvisional(
     const fullEv = evaluateRoute(offer.start, waypoints, offer.end, offerDepartAt, t, offer.direction);
     const driverDeadline = driverLatestArrival(offer, offerDepartAt, t);
 
-    // The car's timetable with this run's rider in it. Leaving campus, everyone
-    // boards at the driver's departure.
-    const schedule: TripStop[] = finalOrder.map((r, j) => ({
-      reqId: r.reqId,
-      pickupAt: offer.direction === 'TO_CAMPUS' ? fullEv.waypointArrivals[j] : offerDepartAt,
-      arriveAt: fullEv.riderArrivals[j],
-    }));
+    // The car's timetable with this run's rider in it, as it will really run
+    // (timetableFor - planned from the deadline to campus). Scores below stay
+    // measured from the earliest departure, so slack still means room to spare
+    // rather than reading zero for every trip planned to its deadline.
+    const timetable = timetableFor(offer, finalOrder, fullEv, offerDepartAt);
+    const schedule = timetable.stops;
 
     for (let i = 0; i < finalOrder.length; i++) {
       const rider = finalOrder[i];
@@ -286,8 +285,8 @@ export function runMatchingProvisional(
         driverAddedMinutes: marginal,
         offerScore,
         reqScore,
-        departAt: offerDepartAt,
-        finalArrival: fullEv.finalArrival,
+        departAt: timetable.departAt,
+        finalArrival: timetable.arriveAt,
         totalTripMinutes: fullEv.totalMinutes,
         pickupAt: schedule[i].pickupAt,
         arriveAt: schedule[i].arriveAt,

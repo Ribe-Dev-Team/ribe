@@ -14,7 +14,7 @@ runner/firestore.ts makes these same decisions inside its transactions.
                    slot) if the rider didn't answer by the deadline
 */
 
-import { OFFER_SLOT_FIELDS, planMatchWrite, planSettle, MatchWrite, REQUEST_MATCH_FIELDS, StoredOffer, StoredRequest, toMatchWrites } from '../src/writes';
+import { OFFER_SLOT_FIELDS, planMatchWrite, planScheduleWrite, planSettle, MatchWrite, REQUEST_MATCH_FIELDS, ScheduleWrite, settledOfferStatus, StoredOffer, StoredRequest, toMatchWrites } from '../src/writes';
 import { ProposedMatch } from '../src/types';
 import { makeOffer, CAMPUS } from './fixtures';
 
@@ -71,6 +71,7 @@ describe('planMatchWrite', () => {
     ['a confirmed rider changed under the route', request, { ...offer, confirmedRequestIds: ['c1'] }, 'BASELINE_CHANGED'],
     ['the confirmed riders were reordered', request, { ...offer, confirmedRequestIds: ['c2', 'c1'] }, 'BASELINE_CHANGED'],
     ['every seat is taken', request, { ...offer, seatCapacity: 2 }, 'FULL'],
+    ['the driver locked the trip', request, { ...offer, acceptingMore: false }, 'LOCKED'],
   ])('refuses when %s', (_why, req, off, reason) => {
     expect(planMatchWrite(req, off, write)).toEqual({ ok: false, reason });
   });
@@ -134,5 +135,51 @@ describe('planSettle', () => {
     expect(planSettle('r', { status: 'awaiting', matchedOfferId: 'o' }, holding, now)).toBeNull();
     expect(planSettle('r', { status: 'cancelled' }, undefined, now)).toBeNull();
     expect(planSettle('r', { status: 'pending' }, undefined, now)).toBeNull();
+  });
+});
+
+describe('settledOfferStatus — a driver locking their trip', () => {
+  const car = (p: Partial<StoredOffer>): StoredOffer => ({ status: 'pending', seatCapacity: 4, ...p });
+
+  it('keeps an unlocked car with room in the pool', () => {
+    expect(settledOfferStatus(car({ confirmedRequestIds: ['a'] }))).toBe('pending');
+  });
+
+  it('finishes a car that is full, locked or not', () => {
+    expect(settledOfferStatus(car({ seatCapacity: 1, confirmedRequestIds: ['a'] }))).toBe('confirmed');
+  });
+
+  it('finishes a locked car with passengers, even with seats free', () => {
+    expect(settledOfferStatus(car({ confirmedRequestIds: ['a'], acceptingMore: false }))).toBe('confirmed');
+  });
+
+  it('leaves a locked car with nobody aboard as it was - there is no trip to finish', () => {
+    expect(settledOfferStatus(car({ confirmedRequestIds: [], acceptingMore: false }))).toBe('pending');
+  });
+
+  it('keeps a locked car finished when an unanswered match expires', () => {
+    const plan = planSettle(
+      'r',
+      { status: 'awaiting', matchedOfferId: 'o', acceptDeadline },
+      car({ status: 'awaiting', pendingRequestId: 'r', confirmedRequestIds: ['a'], acceptingMore: false }),
+      new Date(acceptDeadline.getTime() + 1),
+    );
+    expect(plan?.offer?.set.status).toBe('confirmed');
+  });
+});
+
+describe('planScheduleWrite — filling in a confirmed car timetable', () => {
+  const w: ScheduleWrite = { offerId: 'o', baseline: ['c1', 'c2'], schedule: write.schedule };
+
+  it('writes it while the car still carries exactly those riders', () => {
+    expect(planScheduleWrite(offer, w)).toEqual({ set: { schedule: write.schedule }, remove: [] });
+    // A rider deciding on a new match doesn't matter: that's pendingSchedule.
+    expect(planScheduleWrite({ ...offer, status: 'awaiting', pendingRequestId: 'r' }, w)).not.toBeNull();
+  });
+
+  it("doesn't write it once the riders changed, or the drive was removed", () => {
+    expect(planScheduleWrite({ ...offer, confirmedRequestIds: ['c1'] }, w)).toBeNull();
+    expect(planScheduleWrite({ ...offer, status: 'cancelled' }, w)).toBeNull();
+    expect(planScheduleWrite(undefined, w)).toBeNull();
   });
 });

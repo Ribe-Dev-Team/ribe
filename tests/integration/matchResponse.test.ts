@@ -4,7 +4,9 @@
 // Firestore mock. Matches themselves are written by the matching runner
 // (matching/runner/); these cover the app's half of the round trip.
 
-import { acceptMatch, cancelOffer, declineMatch } from '../../mobile/pages/schema/firebaseBookingMethods';
+import {
+  acceptMatch, cancelOffer, declineMatch, setOfferLocked, updateOfferSeats,
+} from '../../mobile/pages/schema/firebaseBookingMethods';
 import { db } from '../../mobile/firebaseConfig';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 
@@ -191,5 +193,85 @@ describe('cancelOffer', () => {
     }
     // The driver can't write the riders' bookings; the runner's planSettle does.
     expect((await read('rideRequests', reqId)).status).toBe('awaiting');
+  });
+});
+
+describe('locking a drive (setOfferLocked)', () => {
+  it('finishes a car with passengers aboard, taking it out of matching', async () => {
+    const { reqId, offerId } = await seedMatch({ confirmed: ['a'] });
+    await acceptMatch(reqId); // 2 of 4 aboard, back in the pool
+
+    await setOfferLocked(offerId, true);
+
+    expect(await read('rideOffers', offerId)).toMatchObject({ acceptingMore: false, status: 'confirmed' });
+  });
+
+  it('puts a locked car with free seats back into matching when unlocked', async () => {
+    const { reqId, offerId } = await seedMatch({ confirmed: ['a'] });
+    await acceptMatch(reqId);
+    await setOfferLocked(offerId, true);
+
+    await setOfferLocked(offerId, false);
+
+    expect(await read('rideOffers', offerId)).toMatchObject({ acceptingMore: true, status: 'pending' });
+  });
+
+  it("lets a rider already deciding keep their seat, and closes the car once they accept", async () => {
+    const { reqId, offerId } = await seedMatch({ confirmed: ['a'] });
+
+    await setOfferLocked(offerId, true);
+    expect((await read('rideOffers', offerId)).status).toBe('awaiting');
+
+    await acceptMatch(reqId);
+    // Seats free, but locked - so done rather than back in the pool.
+    expect(await read('rideOffers', offerId)).toMatchObject({ status: 'confirmed', confirmedRequestIds: ['a', reqId] });
+  });
+
+  it('keeps a locked car done when the deciding rider declines', async () => {
+    const { reqId, offerId } = await seedMatch({ confirmed: ['a'] });
+    await setOfferLocked(offerId, true);
+
+    await declineMatch(reqId);
+
+    expect(await read('rideOffers', offerId)).toMatchObject({ status: 'confirmed', confirmedRequestIds: ['a'] });
+  });
+
+  it('refuses on a removed offer', async () => {
+    const { offerId } = await seedMatch();
+    await cancelOffer(offerId);
+    await expect(setOfferLocked(offerId, true)).rejects.toThrow(/removed/);
+  });
+});
+
+describe('changing seats (updateOfferSeats)', () => {
+  it('fills the car when seats drop to the passengers aboard', async () => {
+    const { reqId, offerId } = await seedMatch({ confirmed: ['a'] });
+    await acceptMatch(reqId); // 2 of 4
+
+    await updateOfferSeats(offerId, 2);
+
+    expect(await read('rideOffers', offerId)).toMatchObject({ seatCapacity: 2, status: 'confirmed' });
+  });
+
+  it('reopens a full car when seats are added', async () => {
+    const { reqId, offerId } = await seedMatch({ confirmed: ['a'], seatCapacity: 2 });
+    await acceptMatch(reqId); // 2 of 2, full
+
+    await updateOfferSeats(offerId, 4);
+
+    expect(await read('rideOffers', offerId)).toMatchObject({ seatCapacity: 4, status: 'pending' });
+  });
+
+  it('never goes below the seats taken, counting a rider still deciding', async () => {
+    const { offerId } = await seedMatch({ confirmed: ['a', 'b'] }); // 2 aboard + 1 deciding
+
+    await expect(updateOfferSeats(offerId, 2)).rejects.toThrow(/at least 3/);
+    expect((await read('rideOffers', offerId)).seatCapacity).toBe(4);
+  });
+
+  it('stays within the 1-12 the booking form allows', async () => {
+    const { offerId } = await seedMatch();
+    await expect(updateOfferSeats(offerId, 13)).rejects.toThrow(/1 to 12/);
+    await expect(updateOfferSeats(offerId, 0)).rejects.toThrow(/1 to 12/);
   });
 });

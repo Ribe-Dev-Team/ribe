@@ -45,6 +45,11 @@ export interface OfferDoc extends RequestDoc {
   pendingRequestId?: string | null;
   /** Riders who accepted in earlier runs, in pickup order. */
   confirmedRequestIds?: string[];
+  /** False once the driver locks the trip. Absent counts as true. */
+  acceptingMore?: boolean;
+  /** The riders the stored confirmed timetable lists, in order - absent when
+   *  the car has no timetable stored (see `ScheduleWrite` in writes.ts). */
+  scheduledRiders?: string[];
 }
 
 export type SkipReason =
@@ -53,6 +58,7 @@ export type SkipReason =
   | 'BAD_TIME'                 // missing date or a malformed HH:mm
   | 'DEPARTED'                 // the trip is already over or under way
   | 'SLOT_TAKEN'               // offer already holds a rider awaiting approval
+  | 'LOCKED'                   // the driver stopped taking passengers
   | 'CONFIRMED_RIDER_UNKNOWN'; // a confirmed rider's request can't be read back
 
 export interface Skipped {
@@ -104,6 +110,7 @@ export function groupIntoBatches(
 
     if (doc.status !== MATCHABLE_APP_STATUS) return skip('NOT_MATCHABLE');
     if (kind === 'offer' && (doc as OfferDoc).pendingRequestId) return skip('SLOT_TAKEN');
+    if (kind === 'offer' && (doc as OfferDoc).acceptingMore === false) return skip('LOCKED');
     if (!doc.coord) return skip('NO_COORD');
     if (!hasValidTimes(doc)) return skip('BAD_TIME');
 
@@ -231,8 +238,13 @@ function toMatchRequest(
 }
 
 /**
- * A driver leaves at their stated departure time. Two things follow from their
- * stated arrival time as well:
+ * A driver's stated departure is the EARLIEST they can leave. Leaving campus
+ * that's when they go; heading to campus the trip is planned backwards from
+ * the deadlines and leaves as late as still gets everyone there in time
+ * (`slideMinutes` in route.ts). Three things follow from their stated arrival:
+ *
+ *  - `arriveBy`: their own deadline for that planning, less
+ *    `arrivalMarginMinutes` like every rider's.
  *
  *  - Their detour cap is the smaller of what they offered and what their own
  *    window leaves after the direct drive. The form only checks the offer
@@ -242,11 +254,12 @@ function toMatchRequest(
  *  - Their `travelWindow` (what the time filter compares against a rider's) is
  *    when the car could be at a rider's door. Leaving campus, every passenger
  *    boards at departure, so it is exactly the departure time. Heading to
- *    campus, pickups happen somewhere along the drive, so it spans departure to
- *    the latest the car could still be on the road - generous on purpose, like
- *    the corridor test, because a pair wrongly rejected here is never seen again.
- *    `addPassenger` then checks precisely that nobody is collected before
- *    they're ready and everyone arrives in time.
+ *    campus, pickups happen somewhere along the drive, and the drive can be
+ *    planned as late as the driver's arrival time - so it spans departure to
+ *    arrival. Generous on purpose, like the corridor test, because a pair
+ *    wrongly rejected here is never seen again. `addPassenger` then checks
+ *    precisely that nobody is collected before they're ready and everyone
+ *    arrives in time.
  */
 function toMatchOffer(
   doc: OfferDoc & { coord: Coord },
@@ -274,9 +287,7 @@ function toMatchOffer(
     currTripDuration = ev.totalMinutes;
   }
 
-  const lastPickup = doc.toUni
-    ? new Date(departAt.getTime() + (direct + maxDetour) * 60_000)
-    : departAt;
+  const lastPickup = doc.toUni ? new Date(Math.max(departAt.getTime(), driverArriveBy.getTime())) : departAt;
 
   return {
     offerId: doc.id,
@@ -286,6 +297,7 @@ function toMatchOffer(
     end,
     travelWindow: { start: departAt, end: lastPickup },
     maxDetour,
+    arriveBy: plannedArrival(driverArriveBy, cfg),
     seatsOffered: doc.seatCapacity,
     seatsFilled: onBoard.length,
     acceptingMore: true,

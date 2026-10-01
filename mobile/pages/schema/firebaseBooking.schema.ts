@@ -96,6 +96,11 @@ export interface RideOffer {
   */
   matchedRiderId?: string;
   confirmedRequestIds?: string[];
+  /*
+  False once the driver locks the trip: no more passengers are offered to it
+  (setOfferLocked). Absent means true - offers start out taking riders.
+  */
+  acceptingMore?: boolean;
   matchedAt?: Timestamp;
   acceptDeadline?: Timestamp;
   /*

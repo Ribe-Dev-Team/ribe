@@ -36,7 +36,7 @@ import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, SyntheticTravelTime,
 } from '../src/travelTime';
 import { envValue } from './env';
-import { connect, settleMatched, loadPending, loadRequestsById, writeMatches } from './firestore';
+import { connect, settleMatched, loadPending, loadRequestsById, writeMatches, writeSchedules } from './firestore';
 import { MatchingStore, RunReport, runOnce } from './runOnce';
 
 /** Why a driver didn't take a rider, in words. A Record so a new reason
@@ -61,6 +61,10 @@ const WHY: Record<RejectReason, string> = {
   LOST_SLOT: "fits, but the driver's one new seat this run went to a rider who adds fewer minutes",
 };
 
+/** "08:35" in Melbourne, whatever clock the machine running this is on. */
+const clock = (d: Date) =>
+  d.toLocaleTimeString('en-AU', { timeZone: CAMPUS_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false });
+
 function printReport(report: RunReport, dryRun: boolean): void {
   const { released, expired } = report.settled;
   if (released.length) {
@@ -80,13 +84,22 @@ function printReport(report: RunReport, dryRun: boolean): void {
   for (const b of report.batches) {
     const head = `${b.batchKey}: ${b.requests} rider(s), ${b.offers} driver(s)`;
     if (b.error) { console.log(`${head} -> FAILED: ${b.error}`); continue; }
-    if (!b.requests || !b.offers) { console.log(`${head} -> nothing to pair`); continue; }
+    const filled = b.timetablesFilled.length
+      ? `  ${dryRun ? 'would fill in' : 'filled in'} the missing timetable of: ${b.timetablesFilled.join(', ')}`
+      : '';
+    if (!b.requests || !b.offers) {
+      console.log(`${head} -> nothing to pair`);
+      if (filled) console.log(filled);
+      continue;
+    }
 
     const written = dryRun ? 'dry run, not written' : `${b.applied.length} written`;
     console.log(`${head} -> ${b.matches.length} match(es), ${written}`);
+    if (filled) console.log(filled);
     for (const m of b.matches) {
       const added = `${m.driverAddedMinutes >= 0 ? '+' : ''}${m.driverAddedMinutes.toFixed(1)}`;
       console.log(`  ${m.reqId} -> ${m.offerId}   rider detour ${m.riderDetour.toFixed(1)} min, driver ${added} min`);
+      console.log(`      driver leaves ${clock(m.departAt)}, pickup ~${clock(m.pickupAt)}, arrives ~${clock(m.arriveAt)}`);
     }
     for (const s of b.writeSkips) console.log(`  not written: ${s.reqId} (${s.reason})`);
     for (const u of b.unmatched) {
@@ -119,6 +132,7 @@ async function main(): Promise<number> {
     loadPending: () => loadPending(db),
     loadRequestsById: (ids) => loadRequestsById(db, ids),
     writeMatches: (writes) => writeMatches(db, writes),
+    writeSchedules: (writes) => writeSchedules(db, writes),
   };
 
   const now = new Date();

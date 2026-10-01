@@ -61,6 +61,12 @@ export interface MatchOffer {
   travelWindow: TravelWindow;
   /** Minutes of detour the driver consented to across the whole trip. */
   maxDetour: number;
+  /** When the driver should be at their destination: their stated arrival,
+   *  less `arrivalMarginMinutes`. Trips to campus are planned backwards from
+   *  this and every rider's deadline - the car leaves as late as still gets
+   *  everyone there in time (see `slideMinutes` in route.ts). Absent, a trip
+   *  simply leaves at `travelWindow.start`. */
+  arriveBy?: Date;
 
   /** What the driver said upfront. */
   seatsOffered: number;

@@ -3,7 +3,8 @@ import { DocumentSnapshot, FieldValue, Firestore, getFirestore, Timestamp } from
 import { readFileSync } from 'fs';
 import { MATCHABLE_APP_STATUS, OfferDoc, RequestDoc } from '../src/adapter';
 import {
-  FieldUpdate, MatchWrite, MatchWriteSkip, planMatchWrite, planSettle, Settled, StoredOffer, StoredRequest,
+  FieldUpdate, MatchWrite, MatchWriteSkip, planMatchWrite, planScheduleWrite, planSettle, ScheduleWrite, Settled,
+  StoredOffer, StoredRequest,
 } from '../src/writes';
 
 /**
@@ -70,6 +71,10 @@ function toOfferDoc(snap: DocumentSnapshot): OfferDoc {
     seatCapacity: d.seatCapacity,
     pendingRequestId: d.pendingRequestId ?? null,
     confirmedRequestIds: d.confirmedRequestIds ?? [],
+    acceptingMore: d.acceptingMore !== false,
+    scheduledRiders: Array.isArray(d.schedule?.stops)
+      ? d.schedule.stops.map((s: { requestId: string }) => s.requestId)
+      : undefined,
   };
 }
 
@@ -87,6 +92,7 @@ function toStoredOffer(snap: DocumentSnapshot): StoredOffer | undefined {
     seatCapacity: d.seatCapacity,
     pendingRequestId: d.pendingRequestId ?? null,
     confirmedRequestIds: d.confirmedRequestIds ?? [],
+    acceptingMore: d.acceptingMore !== false,
   };
 }
 
@@ -173,4 +179,24 @@ export async function writeMatches(
     else skipped.push({ reqId: m.reqId, reason: result.reason });
   }
   return { applied, skipped };
+}
+
+/**
+ * Fill in confirmed cars' timetables (src/writes.ts → planScheduleWrite), one
+ * transaction each, re-checking the car's riders haven't changed since they
+ * were read. Returns the offers written.
+ */
+export async function writeSchedules(db: Firestore, writes: ScheduleWrite[]): Promise<string[]> {
+  const written: string[] = [];
+  for (const w of writes) {
+    const done = await db.runTransaction(async (tx) => {
+      const offerRef = db.collection(OFFERS).doc(w.offerId);
+      const update = planScheduleWrite(toStoredOffer(await tx.get(offerRef)), w);
+      if (!update) return false;
+      tx.update(offerRef, toFirestoreUpdate(update));
+      return true;
+    });
+    if (done) written.push(w.offerId);
+  }
+  return written;
 }

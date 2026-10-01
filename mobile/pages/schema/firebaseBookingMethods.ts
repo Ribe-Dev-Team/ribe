@@ -4,7 +4,7 @@ import {
 import { db } from '../../firebaseConfig';
 import { Booking, Coord } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
-import { BOOKING_STATUSES, isBookingStatus } from './matchStatus';
+import { BOOKING_STATUSES, BookingStatus, isBookingStatus } from './matchStatus';
 import { timePattern, toMinutes } from '../../utility/times';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
 
@@ -237,7 +237,7 @@ runner once their acceptDeadline passes.
  * still has an empty seat. 'pending' is the only status the matcher treats as
  * matchable (MATCHABLE_BOOKING_STATUSES), and a trip must stay matchable across
  * runs for the one-new-rider-per-run rule to ever fill a 4-seat car. It becomes
- * 'confirmed' only once full.
+ * 'confirmed' once full - or once the driver has locked it (settledOfferStatus).
  */
 export async function acceptMatch(requestID: string): Promise<void> {
   const requestRef = doc(db, 'rideRequests', requestID);
@@ -285,7 +285,7 @@ export async function acceptMatch(requestID: string): Promise<void> {
       // car, so it's dropped and the cards fall back to each rider's own times.
       schedule: offer.pendingSchedule ?? deleteField(),
       pendingSchedule: deleteField(),
-      status: ordered.length >= offer.seatCapacity ? 'confirmed' : 'pending',
+      status: settledOfferStatus({ ...offer, confirmedRequestIds: ordered }),
     });
   });
 }
@@ -331,7 +331,8 @@ export async function declineMatch(requestID: string): Promise<void> {
         tx.update(doc(db, 'rideOffers', offerId), {
           pendingRequestId: null,
           matchedRiderId: deleteField(),
-          status: 'pending',
+          // Back in the pool - unless the driver locked it with passengers aboard.
+          status: settledOfferStatus(offer),
           matchedAt: deleteField(),
           acceptDeadline: deleteField(),
           pendingSchedule: deleteField(),
@@ -366,6 +367,76 @@ export async function cancelOffer(offerID: string): Promise<void> {
       acceptDeadline: deleteField(),
       pendingSchedule: deleteField(),
     });
+  });
+}
+
+/**
+ * The status an offer's seats and lock add up to, once nobody holds its pending
+ * slot. A car is done ('confirmed') when it's full, or when the driver has
+ * locked it with at least one passenger aboard; otherwise it's back in the
+ * matcher's pool ('pending'). The runner applies the same rule
+ * (matching/src/writes.ts → settledOfferStatus).
+ */
+function settledOfferStatus(offer: Pick<RideOffer, 'seatCapacity' | 'confirmedRequestIds' | 'acceptingMore'>): BookingStatus {
+  const filled = (offer.confirmedRequestIds ?? []).length;
+  if (filled >= offer.seatCapacity) return 'confirmed';
+  if (offer.acceptingMore === false && filled > 0) return 'confirmed';
+  return 'pending';
+}
+
+/** What an offer's status should be after its seats or lock change: a rider
+ *  still deciding keeps it 'awaiting'; otherwise as settledOfferStatus. */
+function offerStatusAfterChange(offer: RideOffer): BookingStatus {
+  return offer.pendingRequestId ? 'awaiting' : settledOfferStatus(offer);
+}
+
+/**
+ * The driver stops taking passengers (`locked`), or starts again. A locked car
+ * with someone aboard is done and leaves the matcher's pool; unlocking puts it
+ * back if it has a seat free. A rider already deciding on a match keeps their
+ * seat either way - locking only stops NEW riders being offered.
+ */
+export async function setOfferLocked(offerID: string, locked: boolean): Promise<void> {
+  const offerRef = doc(db, 'rideOffers', offerID);
+
+  await runTransaction(db, async (tx) => {
+    const offerSnap = await tx.get(offerRef);
+    if (!offerSnap.exists()) throw new Error('No ride offer ' + offerID);
+
+    const offer = offerSnap.data() as RideOffer;
+    if (offer.status === 'cancelled') throw new Error('This offer has been removed.');
+
+    const next = { ...offer, acceptingMore: !locked };
+    tx.update(offerRef, { acceptingMore: !locked, status: offerStatusAfterChange(next) });
+  });
+}
+
+/**
+ * The driver changes how many passengers they'll take. Never below the riders
+ * already confirmed plus one deciding on a match, and within the same 1-12 the
+ * booking form allows. Fewer seats than before can fill the car (it's done);
+ * more can reopen a full one (back in the pool), unless it's locked.
+ */
+export async function updateOfferSeats(offerID: string, seats: number): Promise<void> {
+  if (!Number.isInteger(seats) || seats < 1 || seats > 12) {
+    throw new Error('A drive offer needs 1 to 12 seats.');
+  }
+  const offerRef = doc(db, 'rideOffers', offerID);
+
+  await runTransaction(db, async (tx) => {
+    const offerSnap = await tx.get(offerRef);
+    if (!offerSnap.exists()) throw new Error('No ride offer ' + offerID);
+
+    const offer = offerSnap.data() as RideOffer;
+    if (offer.status === 'cancelled') throw new Error('This offer has been removed.');
+
+    const taken = (offer.confirmedRequestIds ?? []).length + (offer.pendingRequestId ? 1 : 0);
+    if (seats < taken) {
+      throw new Error(`${taken} seat${taken === 1 ? ' is' : 's are'} already taken, so the car needs at least ${taken}.`);
+    }
+
+    const next = { ...offer, seatCapacity: seats };
+    tx.update(offerRef, { seatCapacity: seats, status: offerStatusAfterChange(next) });
   });
 }
 

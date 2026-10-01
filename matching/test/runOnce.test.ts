@@ -23,7 +23,7 @@ import { MONASH_CLAYTON as CAMPUS, OfferDoc, RequestDoc } from '../src/adapter';
 import { zonedDateTime } from '../src/melbourneTime';
 import { SyntheticTravelTime } from '../src/travelTime';
 import { Coord } from '../src/types';
-import { FieldUpdate, planMatchWrite, planSettle, Settled } from '../src/writes';
+import { FieldUpdate, planMatchWrite, planScheduleWrite, planSettle, Settled } from '../src/writes';
 
 type Doc = Record<string, any>;
 
@@ -52,11 +52,28 @@ class MemoryStore implements MatchingStore {
 
   async loadPending() {
     const pending = (m: Map<string, Doc>) => [...m.values()].filter((d) => d.status === 'pending').map((d) => ({ ...d }));
-    return { requests: pending(this.requests) as RequestDoc[], offers: pending(this.offers) as OfferDoc[] };
+    // Like runner/firestore.ts: which riders the stored timetable lists.
+    const offers = pending(this.offers).map((o) => ({
+      ...o,
+      scheduledRiders: o.schedule?.stops?.map((s: { requestId: string }) => s.requestId),
+    }));
+    return { requests: pending(this.requests) as RequestDoc[], offers: offers as OfferDoc[] };
   }
 
   async loadRequestsById(ids: string[]) {
     return new Map(ids.filter((id) => this.requests.has(id)).map((id) => [id, { ...this.requests.get(id)! } as RequestDoc]));
+  }
+
+  async writeSchedules(writes: Parameters<MatchingStore['writeSchedules']>[0]) {
+    const written: string[] = [];
+    for (const w of writes) {
+      const offer = this.offers.get(w.offerId);
+      const update = planScheduleWrite(offer as any, w);
+      if (!update || !offer) continue;
+      this.apply(offer, update);
+      written.push(w.offerId);
+    }
+    return written;
   }
 
   async writeMatches(writes: Parameters<MatchingStore['writeMatches']>[0]) {
@@ -243,5 +260,52 @@ describe('runOnce — explanations', () => {
     expect(report.batches[0].unmatched).toEqual([
       { reqId: 'r2', byOffer: [{ offerId: 'd', reason: 'LOST_SLOT' }] },
     ]);
+  });
+});
+
+describe('runOnce — confirmed cars missing a timetable', () => {
+  /** A match from before timetables were stored: r1 confirmed in d's car,
+   *  no times anywhere. With `alone`, nobody else is looking for a ride. */
+  function legacy(store: MemoryStore, alone = false) {
+    seed(store);
+    Object.assign(store.requests.get('r1')!, { status: 'confirmed', matchedOfferId: 'd', matchedDriverId: 'u-d' });
+    store.offers.get('d')!.confirmedRequestIds = ['r1'];
+    if (alone) { store.requests.delete('r2'); store.requests.delete('lost'); }
+  }
+
+  it("fills it in, so the rider's card can show their pickup and arrival", async () => {
+    const store = new MemoryStore();
+    legacy(store);
+
+    const report = await runOnce(store, options(store));
+
+    expect(report.batches[0].timetablesFilled).toEqual(['d']);
+    const { stops } = store.offers.get('d')!.schedule;
+    expect(stops.map((s: { requestId: string }) => s.requestId)).toEqual(['r1']);
+    // Planned from the deadline like any match: in by 8:50 for a stated 9:00.
+    expect(stops[0].arriveAt.getTime()).toBeLessThanOrEqual(zonedDateTime({ year: 2026, month: 10, day: 5 }, '08:50').getTime());
+  });
+
+  it('does so even when nobody new is looking for a ride', async () => {
+    const store = new MemoryStore();
+    legacy(store, true);
+
+    const report = await runOnce(store, options(store));
+
+    expect(report.batches[0]).toMatchObject({ requests: 0, timetablesFilled: ['d'] });
+    expect(store.offers.get('d')!.schedule).toBeDefined();
+  });
+
+  it('only reports it on a dry run, and leaves an up-to-date timetable alone', async () => {
+    const store = new MemoryStore();
+    legacy(store, true);
+
+    const dry = await runOnce(store, options(store, NOW, true));
+    expect(dry.batches[0].timetablesFilled).toEqual(['d']);
+    expect(store.offers.get('d')!.schedule).toBeUndefined();
+
+    await runOnce(store, options(store));
+    const again = await runOnce(store, options(store));
+    expect(again.batches[0].timetablesFilled).toEqual([]);
   });
 });

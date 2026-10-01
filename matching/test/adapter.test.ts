@@ -80,6 +80,7 @@ describe('groupIntoBatches', () => {
       ],
       [
         offerDoc({ id: 'busy', pendingRequestId: 'someone' }),
+        offerDoc({ id: 'locked', acceptingMore: false }),
         offerDoc({ id: 'gone', date: stored(1), departureTime: '08:00' }), // 08:00 on 1 Oct - before NOW's 10:00
       ],
       NOW,
@@ -92,6 +93,7 @@ describe('groupIntoBatches', () => {
       { kind: 'request', id: 'undated', reason: 'BAD_TIME' },
       { kind: 'request', id: 'over', reason: 'DEPARTED' },
       { kind: 'offer', id: 'busy', reason: 'SLOT_TAKEN' },
+      { kind: 'offer', id: 'locked', reason: 'LOCKED' },
       { kind: 'offer', id: 'gone', reason: 'DEPARTED' },
     ]);
   });
@@ -138,15 +140,20 @@ describe('toMatchInputs', () => {
   });
 
   it("sets a driver's window to when the car could reach a rider", () => {
+    // To campus the drive can be planned as late as the driver's arrival
+    // time, so the car can be at a rider's door any time up to then.
     const toCampus = toMatchInputs(batchOf([], [offerDoc({ id: 'o' })]), new Map(), t).offers[0];
-    expect(toCampus.travelWindow.start).toEqual(melb(5, '08:00'));
-    expect(toCampus.travelWindow.end.getTime()).toBeCloseTo(
-      melb(5, '08:00').getTime() + (t.minutes(north(20), CAMPUS) + 20) * 60_000, -1,
-    );
+    expect(toCampus.travelWindow).toEqual({ start: melb(5, '08:00'), end: melb(5, '09:00') });
 
     // Leaving campus, everyone boards at departure.
     const fromCampus = toMatchInputs(batchOf([], [offerDoc({ id: 'o', toUni: false })]), new Map(), t).offers[0];
     expect(fromCampus.travelWindow).toEqual({ start: melb(5, '08:00'), end: melb(5, '08:00') });
+  });
+
+  it("gives the driver a deadline with the same margin riders get", () => {
+    const offer = toMatchInputs(batchOf([], [offerDoc({ id: 'o' })]), new Map(), t).offers[0];
+    // "On campus by 9:00" is planned as 8:50 (arrivalMarginMinutes).
+    expect(offer.arriveBy).toEqual(melb(5, '08:50'));
   });
 
   it('rebuilds confirmed riders in stored pickup order, with their current detours', () => {

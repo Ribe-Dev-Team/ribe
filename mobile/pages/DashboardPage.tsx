@@ -15,13 +15,14 @@ import { colors } from '../styles';
 import RideCard, { RideCardProps, RideStatus } from '../components/RideCard';
 import { useAuth } from '../auth/useAuth';
 import { fetchUserRides } from '../services/rideData';
+import { ridesForLane } from '../services/dashboardLanes';
 
 interface DashboardPageProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
   /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
-  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel'>;
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
 }
 
 type ViewMode = 'rider' | 'driver';
@@ -168,9 +169,9 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
       {loading ? (
         <View style={localStyles.loadingState}><ActivityIndicator color={colors.white} size="small" /></View>
       ) : currentLanes.map((lane) => {
-        const rides: RideCardProps[] = dataset
-          .filter((r: RideCardProps) => r.status === lane.status)
-          .sort((a: RideCardProps, b: RideCardProps) => a.date.getTime() - b.date.getTime());
+        // A driver's drive still open to passengers shows in Open Driving
+        // Offers as well as Upcoming Drives - see ridesForLane.
+        const rides = ridesForLane(dataset, lane.status, mode);
         return (
           <View key={lane.status} style={localStyles.lane}>
             <Text style={localStyles.laneTitle}>{lane.title}</Text>

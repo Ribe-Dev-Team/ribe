@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
-import { doc, getDoc } from 'firebase/firestore';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import MapPreview from '../components/MapPreview';
-import { db } from '../firebaseConfig';
+import { fetchDriverProfile } from '../services/rideData';
 
 interface RideDetailPageProps {
 	ride: Ride;
@@ -70,11 +69,12 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			}
 
 			try {
-				const driverDoc = await getDoc(doc(db, 'drivers', ride.driverUid));
+				// Driver registration and account profile merged - a driver may not
+				// have finished registration, and only the account has bio/degree/phone.
+				const data = await fetchDriverProfile(ride.driverUid);
 				if (!active) return;
 
-				if (driverDoc.exists()) {
-					const data = driverDoc.data();
+				if (Object.keys(data).length > 0) {
 					setProfile({
 						initials: (data['name'] ?? ride.driver).split(' ').map((part: string) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
 						bio: data['bio'] ?? 'This driver has not added a bio yet.',
