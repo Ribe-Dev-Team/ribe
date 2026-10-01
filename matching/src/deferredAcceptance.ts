@@ -1,12 +1,12 @@
 import {
   MatchOffer, MatchRequest, MatchingConfig, DEFAULT_CONFIG, MatchRunResult,
-  OnBoardRider, ProposedMatch, TravelTimeMatrix,
+  OnBoardRider, ProposedMatch, RejectReason, TravelTimeMatrix,
 } from './types';
-import { hardFilter, waypointOf } from './filter';
+import { hardFilter, passengerOf, waypointOf } from './filter';
 import {
   driverLatestArrival, routeSlackMinutes, scoreFromMetrics, scorePairing, ScoreWeights, DEFAULT_WEIGHTS,
 } from './score';
-import { departureOf, DepartureTime, evaluateRoute, RouteEvaluation } from './route';
+import { addPassenger, departureOf, DepartureTime, evaluateRoute, RouteEvaluation } from './route';
 /** Never promise a match more time to accept than the batch can actually
  *  honour before the trip locks. */
 export function computeAcceptDeadline(now: Date, departAt: Date, cfg: MatchingConfig): Date {
@@ -294,6 +294,24 @@ export function runMatchingProvisional(
     .filter((r) => r.status === 'unassigned' && !matchedIds.has(r.reqId))
     .map((r) => r.reqId);
 
+  // Why each unmatched rider was left out, driver by driver. Worked out after
+  // the run, against the same frozen baselines the run used, so it explains the
+  // result without influencing it. A pair the filter didn't reject and that
+  // still fits the trip can only have lost: that driver's one slot went to a
+  // rider costing fewer minutes.
+  const filterReason = new Map(rejected.map((r) => [`${r.reqId}|${r.offerId}`, r.reason]));
+  const unmatchedReasons = unmatchedRequestIds.map((reqId) => {
+    const req = requestById.get(reqId)!;
+    const byOffer = liveOffers.map((o) => {
+      const filtered = filterReason.get(`${reqId}|${o.offerId}`);
+      if (filtered) return { offerId: o.offerId, reason: filtered };
+      const fit = addPassenger(rankingOfferByOffer.get(o.offerId)!, passengerOf(req), departureOf(departAt, o), t);
+      const reason: RejectReason = fit.feasible ? 'LOST_SLOT' : fit.reason ?? 'NO_FEASIBLE_INSERTION';
+      return { offerId: o.offerId, reason };
+    });
+    return { reqId, byOffer };
+  });
+
   let seatsLeftOnClosedTrips = 0;
   let closedByDriverChoice = 0;
   let closedBySlack = 0;
@@ -316,6 +334,7 @@ export function runMatchingProvisional(
     matches,
     rejected,
     unmatchedRequestIds,
+    unmatchedReasons,
     stats: {
       requestsIn,
       offersIn: offers.length,

@@ -95,6 +95,7 @@ export interface InsertionResult {
   marginalDriverMinutes?: number;
   reason?:
     | 'RIDER_DETOUR_CAP'
+    | 'ONBOARD_DETOUR_CAP'
     | 'DRIVER_DETOUR_CAP'
     | 'ARRIVAL_WINDOW'
     | 'PICKUP_BEFORE_READY'
@@ -153,14 +154,17 @@ export function addPassenger(
     // Every rider's detour cap — existing riders included.
     const riders = [...existing.slice(0, idx), passenger, ...existing.slice(idx)];
 
-    let capOk = true;
-    let arrivalOk = true;
+    // Which rider breaks is kept apart - the newcomer's own cap, or someone
+    // already aboard - because "this rider's detour is too long" and "this rider
+    // would push someone else over" call for different explanations.
+    let breach: InsertionResult['reason'] | undefined;
     for (let i = 0; i < riders.length; i++) {
-      if (ev.riderDetours[i] > riders[i].maxDetour) { capOk = false; break; }
-      if (ev.riderArrivals[i] > riders[i].arriveBy) { arrivalOk = false; break; }
+      if (ev.riderDetours[i] > riders[i].maxDetour) {
+        breach = i === idx ? 'RIDER_DETOUR_CAP' : 'ONBOARD_DETOUR_CAP'; break;
+      }
+      if (ev.riderArrivals[i] > riders[i].arriveBy) { breach = 'ARRIVAL_WINDOW'; break; }
     }
-    if (!capOk)     { sawCapViolation ??= 'RIDER_DETOUR_CAP'; continue; }
-    if (!arrivalOk) { sawCapViolation ??= 'ARRIVAL_WINDOW';   continue; }
+    if (breach) { sawCapViolation ??= breach; continue; }
     if (!withinTimeWindows(offer, riders, ev, departAt)) {
       sawCapViolation ??= 'PICKUP_BEFORE_READY'; continue;
     }

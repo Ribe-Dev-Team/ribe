@@ -62,3 +62,15 @@ describe('closed trips are excluded (KEY-137)', () => {
     expect(rejected[0].reason).toBe('DRIVER_CLOSED');
   });
 });
+
+describe('why a trip takes nobody', () => {
+  it('names slack, not the driver, when someone aboard has no detour to spare', () => {
+    const r = makeRequest({ reqId: 'r', start: near });
+    const o = makeOffer({
+      offerId: 'o', start: near, seatsFilled: 1,
+      onBoard: [{ reqId: 'x', riderId: 'x', waypoint: near, arriveBy: at(9), maxDetour: 10, currentDetour: 9 }],
+    });
+    const { rejected } = hardFilter([r], [o], DEFAULT_CONFIG, at(9), at(0));
+    expect(rejected[0].reason).toBe('OUT_OF_SLACK');
+  });
+});

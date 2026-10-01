@@ -116,16 +116,19 @@ export type RejectReason =
   | 'OFFER_NOT_OPEN'
   | 'NO_SEATS'
   | 'DRIVER_CLOSED'
+  | 'OUT_OF_SLACK'          // someone aboard has no detour left to give
   | 'DIRECTION'
   | 'TIME_WINDOW'
   | 'BEARING'
   | 'CORRIDOR'
   | 'NO_FEASIBLE_INSERTION'
-  | 'RIDER_DETOUR_CAP'
+  | 'RIDER_DETOUR_CAP'      // the new rider's own detour would be too long
+  | 'ONBOARD_DETOUR_CAP'    // someone already aboard would exceed theirs
   | 'DRIVER_DETOUR_CAP'
   | 'ARRIVAL_WINDOW'
   | 'PICKUP_BEFORE_READY'
-  | 'MATCHING_CUTOFF';
+  | 'MATCHING_CUTOFF'
+  | 'LOST_SLOT';            // feasible, but the one slot went to a cheaper rider
 
 /** One rider offered to one driver by a matching run. */
 export interface ProposedMatch {
@@ -154,6 +157,8 @@ export interface MatchRunResult {
   matches: ProposedMatch[];
   rejected: RejectedPairing[];
   unmatchedRequestIds: string[];
+  /** For each unmatched rider, why each driver in the batch didn't take them. */
+  unmatchedReasons: Array<{ reqId: string; byOffer: Array<{ offerId: string; reason: RejectReason }> }>;
   stats: {
     requestsIn: number;
     offersIn: number;

@@ -25,7 +25,7 @@ npx ts-node test/simulate.ts      # SMART Goal 1 evidence run
 | `src/score.ts` | KEY-139 — `offerScore` / `reqScore`, via David's `calcDriverScore` / `calcPassengerScore`, including his slack |
 | `src/deferredAcceptance.ts` | KEY-41 — **the default matching loop**: provisional assignment with bumping, one new rider per trip per run |
 | `src/riderPolicy.ts` | derives a rider's `maxDetour` — the app never asks for it |
-| `src/travelTime.ts` | the seam where Google Maps plugs in — Routes API matrix, plus the legacy Distance Matrix client |
+| `src/travelTime.ts` | the seam where Google Maps plugs in — Distance Matrix client (the runner's default) and the Routes API client that replaces it |
 | `src/adapter.ts` | stored bookings → matcher inputs; batching by date + direction (the `batchKey`) |
 | `src/melbourneTime.ts` | stored date + `"HH:mm"` → real instants, daylight saving included |
 | `src/writes.ts` | when a match may still be written, and what an expiry changes — no SDK, so testable |
@@ -342,8 +342,15 @@ whatever schedules `npm run match`.
 ```bash
 npm run match -- --dry-run      # compute and print; write nothing, expire nothing
 npm run match -- --synthetic    # estimated travel times, no Google calls
-npm run match -- --distance-matrix  # legacy Distance Matrix API instead of Routes
+npm run match -- --routes       # Routes API instead of Distance Matrix
 ```
+
+Every rider a run leaves unmatched is listed with each driver's reason, in
+words — "too far off the driver's route", "would push someone already in the
+car past their detour limit", "fits, but the driver's one new seat this run went
+to a rider who adds fewer minutes", and so on. The reasons
+(`MatchRunResult.unmatchedReasons`) are worked out after the run, against the
+same baselines the run used, so they explain the result without changing it.
 
 **Configuration** — environment variables, falling back to `mobile/.env` for the
 two values the app already has:
@@ -352,7 +359,7 @@ two values the app already has:
 |---|---|
 | `FIREBASE_SERVICE_ACCOUNT` | path to a service-account key (Firebase console → Project settings → Service accounts → Generate new private key). **Keep it outside the repo** — it bypasses every security rule. `GOOGLE_APPLICATION_CREDENTIALS` works too. |
 | `FIREBASE_PROJECT_ID` | falls back to `EXPO_PUBLIC_FIREBASE_PROJECT_ID` |
-| `GOOGLE_MAPS_API_KEY` | falls back to `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`; the key's project needs the **Routes API** enabled, or Distance Matrix with `--distance-matrix`. Without a key, travel times are synthetic estimates and the run says so. |
+| `GOOGLE_MAPS_API_KEY` | falls back to `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`; the key's project needs the **Distance Matrix API** enabled, or the Routes API with `--routes`. Without a key, travel times are synthetic estimates and the run says so. |
 | `FIRESTORE_EMULATOR_HOST` | run against the local emulator; no credentials needed |
 
 **Scheduling** is deliberately outside the code. Anything that can run a command
@@ -375,25 +382,27 @@ before its cutoff.
   car's route from that list, so an append-only list would silently re-check
   everyone's detour against the wrong route.
 
-### Travel times: Routes API, not Distance Matrix
+### Travel times: Distance Matrix by default, Routes ready
 
-Google made the Distance Matrix API a legacy service on 1 March 2025; it cannot
-be enabled on Cloud projects created since, where every call fails with
-`REQUEST_DENIED`. `buildRoutesTravelTimeMatrix` calls its replacement,
-`computeRouteMatrix`, behind the same `PrecomputedTravelTime` interface. It
-dedupes points (campus appears constantly), sends 10×10 chunks (under every Route
-Matrix element cap), and leaves out unroutable legs, which fall back to
-`SyntheticTravelTime` in the runner. No API calls happen inside the matching loop.
+The runner uses **Distance Matrix** (`buildGoogleTravelTimeMatrix`) by default,
+because it is the API Ribe's Maps key has enabled — `npm run test:live` calls
+both, and on 1 October 2026 Distance Matrix passed while Routes was refused
+("Routes API has not been used in project … or it is disabled").
 
-It uses `TRAFFIC_UNAWARE`: a batch spans a whole day of departures, so no single
-departure time describes every leg, and traffic "now" is wrong for tomorrow
-morning. **Cost grows with the square of a batch's distinct points**, which is
-why the matrix is built per batch rather than across days.
-`buildGoogleTravelTimeMatrix` (Distance Matrix) is kept for keys on older
-projects: `npm run match -- --distance-matrix` uses it in place of Routes. It
-still works where the project used Distance Matrix before the cutoff, but it is
-feature-frozen and will be turned down with 12 months' notice, so Routes stays
-the default.
+Distance Matrix is a legacy service: Google froze it on 1 March 2025, Cloud
+projects created since cannot enable it, and it will be turned down with 12
+months' notice. Projects that used it before keep it. Its replacement is ready
+behind the same `PrecomputedTravelTime` interface: `buildRoutesTravelTimeMatrix`
+(`computeRouteMatrix`), selected with `npm run match -- --routes` once the key's
+project enables the Routes API. Switching is a flag, not a code change.
+
+Both clients dedupe points (campus appears constantly), send 10×10 chunks
+(under every element cap), and leave out unroutable legs, which fall back to
+`SyntheticTravelTime` in the runner. No API calls happen inside the matching
+loop. Neither uses live traffic: a batch spans a whole day of departures, so no
+single departure time describes every leg, and traffic "now" is wrong for
+tomorrow morning. **Cost grows with the square of a batch's distinct points**,
+which is why the matrix is built per batch rather than across days.
 
 ## Testing
 

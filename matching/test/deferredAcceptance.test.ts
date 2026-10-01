@@ -302,3 +302,28 @@ describe('runMatchingProvisional — each driver routed from their own departure
     expect(res.matches.map((m) => m.offerId)).toEqual(['late']);
   });
 });
+
+describe('runMatchingProvisional — explains every rider it leaves out', () => {
+  const north = (km: number, eastKm = 0) => ({
+    lat: CAMPUS.lat + km / 110.57, lon: CAMPUS.lon + eastKm / 87.8,
+  });
+  const offer = makeOffer({ offerId: 'o', start: north(20), seatsOffered: 1 });
+  // Proposes first and holds the seat, until a rider who costs less arrives.
+  const offRoute = makeRequest({ reqId: 'offRoute', start: north(12, 1.5) });
+  const onRoute = makeRequest({ reqId: 'onRoute', start: north(10) });
+  // South of campus: the driver comes from the north.
+  const south = makeRequest({ reqId: 'south', start: north(-15) });
+
+  const res = runMatchingProvisional('b', [offRoute, onRoute, south], [offer], at(8), at(0), t);
+
+  it('matches the cheaper rider', () => {
+    expect(res.matches.map((m) => m.reqId)).toEqual(['onRoute']);
+  });
+
+  it('gives each unmatched rider a reason per driver', () => {
+    expect(res.unmatchedReasons).toEqual([
+      { reqId: 'offRoute', byOffer: [{ offerId: 'o', reason: 'LOST_SLOT' }] },
+      { reqId: 'south', byOffer: [{ offerId: 'o', reason: 'BEARING' }] },
+    ]);
+  });
+});

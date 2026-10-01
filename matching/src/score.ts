@@ -1,6 +1,6 @@
 import { MatchOffer, MatchPairing, MatchRequest, TravelTimeMatrix } from './types';
 import { addPassenger, evaluateRoute, RouteEvaluation } from './route';
-import { waypointOf } from './filter';
+import { passengerOf } from './filter';
 
 /**
  * KEY-139. Two-sided scoring, mirroring matchPairing { offerScore, reqScore }.
@@ -175,12 +175,7 @@ export function scorePairing(
   t: TravelTimeMatrix,
   w: ScoreWeights = DEFAULT_WEIGHTS,
 ): ScoredPairing | null {
-  const insertion = addPassenger(offer, {
-    waypoint: waypointOf(req),
-    maxDetour: req.maxDetour,
-    arriveBy: req.arriveBy,
-    earliest: req.travelWindow.start,
-  }, departAt, t);
+  const insertion = addPassenger(offer, passengerOf(req), departAt, t);
   if (!insertion.feasible || !insertion.evaluation) return null;
 
   const ev = insertion.evaluation;

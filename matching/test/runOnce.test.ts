@@ -183,3 +183,15 @@ describe('runOnce', () => {
     expect(store.requests.get('r1')!.status).toBe('pending');
   });
 });
+
+describe('runOnce — explanations', () => {
+  it('reports who was left out and why', async () => {
+    const store = new MemoryStore();
+    seed(store);
+    const report = await runOnce(store, options(store, NOW, true));
+    // r1 and r2 cost the driver the same, so r1 - who asked first - keeps the seat.
+    expect(report.batches[0].unmatched).toEqual([
+      { reqId: 'r2', byOffer: [{ offerId: 'd', reason: 'LOST_SLOT' }] },
+    ]);
+  });
+});

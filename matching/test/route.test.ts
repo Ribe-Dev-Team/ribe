@@ -96,7 +96,7 @@ describe('incremental feasibility', () => {
 
     const res = addPassenger(offer, { waypoint: wayOff, maxDetour: 600, arriveBy: at(23) }, at(8), t);
     expect(res.feasible).toBe(false);
-    expect(res.reason).toBe('RIDER_DETOUR_CAP');
+    expect(res.reason).toBe('ONBOARD_DETOUR_CAP');
   });
 
   it('refuses rather than breaking an existing rider, whatever the order', () => {
@@ -121,7 +121,7 @@ describe('incremental feasibility', () => {
     // No ordering can keep the existing rider inside a 1-minute cap here,
     // so the insertion is correctly refused rather than silently breaking them.
     expect(res.feasible).toBe(false);
-    expect(res.reason).toBe('RIDER_DETOUR_CAP');
+    expect(res.reason).toBe('ONBOARD_DETOUR_CAP');
   });
 
   it('allows an insertion when everyone has budget for it', () => {
@@ -238,5 +238,22 @@ describe("addPassenger — nobody is collected before they're ready (David's tim
     expect(addPassenger(fromCampus, { ...rider, arriveBy: at(17, 15) }, at(17), t).feasible).toBe(true);
     expect(addPassenger(fromCampus, { ...rider, arriveBy: at(17, 5) }, at(17), t).reason)
       .toBe('ARRIVAL_WINDOW');
+  });
+});
+
+describe('addPassenger — says WHOSE limit blocked it', () => {
+  it("reports the newcomer's own cap apart from a passenger already aboard", () => {
+    // The existing rider can absorb anything; the newcomer will take half a minute.
+    const origin  = { lat: CAMPUS.lat + 0.15, lon: CAMPUS.lon };
+    const onRoute = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon };
+    const wayOff  = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon + 0.18 };
+    const offer = makeOffer({
+      offerId: 'o1', start: origin, maxDetour: 500, seatsFilled: 1,
+      onBoard: [{ reqId: 'r1', riderId: 'rider-1', waypoint: onRoute, arriveBy: at(23), maxDetour: 999, currentDetour: 0 }],
+    });
+
+    const res = addPassenger(offer, { waypoint: wayOff, maxDetour: 0.5, arriveBy: at(23) }, at(8), t);
+    expect(res.feasible).toBe(false);
+    expect(res.reason).toBe('RIDER_DETOUR_CAP');
   });
 });

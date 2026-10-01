@@ -133,10 +133,11 @@ interface DistanceMatrixResponse {
 }
 
 /**
- * LEGACY - prefer `buildRoutesTravelTimeMatrix`. Google made the Distance Matrix
- * API a legacy service on 1 March 2025 and it cannot be enabled on Cloud
- * projects created since, where every call fails with REQUEST_DENIED. Kept for
- * keys on older projects that still have it enabled.
+ * The runner's default: it is the API Ribe's Maps key has enabled. It is a
+ * LEGACY API - Google froze it on 1 March 2025, and Cloud projects created since
+ * cannot enable it (every call fails with REQUEST_DENIED). Projects that used it
+ * before keep it. `buildRoutesTravelTimeMatrix` is the replacement, behind the
+ * same interface, for when the key moves to a project with the Routes API.
  *
  * Calls the Google Distance Matrix API once for every chunk pair covering
  * `points` x `points`, and returns a TravelTimeMatrix that answers every

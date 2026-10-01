@@ -8,10 +8,11 @@ prove each client matches its fake. This proves the fakes match Google: the
 request is accepted and the response is read the way the client expects. Bounds
 are loose on purpose - traffic varies.
 
-Both clients the runner can use are covered: Routes (the default, needs the
-Routes API enabled) and legacy Distance Matrix (`npm run match --
---distance-matrix`, for projects that used it before March 2025). One failing
-while the other passes says which API the key's project has enabled.
+Both clients the runner can use are covered: Distance Matrix (the default - the
+API Ribe's key has enabled; legacy, so only projects that used it before March
+2025 can) and Routes (`npm run match -- --routes`, needs the Routes API
+enabled). One failing while the other passes says which API the key's project
+has enabled.
 */
 import { MONASH_CLAYTON } from '../src/adapter';
 import { buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix } from '../src/travelTime';

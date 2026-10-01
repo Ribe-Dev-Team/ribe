@@ -1,4 +1,4 @@
-import { Coord, TravelTimeMatrix } from '../src/types';
+import { Coord, MatchRunResult, TravelTimeMatrix } from '../src/types';
 import {
   batchPoints, groupIntoBatches, MONASH_CLAYTON, offerDeparture, OfferDoc, RequestDoc,
   Skipped, toMatchInputs,
@@ -41,6 +41,8 @@ export interface BatchReport {
   requests: number;
   offers: number;
   matches: Array<{ reqId: string; offerId: string; riderDetour: number; driverAddedMinutes: number }>;
+  /** Riders this batch didn't match, with each driver's reason. */
+  unmatched: MatchRunResult['unmatchedReasons'];
   applied: string[];
   writeSkips: Array<{ reqId: string; reason: MatchWriteSkip }>;
   /** Set when this batch failed (e.g. Google refused the matrix); other batches still run. */
@@ -70,6 +72,7 @@ export async function runOnce(store: MatchingStore, opts: RunOptions): Promise<R
       requests: batch.requests.length,
       offers: batch.offers.length,
       matches: [],
+      unmatched: [],
       applied: [],
       writeSkips: [],
     };
@@ -91,6 +94,7 @@ export async function runOnce(store: MatchingStore, opts: RunOptions): Promise<R
         riderDetour: m.riderDetour,
         driverAddedMinutes: m.driverAddedMinutes,
       }));
+      report.unmatched = result.unmatchedReasons;
 
       if (!opts.dryRun) {
         const written = await store.writeMatches(toMatchWrites(result.matches, inputs.offers));

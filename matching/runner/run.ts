@@ -4,9 +4,8 @@ Runs one matching pass against Firestore. From matching/:
     npm run match                  write matches and expiries
     npm run match -- --dry-run     compute and print only, write nothing
     npm run match -- --synthetic   estimated travel times, no Google calls
-    npm run match -- --distance-matrix
-                                   legacy Distance Matrix API instead of Routes,
-                                   for a key whose project predates March 2025
+    npm run match -- --routes      Routes API instead of Distance Matrix, once
+                                   the key's project has the Routes API enabled
 
 Configuration, from the environment, falling back to mobile/.env for the two
 values the app already has:
@@ -15,9 +14,14 @@ values the app already has:
                                GOOGLE_APPLICATION_CREDENTIALS instead)
     FIREBASE_PROJECT_ID        falls back to EXPO_PUBLIC_FIREBASE_PROJECT_ID
     GOOGLE_MAPS_API_KEY        falls back to EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
-                               needs the Routes API enabled (or Distance Matrix,
-                               with --distance-matrix). With no key, travel
+                               needs the Distance Matrix API enabled (or the
+                               Routes API, with --routes). With no key, travel
                                times are synthetic estimates.
+
+Distance Matrix is the default because it is the one Ribe's Maps key has
+enabled (checked with `npm run test:live`). Google made it a legacy API in
+March 2025: projects that already use it keep it, new projects cannot turn it
+on. If the key ever moves to a newer project, switch to --routes.
     FIRESTORE_EMULATOR_HOST    run against the local emulator, no credentials
 
 One run is one pass. How often to run it (every 15 minutes, hourly) is a
@@ -26,6 +30,7 @@ frequent runs fill cars faster, since each run offers a driver one new rider.
 */
 
 import { SkipReason } from '../src/adapter';
+import { RejectReason } from '../src/types';
 import { CAMPUS_TIME_ZONE } from '../src/melbourneTime';
 import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, SyntheticTravelTime,
@@ -33,6 +38,28 @@ import {
 import { envValue } from './env';
 import { connect, expireOverdue, loadPending, loadRequestsById, writeMatches } from './firestore';
 import { MatchingStore, RunReport, runOnce } from './runOnce';
+
+/** Why a driver didn't take a rider, in words. A Record so a new reason
+ *  without wording fails the build instead of printing a code. */
+const WHY: Record<RejectReason, string> = {
+  SAME_PERSON: 'same person as the driver',
+  OFFER_NOT_OPEN: 'not taking riders (full or closed)',
+  NO_SEATS: 'no seats left',
+  DRIVER_CLOSED: 'driver has stopped taking riders',
+  OUT_OF_SLACK: 'someone already in the car has no detour to spare',
+  DIRECTION: 'going the other way',
+  TIME_WINDOW: "travel times don't overlap",
+  BEARING: 'coming from a different direction',
+  CORRIDOR: "too far off the driver's route",
+  NO_FEASIBLE_INSERTION: 'no pickup position works',
+  RIDER_DETOUR_CAP: "the detour would be too long for this rider",
+  ONBOARD_DETOUR_CAP: 'would push someone already in the car past their detour limit',
+  DRIVER_DETOUR_CAP: "would go over the driver's detour limit",
+  ARRIVAL_WINDOW: 'someone would arrive too late',
+  PICKUP_BEFORE_READY: 'the car would arrive before the rider is ready',
+  MATCHING_CUTOFF: 'too close to departure to match',
+  LOST_SLOT: "fits, but the driver's one new seat this run went to a rider who adds fewer minutes",
+};
 
 function printReport(report: RunReport, dryRun: boolean): void {
   if (report.expired.length) {
@@ -54,22 +81,27 @@ function printReport(report: RunReport, dryRun: boolean): void {
     const written = dryRun ? 'dry run, not written' : `${b.applied.length} written`;
     console.log(`${head} -> ${b.matches.length} match(es), ${written}`);
     for (const m of b.matches) {
-      console.log(`  ${m.reqId} -> ${m.offerId}   rider detour ${m.riderDetour.toFixed(1)} min, driver +${m.driverAddedMinutes.toFixed(1)} min`);
+      const added = `${m.driverAddedMinutes >= 0 ? '+' : ''}${m.driverAddedMinutes.toFixed(1)}`;
+      console.log(`  ${m.reqId} -> ${m.offerId}   rider detour ${m.riderDetour.toFixed(1)} min, driver ${added} min`);
     }
     for (const s of b.writeSkips) console.log(`  not written: ${s.reqId} (${s.reason})`);
+    for (const u of b.unmatched) {
+      console.log(`  not matched: ${u.reqId}`);
+      for (const { offerId, reason } of u.byOffer) console.log(`      ${offerId}: ${WHY[reason]}`);
+    }
   }
 }
 
 async function main(): Promise<number> {
   const args = new Set(process.argv.slice(2));
   if (args.has('--help') || args.has('-h')) {
-    console.log('Usage: npm run match -- [--dry-run] [--synthetic | --distance-matrix]');
+    console.log('Usage: npm run match -- [--dry-run] [--synthetic | --routes]');
     return 0;
   }
   const dryRun = args.has('--dry-run');
-  const legacyMatrix = args.has('--distance-matrix');
-  if (legacyMatrix && args.has('--synthetic')) {
-    throw new Error('--synthetic and --distance-matrix both choose travel times; pass one.');
+  const useRoutes = args.has('--routes');
+  if (useRoutes && args.has('--synthetic')) {
+    throw new Error('--synthetic and --routes both choose travel times; pass one.');
   }
 
   const apiKey = args.has('--synthetic') ? undefined : envValue('GOOGLE_MAPS_API_KEY', 'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY');
@@ -88,12 +120,12 @@ async function main(): Promise<number> {
   const now = new Date();
   const stamp = now.toLocaleString('en-AU', { timeZone: CAMPUS_TIME_ZONE });
   console.log(`Ribe matching run - ${stamp} (Melbourne)${dryRun ? ' - DRY RUN' : ''}`);
-  const buildMatrix = legacyMatrix ? buildGoogleTravelTimeMatrix : buildRoutesTravelTimeMatrix;
+  const buildMatrix = useRoutes ? buildRoutesTravelTimeMatrix : buildGoogleTravelTimeMatrix;
   console.log(!apiKey
     ? 'Travel times: SYNTHETIC estimates - no Google key, or --synthetic given'
-    : legacyMatrix
-      ? 'Travel times: Google Distance Matrix API (legacy), one matrix per batch'
-      : 'Travel times: Google Routes API (Route Matrix), one matrix per batch');
+    : useRoutes
+      ? 'Travel times: Google Routes API (Route Matrix), one matrix per batch'
+      : 'Travel times: Google Distance Matrix API, one matrix per batch');
 
   const report = await runOnce(store, {
     now,
