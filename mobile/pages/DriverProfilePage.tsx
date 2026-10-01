@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc } from 'firebase/firestore';
 import { colors } from '../styles';
 import { RideCardProps } from '../components/RideCard';
-import { db } from '../firebaseConfig';
+import { fetchDriverProfile } from '../services/rideData';
 
 interface DriverProfilePageProps {
   ride: RideCardProps;
@@ -42,9 +41,10 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
 
     const loadProfile = async () => {
       try {
-        const docSnap = await getDoc(doc(db, 'drivers', ride.driver.uid!));
-        if (docSnap.exists() && isMounted) {
-          const data = docSnap.data();
+        // Driver registration and account profile merged - a driver may not
+        // have finished registration, and only the account has bio/degree.
+        const data = await fetchDriverProfile(ride.driver.uid!);
+        if (Object.keys(data).length > 0 && isMounted) {
           setProfile({
             degree: data['degree'] ?? 'Monash student',
             year: data['year'] ?? '',
