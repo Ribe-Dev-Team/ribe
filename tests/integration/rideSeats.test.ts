@@ -5,7 +5,7 @@
 
 import { fetchUserRides, rideTimeSummary } from '../../mobile/services/rideData';
 import { db } from '../../mobile/firebaseConfig';
-import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { deleteDoc, doc, setDoc, Timestamp } from 'firebase/firestore';
 
 // The mocked Firestore uses real setTimeout delays internally.
 jest.useRealTimers();
@@ -160,5 +160,103 @@ describe("the driver on a matched rider's card", () => {
     const [card] = (await fetchUserRides('lonely-uid')).requests;
 
     expect(card.driver.name).toBe('Searching for a driver');
+  });
+});
+
+describe('stops on the way to campus', () => {
+  // Local-clock times, so the expected "HH:mm" holds in any test time zone.
+  const at = (h: number, m: number) => Timestamp.fromDate(new Date(2026, 9, 7, h, m));
+  const timetable = {
+    departAt: at(8, 13),
+    arriveAt: at(8, 50),
+    stops: [
+      { requestId: 'req-1', pickupAt: at(8, 22), arriveAt: at(8, 50) },
+      { requestId: 'req-2', pickupAt: at(8, 31), arriveAt: at(8, 50) },
+    ],
+  };
+
+  /** A full car: Ann picked up first, then Yass, then on to Monash. */
+  async function seedFullCar(offerExtras: Record<string, unknown> = {}) {
+    await setDoc(doc(db, 'rideOffers', 'offer-1'), {
+      ...booking,
+      address: 'Driver Home',
+      userId: 'driver-uid',
+      status: 'confirmed',
+      seatCapacity: 2,
+      confirmedRequestIds: ['req-1', 'req-2'],
+      schedule: timetable,
+      ...offerExtras,
+    });
+    for (const [id, address] of [['req-1', '1 First St'], ['req-2', '2 Second Rd']]) {
+      await setDoc(doc(db, 'rideRequests', id), {
+        ...booking,
+        address,
+        userId: `${id}-uid`,
+        status: 'confirmed',
+        matchedOfferId: 'offer-1',
+        matchedDriverId: 'driver-uid',
+      });
+    }
+    await setDoc(doc(db, 'users', 'req-1-uid'), { name: 'Ann Lee' });
+    await setDoc(doc(db, 'users', 'req-2-uid'), { name: 'Yass Karim' });
+  }
+
+  it("lists every pickup on the driver's card, in route order, by first name and address", async () => {
+    await seedFullCar();
+
+    const [card] = (await fetchUserRides('driver-uid')).offers;
+
+    expect(card.pickup.time).toBe('08:13');
+    expect(card.stops).toEqual([
+      { label: 'Ann · 1 First St', time: '~08:22' },
+      { label: 'Yass · 2 Second Rd', time: '~08:31' },
+    ]);
+    expect(card.destination.eta).toBe('~08:50');
+  });
+
+  it("shows a rider only the pickups after theirs, without the other rider's name or address", async () => {
+    await seedFullCar();
+
+    const [first] = (await fetchUserRides('req-1-uid')).requests;
+    const [last] = (await fetchUserRides('req-2-uid')).requests;
+
+    expect(first.pickup.time).toBe('~08:22');
+    expect(first.stops).toEqual([{ label: 'Pickup · another passenger', time: '~08:31' }]);
+    expect(JSON.stringify(first)).not.toMatch(/Yass|Second Rd/);
+    expect(last.stops).toEqual([]); // nobody between them and campus
+  });
+
+  it("marks the rider still deciding on the driver's proposed timetable", async () => {
+    await seedFullCar({
+      status: 'awaiting',
+      confirmedRequestIds: ['req-1'],
+      schedule: { ...timetable, stops: [timetable.stops[0]] },
+      pendingRequestId: 'req-2',
+      pendingSchedule: timetable,
+    });
+
+    const [card] = (await fetchUserRides('driver-uid')).offers;
+
+    expect(card.stops?.map((s) => s.label)).toEqual(['Ann · 1 First St', 'Yass (awaiting) · 2 Second Rd']);
+  });
+
+  it("falls back to the address, then to \"Passenger N\", when a passenger can't be looked up", async () => {
+    await seedFullCar();
+    await deleteDoc(doc(db, 'users', 'req-1-uid'));
+    await deleteDoc(doc(db, 'rideRequests', 'req-2'));
+
+    const [card] = (await fetchUserRides('driver-uid')).offers;
+
+    expect(card.stops?.map((s) => s.label)).toEqual(['1 First St', 'Passenger 2']);
+  });
+
+  it('has no stops on a trip home, or before the trip is planned', async () => {
+    await seedFullCar({ toUni: false });
+    const [home] = (await fetchUserRides('driver-uid')).offers;
+    expect(home.stops).toBeUndefined();
+
+    await seedFullCar({ schedule: null });
+    const [unplanned] = (await fetchUserRides('driver-uid')).offers;
+    expect(unplanned.stops).toBeUndefined();
   });
 });

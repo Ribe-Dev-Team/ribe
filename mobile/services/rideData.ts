@@ -1,5 +1,5 @@
 import { collection, doc, DocumentData, getDoc, getDocs, query, Timestamp, where } from 'firebase/firestore';
-import { RideCardProps } from '../components/RideCard';
+import { RideCardProps, RideStop } from '../components/RideCard';
 import { db } from '../firebaseConfig';
 import { Coord } from '../pages/schema/booking.schema';
 import { BookingStatus, DisplayableBookingStatus, isDisplayable } from '../pages/schema/matchStatus';
@@ -131,10 +131,26 @@ interface TripTimes {
 }
 
 /**
+ * The car timetable this card reads. A driver's: the proposal while a rider is
+ * being asked (it includes them), else the confirmed one. A rider's: the
+ * proposal while they're the one being asked, the confirmed one after.
+ */
+function scheduleFor(
+  record: DisplayableRideRecord,
+  kind: 'request' | 'offer',
+  docId: string,
+  offer?: OfferView,
+): StoredSchedule | undefined {
+  if (kind === 'offer') {
+    return record.pendingRequestId && record.pendingSchedule ? record.pendingSchedule : record.schedule;
+  }
+  return offer?.pendingRequestId === docId ? offer.pendingSchedule : offer?.schedule;
+}
+
+/**
  * The times the matcher actually planned, or undefined while there are none
  * (unmatched, or matched before timetables were stored). A rider's come from
- * the car's live timetable - the pending proposal while they're the one being
- * asked, the confirmed one after - falling back to the snapshot on their own
+ * their stop on the car's timetable, falling back to the snapshot on their own
  * request. A driver's are their departure and arrival.
  */
 function plannedTimes(
@@ -143,16 +159,93 @@ function plannedTimes(
   docId: string,
   offer?: OfferView,
 ): TripTimes | undefined {
+  const schedule = scheduleFor(record, kind, docId, offer);
   if (kind === 'offer') {
-    const schedule = record.pendingRequestId && record.pendingSchedule ? record.pendingSchedule : record.schedule;
     return schedule ? { startAt: toDate(schedule.departAt), endAt: toDate(schedule.arriveAt) } : undefined;
   }
 
-  const schedule = offer?.pendingRequestId === docId ? offer.pendingSchedule : offer?.schedule;
   const stop = schedule?.stops.find((s) => s.requestId === docId);
   if (stop) return { startAt: toDate(stop.pickupAt), endAt: toDate(stop.arriveAt) };
   if (record.pickupAt && record.arriveAt) return { startAt: toDate(record.pickupAt), endAt: toDate(record.arriveAt) };
   return undefined;
+}
+
+/** A passenger the driver picks up, as their card names them. */
+interface StopPerson {
+  name?: string;
+  address?: string;
+}
+
+/**
+ * The pickups between where this card's trip starts and campus, in route
+ * order, each at its estimated time. A driver's card lists every passenger,
+ * by first name and address - they have to go there. A rider's lists only the
+ * pickups after their own, and never another rider's name or address.
+ *
+ * Trips to campus only: on a trip home the stops are drop-offs, and the card
+ * doesn't lay that direction out yet.
+ */
+function middleStops(
+  record: DisplayableRideRecord,
+  kind: 'request' | 'offer',
+  docId: string,
+  offer?: OfferView,
+  people?: Map<string, StopPerson>,
+): RideStop[] | undefined {
+  const schedule = scheduleFor(record, kind, docId, offer);
+  if (!record.toUni || !schedule) return undefined;
+
+  if (kind === 'request') {
+    const own = schedule.stops.findIndex((s) => s.requestId === docId);
+    if (own < 0) return undefined;
+    return schedule.stops.slice(own + 1).map((s) => ({
+      label: 'Pickup · another passenger',
+      time: '~' + formatClock(toDate(s.pickupAt)),
+    }));
+  }
+
+  return schedule.stops.map((s, index) => {
+    const person = people?.get(s.requestId);
+    // The rider still deciding on this drive is on the proposal, not yet aboard.
+    const name = person?.name && s.requestId === record.pendingRequestId
+      ? `${person.name} (awaiting)`
+      : person?.name;
+    return {
+      label: [name, person?.address].filter(Boolean).join(' · ') || `Passenger ${index + 1}`,
+      time: '~' + formatClock(toDate(s.pickupAt)),
+    };
+  });
+}
+
+/**
+ * The passengers at a driver's stops: first name from users/{uid}, pickup
+ * address from their request. Once per request; one that can't be read is
+ * left out, and the card labels that stop "Passenger N" instead.
+ */
+async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPerson>> {
+  const unique = [...new Set(requestIds)];
+  const out = new Map<string, StopPerson>();
+
+  await Promise.all(unique.map(async (id) => {
+    try {
+      const snap = await getDoc(doc(db, 'rideRequests', id));
+      if (!snap.exists()) return;
+      const request = snap.data() as FirestoreRideRecord;
+      let name: string | undefined;
+      try {
+        const user = request.userId ? await getDoc(doc(db, 'users', request.userId)) : undefined;
+        const fullName = user?.exists() ? (user.data()['name'] as string | undefined) : undefined;
+        name = fullName?.trim().split(/\s+/)[0] || undefined;
+      } catch (error) {
+        console.warn('Failed to load a passenger name', id, error);
+      }
+      out.set(id, { name, address: request.address || undefined });
+    } catch (error) {
+      console.warn('Failed to load a passenger on this trip', id, error);
+    }
+  }));
+
+  return out;
 }
 
 /**
@@ -282,6 +375,7 @@ function buildRideCard(
   docId: string,
   driver?: DriverSummary,
   offer?: OfferView,
+  stopPeople?: Map<string, StopPerson>,
 ): RideCardProps {
   const date = toDate(record.date);
   const departureTime = record.departureTime ?? '09:00';
@@ -350,6 +444,7 @@ function buildRideCard(
     // What they asked for, so a rider in a car still taking passengers can be
     // told they'll still arrive by it.
     arriveBy: arrivalTime,
+    stops: middleStops(record, kind, docId, offer, stopPeople),
     // PLACEHOLDER: there is no fare model and no distance-to-CO2 calculation in
     // the codebase yet, so these two are constants rather than data. They are
     // NOT derived from the match.
@@ -407,9 +502,9 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
   const requestRows = narrow(requestsSnap.docs);
   const offerRows = narrow(offersSnap.docs);
 
-  // One round of driver and trip lookups covering every matched request on
-  // this screen.
-  const [drivers, offers] = await Promise.all([
+  // One round of driver, trip and passenger lookups covering every matched
+  // request and every planned drive on this screen.
+  const [drivers, offers, stopPeople] = await Promise.all([
     fetchDrivers(
       requestRows
         .map((row) => row.data.matchedDriverId)
@@ -419,6 +514,12 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
       requestRows
         .map((row) => row.data.matchedOfferId)
         .filter((id): id is string => Boolean(id)),
+    ),
+    fetchStopPeople(
+      offerRows
+        .filter((row) => row.data.toUni)
+        .flatMap((row) => scheduleFor(row.data, 'offer', row.id)?.stops ?? [])
+        .map((stop) => stop.requestId),
     ),
   ]);
 
@@ -434,7 +535,7 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
         offer,
       );
     }),
-    offers: offerRows.map(({ id, data }) => buildRideCard(data, 'offer', id)),
+    offers: offerRows.map(({ id, data }) => buildRideCard(data, 'offer', id, undefined, undefined, stopPeople)),
   };
 }
 

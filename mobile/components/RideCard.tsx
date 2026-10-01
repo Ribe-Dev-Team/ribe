@@ -86,6 +86,15 @@ export function formatRideDate(date: Date) {
   return `${weekday}, ${month} ${date.getDate()}${ordinalSuffix(date.getDate())} ${date.getFullYear()}`;
 }
 
+/** A stop between the start and the end of the trip. */
+export interface RideStop {
+  /** Who's picked up there: name and address on the driver's card, never
+   *  another rider's address on a rider's. */
+  label: string;
+  /** The estimated pickup, e.g. "~08:31". */
+  time: string;
+}
+
 export interface RideCardProps {
   /** Firestore document id of the rideRequest/rideOffer this card renders.
    *  Accept/Decline need it to write back. Optional so hand-built sample cards
@@ -113,6 +122,9 @@ export interface RideCardProps {
   seats?: { filled: number; total: number; open: boolean; locked: boolean };
   /** The arrival time this person asked for ("HH:mm"). */
   arriveBy?: string;
+  /** Pickups the car makes between this card's first row and campus, in
+   *  order, each with its estimated time. Only shown once the trip is planned. */
+  stops?: RideStop[];
   cost: string;
   co2SavedKg: number;
   driver: { uid?: string; name: string; vehicle: string; avatarUri?: string };
@@ -155,6 +167,7 @@ export default function RideCard({
   timeWindow,
   seats,
   arriveBy,
+  stops,
   cost,
   co2SavedKg,
   driver,
@@ -257,6 +270,18 @@ export default function RideCard({
         <Text style={styles.stopTime}>{timeWindow ? `from ${timeWindow.from}` : pickup.time}</Text>
       </View>
       {readyBy && <Text style={styles.readyBy}>Be ready by {readyBy}</Text>}
+      {/* The other pickups on the way, in route order. A card showing a range
+          has no planned trip, so no stops to time. */}
+      {!timeWindow && stops?.map((stop, index) => (
+        <React.Fragment key={`${stop.label}-${index}`}>
+          <View style={styles.stopConnector} />
+          <View style={styles.stopRow} accessibilityLabel={`Stop: ${stop.label}, ${stop.time}`}>
+            <Ionicons name="ellipse-outline" size={10} color={colors.white} style={styles.stopIcon} />
+            <Text style={styles.stopAddress} numberOfLines={1}>{stop.label}</Text>
+            <Text style={styles.stopTime}>{stop.time}</Text>
+          </View>
+        </React.Fragment>
+      ))}
       <View style={styles.stopConnector} />
       <View style={styles.stopRow}>
         <Ionicons name="location" size={13} color={colors.white} style={styles.stopIcon} />

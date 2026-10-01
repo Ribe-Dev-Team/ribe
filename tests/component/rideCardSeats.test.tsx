@@ -192,3 +192,29 @@ describe('layout', () => {
     expect(rendered.indexOf('seat-bar-taken')).toBeLessThan(rendered.indexOf('Change number of seats'));
   });
 });
+
+describe('stops', () => {
+  const stops = [
+    { label: 'Ann · 1 First St', time: '~08:22' },
+    { label: 'Yass · 2 Second Rd', time: '~08:31' },
+  ];
+
+  it('lists the pickups on the way between the start and Monash, each with its time', async () => {
+    await render(
+      <RideCard {...base} kind="offer" pickup={{ address: 'Driver Home', time: '08:13' }} stops={stops} />,
+    );
+
+    expect(screen.getByLabelText('Stop: Yass · 2 Second Rd, ~08:31')).toBeTruthy();
+    expect(screen.getByText('~08:22')).toBeTruthy();
+    const rendered = JSON.stringify(screen.toJSON());
+    const order = ['Driver Home', 'Ann · 1 First St', 'Yass · 2 Second Rd', 'Monash University'].map((t) => rendered.indexOf(t));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order[0]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('hides them while the card shows a range, with no trip planned', async () => {
+    await render(<RideCard {...base} kind="offer" stops={stops} timeWindow={{ from: '07:00', to: '09:00' }} />);
+
+    expect(screen.queryByText('Ann · 1 First St')).toBeNull();
+  });
+});
