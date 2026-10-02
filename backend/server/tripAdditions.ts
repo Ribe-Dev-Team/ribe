@@ -56,11 +56,17 @@ export function scanTripToUni(req: MatchRequest, wps: Waypoint[], legs: number[]
 /**
  * Same process as above, just for trips back from uni
  * 
+ * @param {MatchRequest} req the details from the new ride request
  * @param {Waypoint[]} wps the list of waypoints
  * @param {number[]} legs the list of times to travel between each waypoint
  * @returns {Waypoint[] | null} the updated waypoints or null if the additional passenger isn't feasible
  */
 export function scanTripFromUni(req: MatchRequest, wps: Waypoint[], legs: number[]): Waypoint[] | null {
+  //validate
+  if (wps.length < 2) throw new Error("Found less than 2 waypoints so driver details have not been properly stored in waypoint list: " + `${wps.map(w => [w.loc, w.earliest, w.latest])}`);
+  if (wps.length - 1 !== legs.length) throw new Error(`Number of waypoints and number of legs didn't match. ${wps.length} waypoints should have ${wps.length - 1} legs but received ${legs.length} instead.`);
+  if (legs.some(l => l < 0)) throw new Error(`Cannot have negative travel time for any legs: ${legs}`);
+
   // sharing uni departure time - get latest
   const depTime = (getStartTime(req) > wps[0].earliest)
     ? getStartTime(req) // new passenger has a stricter departure time
@@ -68,14 +74,15 @@ export function scanTripFromUni(req: MatchRequest, wps: Waypoint[], legs: number
 
   // work from start -> end
   const travelTime = legs.reduce((acc, l) => [...acc, acc[acc.length - 1] + l], [0]);
-  const earliest = wps.map((wp, ind) => ({ ...wp, latest: addMins(depTime, travelTime[ind]) }));
+  const earliest = wps.map((wp, ind) => ({ ...wp, earliest: addMins(depTime, travelTime[ind]) }));
 
   // work from end -> start
+  const revLegs = [...legs].reverse();
   const revEarliest = [...earliest].reverse();
   const newWaypoints = revEarliest.reduce((acc: Waypoint[], wp, ind) => {
     if (ind === 0) return [...acc, wp]; // arr time is unchanged for the driver's arrival
 
-    const driverLatest = addMins(acc[acc.length - 1].latest, legs[ind - 1]);
+    const driverLatest = subMins(acc[acc.length - 1].latest, revLegs[ind - 1]);
     const passLatest = wp.latest;
     const newLatest = (driverLatest < passLatest) ? driverLatest : passLatest;
     return [...acc, { ...wp, latest: newLatest }];
@@ -96,20 +103,24 @@ export function scanTripFromUni(req: MatchRequest, wps: Waypoint[], legs: number
  * @returns {Trip | null} the new Trip or null if adding the passenger isn't possible
  */
 export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | null> {
+  // validate trip is populated
+  if (curr.waypoints.length < 2 || curr.legs.length < 1 || curr.legDists.length < 1) throw new Error(`Current trip was not adequately populated. Found only ${curr.waypoints.length} waypoints (min 2), ${curr.legs.length < 1} leg times (min 1) and ${curr.legDists.length} leg distances (min 1)`);
+
   // get the end-point that isn't shared/uni
   const pUnique = isBookingToUni(p) ? p.start : p.end;
   // calculate distances between current waypoints and new waypoint
   const distances = curr.waypoints.map(wp => calcDist(wp.loc, pUnique));
+  const currLegDists = curr.waypoints.map((wp, ind) => calcDist(wp.loc, curr.waypoints[ind - 1].loc));
   // add pairs of distances to compare the detour amount
-  const [, ...detours] = distances // ignore first entry (NaN - due to index-1)
-    .map((dist, ind) => dist + distances[ind - 1]); // add adjacenct distances
+  const [_, ...detours] = distances // ignore first entry (NaN - due to index-1)
+    .map((dist, ind) => dist + distances[ind - 1] - currLegDists[ind]); // add adjacenct distances and sub existing distance
   const minDetour = detours.reduce((acc, d) => (d < acc) ? d : acc, Infinity);
   const bestInd = detours
     .map((det, ind) => ({ detour: det, index: ind }))
     .filter(x => x.detour === minDetour)[0].index;
 
   // validate `bestInd` in appropriate range
-  if (bestInd < 1 || bestInd >= curr.waypoints.length) throw new Error(`Insertion index of '${bestInd}' was out of bounds for current trip of [0..${curr.waypoints.length - 1}] waypoints. (First and last waypoint must remain unchanged).`);
+  if (bestInd < 0 || bestInd >= curr.waypoints.length - 1) throw new Error(`Insertion after index '${bestInd}' was out of bounds for current trip of [0..${curr.waypoints.length - 1}] waypoints. (First and last waypoint must remain unchanged).`);
 
   // insert new waypoint after `bestInd`
   const newStop = {
@@ -120,13 +131,13 @@ export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | 
   const newWaypoints = insertAt(curr.waypoints, [newStop], bestInd + 1);
 
   // call Google API for new distances and times
-  if (!isPlacesConfigured) throw new Error("Google API key was not properly configured. Could not retrieve travel data.");
+  if (!isPlacesConfigured()) throw new Error("Google API key was not properly configured. Could not retrieve travel data.");
 
   const routeReq: RoutesReqOptions = {
-    origin: newWaypoints[bestInd - 1].loc,
-    dest: newWaypoints[bestInd + 1].loc,
-    inters: [newWaypoints[bestInd].loc],
-    depTime: newWaypoints[bestInd - 1].earliest,
+    origin: newWaypoints[bestInd].loc,
+    dest: newWaypoints[bestInd + 2].loc,
+    inters: [newWaypoints[bestInd + 1].loc],
+    depTime: newWaypoints[bestInd].earliest,
     apiKey: GOOGLE_MAPS_API_KEY,
     fieldMask: "routes.legs.duration,routes.legs.distanceMeters",
   };
@@ -139,10 +150,10 @@ export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | 
   //   "distanceMeters": 1234,
   //   "duration": "905s"  <- note: duration is not a number
   // }
-  const toAddTime = parseInt(leg1.duration) / 60;
-  const toAddDist = parseInt(leg1.distanceMeters);
-  const fromAddTime = parseInt(leg2.duration) / 60;
-  const fromAddDist = parseInt(leg2.distanceMeters);
+  const toAddTime = Math.ceil(parseInt(leg1.duration) / 60); // time in integer minutes
+  const toAddDist = Number(leg1.distanceMeters);
+  const fromAddTime = Math.ceil(parseInt(leg2.duration) / 60); // Math.ceil to overestimate
+  const fromAddDist = Number(leg2.distanceMeters);
 
   // replace old leg with two new legs
   const newDuration = curr.currDur - curr.legs[bestInd] + toAddTime + fromAddTime;
@@ -160,7 +171,7 @@ export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | 
   if (updatedWaypoints === null) return null;
 
   const newTrip = {
-    waypoints: newWaypoints,
+    waypoints: updatedWaypoints,
     legs: newLegs,
     legDists: newLegDists,
     currDur: newDuration,
