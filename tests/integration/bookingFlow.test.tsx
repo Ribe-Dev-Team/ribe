@@ -95,7 +95,7 @@ describe('BookingPage - rider requesting a ride', () => {
 
     const snapshot = await getDocs(query(collection(db, 'rideRequests')));
     expect(snapshot.size).toBe(1);
-    expect(snapshot.docs[0].data().address).toBe('123 Main St');
+    expect(snapshot.docs[0].data()['address']).toBe('123 Main St');
 
     // the in-progress draft is cleared once the booking is submitted
     expect(await AsyncStorage.getItem(BOOKING_DRAFT_KEY)).toBeNull();
@@ -134,8 +134,8 @@ describe('BookingPage - driver offering a ride', () => {
 
     const snapshot = await getDocs(query(collection(db, 'rideOffers')));
     expect(snapshot.size).toBe(1);
-    expect(snapshot.docs[0].data().maxDetourTime).toBe(15);
-    expect(snapshot.docs[0].data().seatCapacity).toBe(3);
+    expect(snapshot.docs[0].data()['maxDetourTime']).toBe(15);
+    expect(snapshot.docs[0].data()['seatCapacity']).toBe(3);
   });
 });
 
