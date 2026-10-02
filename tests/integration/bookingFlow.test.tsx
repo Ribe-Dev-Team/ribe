@@ -17,12 +17,6 @@ jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
 }));
 
-jest.mock('../../mobile/auth/useAuth', () => ({
-  useAuth: () => ({
-    user: { uid: 'mock-user-123' },
-  }),
-}));
-
 // Plain functions rather than jest.fn(): nothing here asserts on calls, and jest.config.js's
 // resetMocks strips a jest.fn()'s mockResolvedValue before every test (including the first),
 // so a jest.fn() default set here would silently return undefined instead of resolving.
