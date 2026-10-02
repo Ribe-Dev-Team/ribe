@@ -18,10 +18,10 @@ export function getStartTime(r: MatchRequest | MatchOffer) {
 }
 
 export function isTripToUni(t: Trip) {
-  if (coordIsUni(t.waypoints[-1].loc)) {
+  if (coordIsUni(t.waypoints.at(-1)!.loc)) {
     return true;
   } else if (coordIsUni(t.waypoints[0].loc)) {
-    return true;
+    return false;
   }
   throw new Error(`Could not determine trip was to/from uni: neither ${t.waypoints[-1].loc} or ${t.waypoints[0].loc} were found to be UNI - ${MONASH_CLAYTON_LOCATION}`);
 }

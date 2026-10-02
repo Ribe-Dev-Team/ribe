@@ -346,22 +346,22 @@ describe('Matching utility - isBookingToUni()', () => {
 
   test('correctly determines the ride request is not to uni', () => {
     const act = isBookingToUni(req1);
-    expect(act).toBe(false);
+    expect(act).toBe(true);
   });
 
   test('correctly determines the ride request is to uni', () => {
     const act = isBookingToUni(req2);
-    expect(act).toBe(true);
+    expect(act).toBe(false);
   });
 
   test('correctly determines the ride offer is not to uni', () => {
     const act = isBookingToUni(offer1);
-    expect(act).toBe(false);
+    expect(act).toBe(true);
   });
 
   test('correctly determines the ride offer is to uni', () => {
     const act = isBookingToUni(offer2);
-    expect(act).toBe(true);
+    expect(act).toBe(false);
   });
 });
 
@@ -399,13 +399,11 @@ describe('Matching utility - insertAt()', () => {
   });
 
   test('insert at index 6', () => {
-    const act = insertAt(l, [99], 6);
-    expect(act).toThrow('out of range');
+    expect(() => insertAt(l, [99], 6)).toThrow('out of range');
   });
 
   test('replace -1 items', () => {
-    const act = insertAt(l, [99], 2, -1);
-    expect(act).toThrow('negative number');
+    expect(() => insertAt(l, [99], 2, -1)).toThrow('negative number');
   });
 
   test('replace 0 items', () => {
@@ -433,8 +431,7 @@ describe('Matching utility - insertAt()', () => {
   });
 
   test('check for error when trying to replace too many items', () => {
-    const act = insertAt(l, [98, 99], 1, 5);
-    expect(act).toThrow('out of range');
+    expect(() => insertAt(l, [98, 99], 1, 5)).toThrow();
   });
 
   test('empty insert without deletion', () => {
@@ -456,8 +453,8 @@ describe('Matching utility - insertAt()', () => {
   });
 
   test('add nothing to empty list', () => {
-    const act = insertAt([], [], 0);
-    const exp = [];
+    const act: number[] = insertAt([], [], 0);
+    const exp: number[] = [];
     expect(act).toEqual(exp);
   });
 

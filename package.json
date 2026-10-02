@@ -1,10 +1,6 @@
 {
     "name": "root-testing-environment",
     "private": true,
-    "workspaces": [
-        "mobile",
-        "backend"
-    ],
     "scripts": {
         "test": "jest --config mobile/jest.config.js"
     },
