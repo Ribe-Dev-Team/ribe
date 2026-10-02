@@ -84,6 +84,7 @@ describe('Matching utility - getEndTime()', () => {
       capacity: 2,
       rides: [],
       directTime: 30,
+      directDist: 26,
     };
     const act = getEndTime(offer);
     expect(act).toEqual(offer.window.end);
@@ -127,6 +128,7 @@ describe('Matching utility - getStartTime()', () => {
       capacity: 2,
       rides: [],
       directTime: 30,
+      directDist: 28,
     };
     const act = getStartTime(offer);
     expect(act).toEqual(offer.window.start);
