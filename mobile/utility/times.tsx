@@ -46,7 +46,7 @@ function subMins(t: Date, m: number): Date {
   return new Date(t.getTime() - m * MS_PER_MIN);
 }
 
-/* subtract some number of minutes from a Date object */
+/* add some number of minutes from a Date object */
 function addMins(t: Date, m: number): Date {
   return new Date(t.getTime() + m * MS_PER_MIN);
 }

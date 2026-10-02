@@ -15,40 +15,42 @@ import { RoutesReqOptions, computeRoute } from "../../mobile/services/googleRout
  * Find earliest and latest departure at each waypoint using forwards and backwards scanning
  * (https://www.monash.edu/student-academic-success/mathematics/graphs-and-networks/directed-networks/forward-and-backward-scanning)
  * 
+ * @param {MatchRequest} req the details from the new ride request
  * @param {Waypoint[]} wps the list of waypoints
  * @param {number[]} legs the list of times to travel between each waypoint
  * @returns {Waypoint[] | null} the updated waypoints or null if the additional passenger isn't feasible
  */
-function scanTripToUni(req: MatchRequest, wps: Waypoint[], legs: number[]): Waypoint[] | null {
+export function scanTripToUni(req: MatchRequest, wps: Waypoint[], legs: number[]): Waypoint[] | null {
+  //validate
+  if (wps.length < 2) throw new Error("Found less than 2 waypoints so driver details have not been properly stored in waypoint list: " + `${wps.map(w => [w.loc, w.earliest, w.latest])}`);
+  if (wps.length - 1 !== legs.length) throw new Error(`Number of waypoints and number of legs didn't match. ${wps.length} waypoints should have ${wps.length - 1} legs but received ${legs.length} instead.`);
+  if (legs.some(l => l < 0)) throw new Error(`Cannot have negative travel time for any legs: ${legs}`);
+
   // sharing uni arrival time - get earliest
-  if (getEndTime(req) < wps[-1].latest) {
-    // new passenger has a stricter arrival time
-    wps[-1].latest = getEndTime(req);
-  } // else, arrival time is unchanged
-  const arrTime = wps[-1].latest;
+  const arrTime = (getEndTime(req) < wps[wps.length - 1].latest)
+    ? getEndTime(req)  // new passenger has a stricter arrival time
+    : wps[wps.length - 1].latest; // else, arrival time is unchanged
 
   // work from end -> start
-  const revLegs = legs.toReversed();
-  const revTravelTime = [0, ...revLegs.map((l, ind) => revLegs[ind - 1] + l)];
-  revTravelTime[1] = revLegs[0]; // replace NaN value
-  const revWps = wps.toReversed();
+  const revLegs = [...legs].reverse();
+  const revTravelTime = revLegs.reduce((acc, l) => [...acc, acc[acc.length - 1] + l], [0]);
+  const revWps = [...wps].reverse();
   const revEndpoints = revWps.map((wp, ind) => ({ ...wp, latest: subMins(arrTime, revTravelTime[ind]) }));
-  const newEndpoints = revEndpoints.toReversed();
+  const newEndpoints = [...revEndpoints].reverse();
   // work from start -> end
-  const newWaypoints = newEndpoints.map((wp, ind) => {
-    if (ind === 0) return wp; // dep time is unchanged for the driver's departure
+  const newWaypoints = newEndpoints.reduce((acc: Waypoint[], wp, ind) => {
+    if (ind === 0) return [...acc, wp]; // dep time is unchanged for the driver's departure
 
-    const driverArr = addMins(newEndpoints[ind - 1].earliest, legs[ind - 1]);
+    const driverArr = addMins(acc[acc.length - 1].earliest, legs[ind - 1]);
     const passArr = wp.earliest;
-    const newEarliest = (driverArr < passArr) ? driverArr : passArr;
-    return { ...wp, earliest: newEarliest };
-  });
+    const newEarliest = (driverArr > passArr) ? driverArr : passArr;
+    return [...acc, { ...wp, earliest: newEarliest }];
+  }, []);
 
   // validate everyone still has a travel window
   if (!newWaypoints.every(p => p.latest >= p.earliest)) return null;
 
   return newWaypoints;
-
 }
 
 /**
@@ -58,29 +60,26 @@ function scanTripToUni(req: MatchRequest, wps: Waypoint[], legs: number[]): Wayp
  * @param {number[]} legs the list of times to travel between each waypoint
  * @returns {Waypoint[] | null} the updated waypoints or null if the additional passenger isn't feasible
  */
-function scanTripFromUni(req: MatchRequest, wps: Waypoint[], legs: number[]): Waypoint[] | null {
+export function scanTripFromUni(req: MatchRequest, wps: Waypoint[], legs: number[]): Waypoint[] | null {
   // sharing uni departure time - get latest
-  if (getStartTime(req) > wps[0].earliest) {
-    // new passenger has a stricter departure time
-    wps[0].earliest = getStartTime(req);
-  }
-  const depTime = wps[0].earliest;
+  const depTime = (getStartTime(req) > wps[0].earliest)
+    ? getStartTime(req) // new passenger has a stricter departure time
+    : wps[0].earliest;
 
   // work from start -> end
-  const travelTime = [0, ...legs.map((l, ind) => legs[ind - 1] + l)];
-  travelTime[1] = legs[0]; // replace NaN value
+  const travelTime = legs.reduce((acc, l) => [...acc, acc[acc.length - 1] + l], [0]);
   const earliest = wps.map((wp, ind) => ({ ...wp, latest: addMins(depTime, travelTime[ind]) }));
 
   // work from end -> start
-  const revEarliest = earliest.toReversed();
-  const newWaypoints = revEarliest.map((wp, ind) => {
-    if (ind === 0) return wp; // arr time is unchanged for the driver's arrival
+  const revEarliest = [...earliest].reverse();
+  const newWaypoints = revEarliest.reduce((acc: Waypoint[], wp, ind) => {
+    if (ind === 0) return [...acc, wp]; // arr time is unchanged for the driver's arrival
 
-    const driverLatest = addMins(revEarliest[ind - 1].latest, legs[ind - 1]);
+    const driverLatest = addMins(acc[acc.length - 1].latest, legs[ind - 1]);
     const passLatest = wp.latest;
     const newLatest = (driverLatest < passLatest) ? driverLatest : passLatest;
-    return { ...wp, latest: newLatest };
-  }).toReversed();
+    return [...acc, { ...wp, latest: newLatest }];
+  }, []).reverse();
 
   // validate everyone still has a travel window
   if (!newWaypoints.every(p => p.latest >= p.earliest)) return null;
