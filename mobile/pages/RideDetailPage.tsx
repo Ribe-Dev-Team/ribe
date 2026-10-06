@@ -4,6 +4,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import MapPreview from '../components/MapPreview';
+import CostSplitPanel from '../components/CostSplitPanel';
 import { db } from '../firebaseConfig';
 
 interface RideDetailPageProps {
@@ -131,7 +132,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			{isConfirmed && <Section title="Other riders"><View style={styles.personRow}><View style={styles.avatar}><Text style={styles.avatarText}>EP</Text></View><View><Text style={styles.personName}>Elena Park</Text><Text style={styles.personBio}>Monash student, studying design.</Text></View></View></Section>}
 
 			<View style={styles.savingsPanel}><Text style={styles.savingsKicker}>CO2 SAVINGS</Text><Text style={styles.savingsValue}>2.4 kg saved</Text><Text style={styles.savingsText}>Sharing this ride keeps another car off the road.</Text></View>
-			<View style={styles.costPanel}><Text style={styles.costTitle}>Estimated cost split</Text><View style={styles.costRow}><Text style={styles.costLabel}>Estimated trip cost</Text><Text style={styles.costValue}>$8.50</Text></View><View style={styles.costRow}><Text style={styles.costLabel}>Your share</Text><Text style={styles.costValue}>$4.25</Text></View><Text style={styles.costNote}>Final amount may change with route detours.</Text></View>
+			<CostSplitPanel pickupAddress={ride.start} destinationAddress={ride.destination} />
 
 			{ride.status === 'awaiting' && (onAccept || onDecline) && (
 				<View style={[styles.editActionsRow, { marginTop: 14 }]}>
