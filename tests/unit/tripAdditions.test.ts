@@ -1,6 +1,6 @@
 import type { MatchOffer, MatchRequest, Waypoint, Trip, Coord } from "../../backend/server/matching.schema";
 import { MONASH_CLAYTON_LOCATION } from "../../mobile/services/googlePlaces";
-import { scanTripToUni, scanTripFromUni, addPassenger } from "../../backend/server/tripAdditions";
+import { scanTripToUni, scanTripFromUni, addPassenger, calcDetours } from "../../backend/server/tripAdditions";
 
 import { calcDist } from "../../mobile/utility/distances";
 import { isBookingToUni } from "../../backend/server/matching";
@@ -142,7 +142,7 @@ const offer2: MatchOffer = {
 const tOfDay = (h: number, m = 0) => new Date(Date.UTC(2030, 0, 1, h, m));
 const hm = (d: Date) => d.toISOString().slice(11, 16);
 
-describe('scanTripToUni testing', () => {
+describe('scanTripToUni() testing', () => {
   // ------------------------- Helpers -------------------------
   // Default 'latest' is deliberately loose so it never interferes with the computed value.
   const mkWp = (x: number, earliest: Date, latest: Date = tOfDay(23)): Waypoint => ({
@@ -189,10 +189,10 @@ describe('scanTripToUni testing', () => {
   });
 
   it('Input validation - leg = -1 (just below) throws', () => {
-    expect(() => scanTripToUni(r, stops(2), [-1, 10, 11])).toThrow(/negative travel time/);
+    expect(() => scanTripToUni(r, stops(4), [-1, 10, 11])).toThrow(/negative travel time/);
   });
   it('Input validation - leg = 0 (on boundary) is accepted', () => {
-    expect(() => scanTripToUni(r, stops(2), [1, 0, 1])).not.toThrow();
+    expect(() => scanTripToUni(r, stops(4), [1, 0, 1])).not.toThrow();
   });
   it('Input validation - a negative leg is caught in the middle of the list', () => {
     expect(() => scanTripToUni(r, stops(4), [0, -1, 10])).toThrow(/negative travel time/);
@@ -315,7 +315,7 @@ describe('scanTripToUni testing', () => {
       ['08:30', '08:31'],
     ]);
   });
-  it('infeasible input returns null rather than throwing', () => {
+  it('Feasability - infeasible input returns null rather than throwing', () => {
     expect(() => scanTripToUni(mkReq(tOfDay(8)), [mkWp(0, tOfDay(8)), mkWp(1, tOfDay(8))], [30])).not.toThrow();
   });
 
@@ -358,7 +358,7 @@ describe('scanTripToUni testing', () => {
   });
 });
 
-describe('scanTripFromUni testing', () => {
+describe('scanTripFromUni() testing', () => {
   // Default 'earliest' is deliberately loose so it never interferes with the computed value.
   const mkWp = (x: number, latest: Date, earliest: Date = tOfDay(1)): Waypoint => ({
     loc: { lat: x, lon: x },
@@ -404,10 +404,10 @@ describe('scanTripFromUni testing', () => {
   });
 
   it('Input validation - leg = -1 (just below) throws', () => {
-    expect(() => scanTripFromUni(r, stops(2), [-1, 10, 11])).toThrow(/negative travel time/);
+    expect(() => scanTripFromUni(r, stops(4), [-1, 10, 11])).toThrow(/negative travel time/);
   });
   it('Input validation - leg = 0 (on boundary) is accepted', () => {
-    expect(() => scanTripFromUni(r, stops(2), [1, 0, 1])).not.toThrow();
+    expect(() => scanTripFromUni(r, stops(4), [1, 0, 1])).not.toThrow();
   });
   it('Input validation - a negative leg is caught in the middle of the list', () => {
     expect(() => scanTripFromUni(r, stops(4), [0, -1, 10])).toThrow(/negative travel time/);
@@ -573,12 +573,38 @@ describe('scanTripFromUni testing', () => {
   });
 });
 
+const UNI: Coord = { lat: 1000, lon: 1000 };
+describe('calcDetours() testing', () => {
+  const currPoints = [
+    { loc: { lat: 700, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
+    { loc: { lat: 800, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
+    { loc: { lat: 900, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
+    { loc: { lat: UNI.lat, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
+  ];
+  const newPoint = (lat: number) => ({ lat, lon: UNI.lon });
+
+  test('less than start', () => {
+    const exp = [200, 400, 600];
+    const act = calcDetours(currPoints, newPoint(600));
+    expect(act).toBe(exp);
+  });
+  test('more than end', () => {
+    const exp = [500, 300, 100];
+    const act = calcDetours(currPoints, newPoint(1050));
+    expect(act).toBe(exp);
+  });
+  test('in the middle', () => {
+    const exp = [0, 100, 300];
+    const act = calcDetours(currPoints, newPoint(750));
+    expect(act).toBe(exp);
+  });
+});
+
 // Set up
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 const SCAN_MARK = tOfDay(1, 23);   // the default scan mock stamps this onto every `latest`
 const PAX_START = tOfDay(8, 15);   // unique value, so the new stop can be found by its `earliest`
-const UNI: Coord = { lat: 1000, lon: 1000 };
 
 const mkCoord = (lat: number, lon = 0): Coord => ({ lat, lon });
 const mkWp = (lat: number, earliest = tOfDay(8), latest = tOfDay(23)): Waypoint => ({ loc: mkCoord(lat), earliest, latest });
@@ -592,7 +618,7 @@ const mkTrip = (
 ): Trip => ({ waypoints: wps, legs, legDists, currDur: sum(legs), currDist: sum(legDists) });
 
 const mkReq = (start: Coord, end: Coord, window = { start: PAX_START, end: tOfDay(12) }): MatchRequest => ({
-  reqId: 7, start, end, window, status: 'unassigned',
+  reqId: -7, start, end, window, status: 'unassigned',
 });
 const toUniReq = (pickupLat: number, window?: { start: Date; end: Date; }) => mkReq(mkCoord(pickupLat), UNI, window);
 const fromUniReq = (dropLat: number, window?: { start: Date; end: Date; }) => mkReq(UNI, mkCoord(dropLat), window);

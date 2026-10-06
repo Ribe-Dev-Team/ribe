@@ -13,6 +13,8 @@ export {
   decomposeTime12h,
   formatTime12h,
   convert12hTo24h,
+  formatTimeToStr,
+  formatSep12ToStr,
 };
 
 // CONVERTSION CONSTANT
@@ -76,4 +78,21 @@ function convert12hTo24h(t12: sepTime12h): string {
     ? t12.hrs % 12 + 12   // +12 for 12-23 range
     : t12.hrs % 12;       // +0 for 0-11 range
   return `${String(hh).padStart(2, '0')}:${String(t12.mins).padStart(2, '0')}`;
+}
+
+function formatTimeToStr(t: Date): string {
+  const hr = t.getHours(); // 0->23
+  const min = t.getMinutes(); // 0->59
+  const sec = t.getSeconds(); // 0->59
+  const str = [hr, min, sec].map(v => `${String(v).padStart(2, '0')}`, '').join(':');
+  return str;
+}
+
+function formatSep12ToStr(t: sepTime12h): string {
+  const hh = (t.period === 'PM')
+    ? t.hrs % 12 + 12   // +12 for 12-23 range
+    : t.hrs % 12;       // +0 for 0-11 range
+  const min = t.mins;
+  const str = [hh, min].map(v => `${String(v).padStart(2, '0')}`, '').join(':');
+  return str;
 }

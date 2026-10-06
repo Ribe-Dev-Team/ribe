@@ -5,6 +5,9 @@
 import type { Coord, MatchOffer, MatchRequest, Trip } from "./matching.schema";
 import { MONASH_CLAYTON_LOCATION } from "../../mobile/services/googlePlaces";
 
+const coordToStr: (c: Coord) => string = (c) => (`[lat=${c.lat}, long=${c.lon}]`);
+const uniToStr = () => (`[lat=${MONASH_CLAYTON_LOCATION.lat}, long=${MONASH_CLAYTON_LOCATION.lng}]`);
+
 export function coordIsUni(c: Coord) {
   return c.lat === MONASH_CLAYTON_LOCATION.lat && c.lon === MONASH_CLAYTON_LOCATION.lng;
 }
@@ -23,7 +26,7 @@ export function isTripToUni(t: Trip) {
   } else if (coordIsUni(t.waypoints[0].loc)) {
     return false;
   }
-  throw new Error(`Could not determine trip was to/from uni: neither ${t.waypoints[-1].loc} or ${t.waypoints[0].loc} were found to be UNI - ${MONASH_CLAYTON_LOCATION}`);
+  throw new Error(`Could not determine trip was to/from uni: neither ${coordToStr(t.waypoints[-1].loc)} or ${coordToStr(t.waypoints[0].loc)} were found to be UNI - ${uniToStr()}`);
 }
 
 export function isBookingToUni(r: MatchRequest | MatchOffer) {
@@ -32,7 +35,7 @@ export function isBookingToUni(r: MatchRequest | MatchOffer) {
   } else if (coordIsUni(r.start)) {
     return false;
   }
-  throw new Error(`Could not determine if booking was to/from uni: neither ${r.start} or ${r.end} were found to be UNI - ${MONASH_CLAYTON_LOCATION}`);
+  throw new Error(`Could not determine if booking was to/from uni: neither ${coordToStr(r.start)} or ${coordToStr(r.end)} were found to be UNI - ${uniToStr()}`);
 }
 
 export function insertAt<T>(l: T[], add: T[], ind: number, replace: number = 0): T[] {
@@ -44,4 +47,9 @@ export function insertAt<T>(l: T[], add: T[], ind: number, replace: number = 0):
   const combined = [...left, ...add, ...right];
   return combined;
 }
+
+export function min<T>(l: T[]): T {
+  if (l.length === 0) throw new Error('No minimum of empty list');
+  return l.reduce((acc, x) => (x < acc) ? x : acc, l[0]);
+};
 

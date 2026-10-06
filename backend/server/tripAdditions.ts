@@ -4,12 +4,15 @@
  * This is done through a geographical heuristic (least sum of new distances).
  */
 
-import type { MatchRequest, Trip, Waypoint } from "./matching.schema";
+import type { MatchRequest, Trip, Waypoint, Coord } from "./matching.schema";
 import { calcDist } from "../../mobile/utility/distances";
 import { subMins, addMins } from "../../mobile/utility/times";
-import { getEndTime, getStartTime, insertAt, isBookingToUni } from "./matching";
+import { getEndTime, getStartTime, insertAt, isBookingToUni, min } from "./matching";
 import { GOOGLE_MAPS_API_KEY, isPlacesConfigured } from '../../mobile/services/googlePlaces';
 import { RoutesReqOptions, computeRoute } from "../../mobile/services/googleRoutes";
+import { formatDateTimeToStr } from "../../mobile/utility/dates";
+
+const coordToStr: (c: Coord) => string = (c) => (`[lat=${c.lat}, long=${c.lon}]`);
 
 /**
  * Find earliest and latest departure at each waypoint using forwards and backwards scanning
@@ -95,6 +98,25 @@ export function scanTripFromUni(req: MatchRequest, wps: Waypoint[], legs: number
 }
 
 /**
+ * Calculate the extra distance needed to travel for each insertion point in the trip
+ * 
+ * @param {Waypoint[]} wps the list of waypoints currently in the trip
+ * @param {Coord} add the new location to add to the trip
+ * @returns 
+ */
+export function calcDetours(wps: Waypoint[], add: Coord) {
+  const distances = wps.map(wp => calcDist(wp.loc, add));
+
+  const currLegDists =
+    wps.slice(1)  // skip index 0
+      .map((wp, ind) => calcDist(wp.loc, wps[ind].loc));
+
+  // add pairs of distances to compare the detour amount
+  return distances.slice(1) // skip index 0
+    .map((dist, ind) => dist + distances[ind] - currLegDists[ind + 1]); // add adjacenct distances and sub existing distance
+}
+
+/**
  * Add the passenger into the current trip/route in the optimal position
  * Note: the Trip object does not keep track of who each waypoint belows to
  * 
@@ -105,16 +127,14 @@ export function scanTripFromUni(req: MatchRequest, wps: Waypoint[], legs: number
 export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | null> {
   // validate trip is populated
   if (curr.waypoints.length < 2 || curr.legs.length < 1 || curr.legDists.length < 1) throw new Error(`Current trip was not adequately populated. Found only ${curr.waypoints.length} waypoints (min 2), ${curr.legs.length < 1} leg times (min 1) and ${curr.legDists.length} leg distances (min 1)`);
+  if (curr.waypoints.some(wp => wp === undefined)) throw new Error('Found an undefined waypoint in list:' + curr.waypoints.map((wp, i) => `\nWP#${i}-${coordToStr(wp.loc)}-[${formatDateTimeToStr(wp.earliest)} -> ${formatDateTimeToStr(wp.latest)}]`));
 
   // get the end-point that isn't shared/uni
   const pUnique = isBookingToUni(p) ? p.start : p.end;
-  // calculate distances between current waypoints and new waypoint
-  const distances = curr.waypoints.map(wp => calcDist(wp.loc, pUnique));
-  const currLegDists = curr.waypoints.map((wp, ind) => calcDist(wp.loc, curr.waypoints[ind - 1].loc));
-  // add pairs of distances to compare the detour amount
-  const [_, ...detours] = distances // ignore first entry (NaN - due to index-1)
-    .map((dist, ind) => dist + distances[ind - 1] - currLegDists[ind]); // add adjacenct distances and sub existing distance
-  const minDetour = detours.reduce((acc, d) => (d < acc) ? d : acc, Infinity);
+
+  // get minimum detour -> insertion point
+  const detours = calcDetours(curr.waypoints, pUnique);
+  const minDetour = min(detours);
   const bestInd = detours
     .map((det, ind) => ({ detour: det, index: ind }))
     .filter(x => x.detour === minDetour)[0].index;
