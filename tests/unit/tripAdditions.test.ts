@@ -1,6 +1,6 @@
 import type { MatchOffer, MatchRequest, Waypoint, Trip, Coord } from "../../backend/server/matching.schema";
 import { MONASH_CLAYTON_LOCATION } from "../../mobile/services/googlePlaces";
-import { scanTripToUni, scanTripFromUni, addPassenger, calcDetours, findBestInd, updateLegDists } from "../../backend/server/tripAdditions";
+import { scanTripToUni, scanTripFromUni, addPassenger, calcDetours, findBestInd, updateLegDists, updateLegDurs } from "../../backend/server/tripAdditions";
 
 import { calcDist } from "../../mobile/utility/distances";
 import { isBookingToUni } from "../../backend/server/matching";
@@ -583,7 +583,6 @@ describe('calcDetours() testing', () => {
     { loc: { lat: 900, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
     { loc: { lat: UNI.lat, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
   ];
-  const newPoint = (lat: number) => ({ lat, lon: UNI.lon });
 
   test('less than start', () => {
     const exp = [200, 500, 600];
@@ -668,7 +667,7 @@ const mkTrip = (
   legDists: number[] = legs.map((_, i) => 1000 + i * 10),
 ): Trip => ({ waypoints: wps, legs, legDists, currDur: sum(legs), currDist: sum(legDists) });
 
-describe('updateLegDists() testing', () => {
+describe('Updating legs testing', () => {
   // updateLegDists(currTrip: Trip, newLegs: { distanceMeters: number, duration: string; }[], ind: number);
   const currPoints = [
     newWp(700),
@@ -677,31 +676,54 @@ describe('updateLegDists() testing', () => {
     newWp(UNI.lat),
   ];
   const t = mkTrip(currPoints, [7, 8, 4], [3100, 4900, 2001]);
-  const mkLeg = (km: number, min: number) => ({ distanceMeters: km * 1000, duration: String(min) + 's' });
+  const mkLeg = (km: number, min: number) => ({ distanceMeters: km * 1000, duration: String(min * 60) + 's' });
 
   test('add after start', () => {
-    const newLegs = [mkLeg(1.5, 4), mkLeg(1.8, 5)];
-    const expLegs = [1500, 1800, 4900, 2001];
-    const expDist = sum(expLegs); // 10 201 m
-    const act = updateLegDists(t, newLegs, 0);
-    expect(act.currDist).toBe(expDist);
-    expect(act.legDists).toEqual(expLegs);
+    const newLegs = [mkLeg(1.5, 3.25), mkLeg(1.8, 4.5)];
+
+    const expLegsD = [1500, 1800, 4900, 2001];
+    const expDist = sum(expLegsD); // 10 201 m
+    const expLegsT = [4, 5, 8, 4];
+    const expTime = sum(expLegsT); // 21 min
+
+    const actD = updateLegDists(t, newLegs, 0);
+    const actT = updateLegDurs(t, newLegs, 0);
+
+    expect(actD.currDist).toBe(expDist);
+    expect(actD.legDists).toEqual(expLegsD);
+    expect(actT.currDur).toBe(expTime);
+    expect(actT.legs).toEqual(expLegsT);
   });
-  test('add ind middle', () => {
+  test('add in middle', () => {
     const newLegs = [mkLeg(4.4, 10), mkLeg(7.01, 12)];
-    const expLegs = [3100, 4400, 7010, 2001];
-    const expDist = sum(expLegs); // 16 511 m
-    const act = updateLegDists(t, newLegs, 1);
-    expect(act.currDist).toBe(expDist);
-    expect(act.legDists).toEqual(expLegs);
+
+    const expLegsD = [3100, 4400, 7010, 2001];
+    const expDist = sum(expLegsD); // 16 511 m
+    const expLegsT = [7, 10, 12, 4];
+    const expTime = sum(expLegsT); // 33 min
+
+    const actD = updateLegDists(t, newLegs, 1);
+    const actT = updateLegDurs(t, newLegs, 1);
+
+    expect(actD.currDist).toBe(expDist);
+    expect(actD.legDists).toEqual(expLegsD);
+    expect(actT.currDur).toBe(expTime);
+    expect(actT.legs).toEqual(expLegsT);
   });
   test('add before end', () => {
     const newLegs = [mkLeg(0.09, 1), mkLeg(1.999, 5)];
-    const expLegs = [3100, 4900, 90, 1999];
-    const expDist = sum(expLegs); // 10 089 m
-    const act = updateLegDists(t, newLegs, 2);
-    expect(act.currDist).toBe(expDist);
-    expect(act.legDists).toEqual(expLegs);
+    const expLegsD = [3100, 4900, 90, 1999];
+    const expDist = sum(expLegsD); // 10 089 m
+    const expLegsT = [7, 8, 1, 5];
+    const expTime = sum(expLegsT); // 21 min
+
+    const actD = updateLegDists(t, newLegs, 2);
+    const actT = updateLegDurs(t, newLegs, 2);
+
+    expect(actD.currDist).toBe(expDist);
+    expect(actD.legDists).toEqual(expLegsD);
+    expect(actT.currDur).toBe(expTime);
+    expect(actT.legs).toEqual(expLegsT);
   });
 });
 
@@ -712,12 +734,6 @@ const mkCoord = (lat: number, lon = 0): Coord => ({ lat, lon });
 const mkWp = (lat: number, earliest = tOfDay(8), latest = tOfDay(23)): Waypoint => ({ loc: mkCoord(lat), earliest, latest });
 // waypoints on a line, each with a distinct `earliest` (08:00, 08:02, ...)
 const mkLine = (lats: number[]) => lats.map((lat, i) => mkWp(lat, tOfDay(8, 2 * i)));
-
-const mkTrip = (
-  wps: Waypoint[],
-  legs: number[] = wps.slice(1).map(() => 10),
-  legDists: number[] = legs.map(() => 1000),
-): Trip => ({ waypoints: wps, legs, legDists, currDur: sum(legs), currDist: sum(legDists) });
 
 const mkReq = (start: Coord, end: Coord, window = { start: PAX_START, end: tOfDay(12) }): MatchRequest => ({
   reqId: -7, start, end, window, status: 'unassigned',

@@ -154,8 +154,6 @@ export function updateLegDists(currTrip: Trip, newLegs: { distanceMeters: number
   // finalise trip object
   const newLegDists = insertAt(currTrip.legDists, [toAddDist, fromAddDist], ind, 1);
 
-  // throw new Error(`to: ${toAddDist}\nfrom: ${fromAddDist}\nnew: ${newDistance}\nlegs: ${newLegDists}`);
-
   return {
     ...currTrip,
     currDist: newDistance,
