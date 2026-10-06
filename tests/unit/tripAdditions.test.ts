@@ -1,6 +1,6 @@
 import type { MatchOffer, MatchRequest, Waypoint, Trip, Coord } from "../../backend/server/matching.schema";
 import { MONASH_CLAYTON_LOCATION } from "../../mobile/services/googlePlaces";
-import { scanTripToUni, scanTripFromUni, addPassenger, calcDetours, findBestInd } from "../../backend/server/tripAdditions";
+import { scanTripToUni, scanTripFromUni, addPassenger, calcDetours, findBestInd, updateLegDists } from "../../backend/server/tripAdditions";
 
 import { calcDist } from "../../mobile/utility/distances";
 import { isBookingToUni } from "../../backend/server/matching";
@@ -579,26 +579,26 @@ const UNI: Coord = { lat: 1000, lon: 1000 };
 describe('calcDetours() testing', () => {
   const currPoints = [
     { loc: { lat: 700, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
-    { loc: { lat: 800, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
+    { loc: { lat: 850, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
     { loc: { lat: 900, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
     { loc: { lat: UNI.lat, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
   ];
   const newPoint = (lat: number) => ({ lat, lon: UNI.lon });
 
   test('less than start', () => {
-    const exp = [200, 400, 600];
+    const exp = [200, 500, 600];
     const act = calcDetours(currPoints, newPoint(600));
-    expect(act).toBe(exp);
+    expect(act).toEqual(exp);
   });
   test('more than end', () => {
-    const exp = [500, 300, 100];
+    const exp = [400, 300, 100];
     const act = calcDetours(currPoints, newPoint(1050));
-    expect(act).toBe(exp);
+    expect(act).toEqual(exp);
   });
   test('in the middle', () => {
-    const exp = [0, 100, 300];
+    const exp = [0, 200, 300];
     const act = calcDetours(currPoints, newPoint(750));
-    expect(act).toBe(exp);
+    expect(act).toEqual(exp);
   });
 });
 

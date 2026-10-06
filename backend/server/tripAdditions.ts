@@ -111,9 +111,11 @@ export function calcDetours(wps: Waypoint[], add: Coord) {
     wps.slice(1)  // skip index 0
       .map((wp, ind) => calcDist(wp.loc, wps[ind].loc));
 
+  const distMods = distances.slice(1) // skip index 0
+    .map((dist, ind) => dist + distances[ind] - currLegDists[ind]); // add adjacenct distances and sub existing distance
+
   // add pairs of distances to compare the detour amount
-  return distances.slice(1) // skip index 0
-    .map((dist, ind) => dist + distances[ind] - currLegDists[ind + 1]); // add adjacenct distances and sub existing distance
+  return distMods;
 }
 
 /**
@@ -126,7 +128,7 @@ export function calcDetours(wps: Waypoint[], add: Coord) {
 export function findBestInd(add: Waypoint, wps: Waypoint[]) {
   const detours = calcDetours(wps, add.loc);
   const minDetour = min(detours);
-  const bestInd = detours
+  const bestInd = 1 + detours // +1 since detour indexes between waypoint indexes
     .map((det, ind) => ({ detour: det, index: ind }))
     .filter(x => x.detour === minDetour)[0].index;
 
