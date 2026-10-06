@@ -1,6 +1,6 @@
 import type { MatchOffer, MatchRequest, Waypoint, Trip, Coord } from "../../backend/server/matching.schema";
 import { MONASH_CLAYTON_LOCATION } from "../../mobile/services/googlePlaces";
-import { scanTripToUni, scanTripFromUni, addPassenger, calcDetours } from "../../backend/server/tripAdditions";
+import { scanTripToUni, scanTripFromUni, addPassenger, calcDetours, findBestInd } from "../../backend/server/tripAdditions";
 
 import { calcDist } from "../../mobile/utility/distances";
 import { isBookingToUni } from "../../backend/server/matching";
@@ -573,6 +573,8 @@ describe('scanTripFromUni() testing', () => {
   });
 });
 
+const newPoint = (lat: number, lon: number = UNI.lon) => ({ lat, lon });
+
 const UNI: Coord = { lat: 1000, lon: 1000 };
 describe('calcDetours() testing', () => {
   const currPoints = [
@@ -597,6 +599,64 @@ describe('calcDetours() testing', () => {
     const exp = [0, 100, 300];
     const act = calcDetours(currPoints, newPoint(750));
     expect(act).toBe(exp);
+  });
+});
+
+const newWp = (lat: number, lon: number = UNI.lon) => ({
+  loc: newPoint(lat, lon),
+  earliest: tOfDay(9),
+  latest: tOfDay(17),
+});
+
+describe('findBestInd() testing', () => {
+  const currPoints = [
+    newWp(700),
+    newWp(800),
+    newWp(900),
+    newWp(UNI.lat),
+  ];
+
+  test('cannot insert before start', () => {
+    const exp = 1;
+    const act = findBestInd(newWp(600), currPoints);
+    expect(act).toBe(exp);
+  });
+  test('same as start still after start', () => {
+    const exp = 1;
+    const act = findBestInd(newWp(currPoints[0].loc.lat), currPoints);
+    expect(act).toBe(exp);
+  });
+  test('can insert after start', () => {
+    const exp = 1;
+    const act = findBestInd(newWp(799), currPoints);
+    expect(act).toBe(exp);
+  });
+  test('can insert in middle', () => {
+    const exp = 2;
+    const act = findBestInd(newWp(801), currPoints);
+    expect(act).toBe(exp);
+  });
+  test('can insert before end', () => {
+    const exp = 3;
+    const act = findBestInd(newWp(999), currPoints);
+    expect(act).toBe(exp);
+  });
+  test('cannot insert after end', () => {
+    const exp = 3;
+    const act = findBestInd(newWp(10000), currPoints);
+    expect(act).toBe(exp);
+  });
+  test('same as end still before end', () => {
+    const exp = 3;
+    const act = findBestInd(newWp(currPoints.at(-1)!.loc.lat), currPoints);
+    expect(act).toBe(exp);
+  });
+  test('same as existing (doesn\'t matter)', () => {
+    const exp1 = 2;
+    const exp2 = 3;
+    const act = findBestInd(newWp(currPoints[2].loc.lat), currPoints);
+    if (act === exp1) expect(act).toBe(exp1);
+    else expect(act).toBe(exp2);
   });
 });
 
