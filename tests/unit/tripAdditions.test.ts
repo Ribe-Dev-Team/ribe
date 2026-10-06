@@ -662,6 +662,48 @@ describe('findBestInd() testing', () => {
 
 // Set up
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+const mkTrip = (
+  wps: Waypoint[],
+  legs: number[] = wps.slice(1).map((_, i) => 10 + i),
+  legDists: number[] = legs.map((_, i) => 1000 + i * 10),
+): Trip => ({ waypoints: wps, legs, legDists, currDur: sum(legs), currDist: sum(legDists) });
+
+describe('updateLegDists() testing', () => {
+  // updateLegDists(currTrip: Trip, newLegs: { distanceMeters: number, duration: string; }[], ind: number);
+  const currPoints = [
+    newWp(700),
+    newWp(800),
+    newWp(900),
+    newWp(UNI.lat),
+  ];
+  const t = mkTrip(currPoints, [7, 8, 4], [3100, 4900, 2001]);
+  const mkLeg = (km: number, min: number) => ({ distanceMeters: km * 1000, duration: String(min) + 's' });
+
+  test('add after start', () => {
+    const newLegs = [mkLeg(1.5, 4), mkLeg(1.8, 5)];
+    const expLegs = [1500, 1800, 4900, 2001];
+    const expDist = sum(expLegs); // 10 201 m
+    const act = updateLegDists(t, newLegs, 0);
+    expect(act.currDist).toBe(expDist);
+    expect(act.legDists).toEqual(expLegs);
+  });
+  test('add ind middle', () => {
+    const newLegs = [mkLeg(4.4, 10), mkLeg(7.01, 12)];
+    const expLegs = [3100, 4400, 7010, 2001];
+    const expDist = sum(expLegs); // 16 511 m
+    const act = updateLegDists(t, newLegs, 1);
+    expect(act.currDist).toBe(expDist);
+    expect(act.legDists).toEqual(expLegs);
+  });
+  test('add before end', () => {
+    const newLegs = [mkLeg(0.09, 1), mkLeg(1.999, 5)];
+    const expLegs = [3100, 4900, 90, 1999];
+    const expDist = sum(expLegs); // 10 089 m
+    const act = updateLegDists(t, newLegs, 2);
+    expect(act.currDist).toBe(expDist);
+    expect(act.legDists).toEqual(expLegs);
+  });
+});
 
 const SCAN_MARK = tOfDay(1, 23);   // the default scan mock stamps this onto every `latest`
 const PAX_START = tOfDay(8, 15);   // unique value, so the new stop can be found by its `earliest`

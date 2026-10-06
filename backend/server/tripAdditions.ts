@@ -154,6 +154,8 @@ export function updateLegDists(currTrip: Trip, newLegs: { distanceMeters: number
   // finalise trip object
   const newLegDists = insertAt(currTrip.legDists, [toAddDist, fromAddDist], ind, 1);
 
+  // throw new Error(`to: ${toAddDist}\nfrom: ${fromAddDist}\nnew: ${newDistance}\nlegs: ${newLegDists}`);
+
   return {
     ...currTrip,
     currDist: newDistance,
@@ -224,8 +226,8 @@ export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | 
   const apiLegs = routeObj.routes[0].legs;
 
   // update Trip object
-  const withDur = updateLegDurs({ ...curr, waypoints: newWaypoints }, apiLegs, bestInd);
-  const newTrip = updateLegDists(withDur, apiLegs, bestInd);
+  const withDur = updateLegDurs({ ...curr, waypoints: newWaypoints }, apiLegs, bestInd - 1);
+  const newTrip = updateLegDists(withDur, apiLegs, bestInd - 1);
 
   // find earliest and latest departure using forwards and backwards scanning
   const validWaypoints = (isBookingToUni(p))
