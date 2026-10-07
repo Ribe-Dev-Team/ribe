@@ -741,7 +741,7 @@ const mkReq = (start: Coord, end: Coord, window = { start: PAX_START, end: tOfDa
 const toUniReq = (pickupLat: number, window?: { start: Date; end: Date; }) => mkReq(mkCoord(pickupLat), UNI, window);
 const fromUniReq = (dropLat: number, window?: { start: Date; end: Date; }) => mkReq(UNI, mkCoord(dropLat), window);
 
-const stopIdx = (t: Trip | null) => t!.waypoints.findIndex(w => w.earliest.getTime() === PAX_START.getTime());
+const stopIdx = (t: Trip | null, c: Coord) => t!.waypoints.findIndex(w => w.loc.lat === c.lat && w.loc.lon === c.lon);
 const windows = (ws: Waypoint[] | null) => ws && ws.map(w => [hm(w.earliest), hm(w.latest)]);
 
 function deepFreeze<T>(o: T): T {
@@ -750,46 +750,105 @@ function deepFreeze<T>(o: T): T {
 }
 
 describe('addPassengner testing', () => {
-  // --------------------- Mocks ---------------------
-  jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').routesModule);
-  jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').configModule);
-  jest.mock('../../mobile/utility/distances', () => ({ ...jest.requireActual('../../mobile/utility/distances'), calcDist: jest.fn() }));
-  jest.mock('../../backend/server/matching', () => ({ ...jest.requireActual('../../backend/server/matching'), isBookingToUni: jest.fn() }));
-  jest.mock('../../backend/server/tripAdditions', () => ({ scanTripToUni: jest.fn(), scanTripFromUni: jest.fn() }));
+  jest.resetModules();
 
-  const mockCalcDist = jest.mocked(calcDist);
-  const mockIsToUni = jest.mocked(isBookingToUni);
-  const mockScanTo = jest.mocked(scanTripToUni);
-  const mockScanFrom = jest.mocked(scanTripFromUni);
-  const mockComputeRoute = jest.mocked(computeRoute);
+  const mockIsToUni = jest.fn();
+  const mockAPIConfig = jest.fn();
+  const mockComputeRoute = jest.fn();
+
+  const fakeCompRoute = {
+    routes: [{
+      duration: '1055s',
+      distanceMeters: 5217,
+      legs: [
+        { 'duration': '455s', 'distanceMeters': 2007 },
+        { 'duration': '600s', 'distanceMeters': 3210 },
+      ],
+      optimizedIntermediateWaypointIndex: [0, 1],
+    }]
+  };
+  // const mockCalcDist = jest.fn();
+  // const mockScanTo = jest.fn();
+  // const mockScanFrom = jest.fn();
+
+  // jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').configModule);
 
   beforeEach(() => {
-    jest.resetAllMocks();
-    resetGoogleApiMock();
-    mockCalcDist.mockImplementation((a: Coord, b: Coord) => Math.hypot(a.lat - b.lat, a.lon - b.lon));
-    mockIsToUni.mockReturnValue(true);
-    const stamp = (_r: MatchRequest, wps: Waypoint[]) => wps.map(w => ({ ...w, latest: SCAN_MARK }));
-    mockScanTo.mockImplementation(stamp);
-    mockScanFrom.mockImplementation(stamp);
+    // jest.resetAllMocks();
+    // resetGoogleApiMock();
+    // mockCalcDist.mockImplementation((a: Coord, b: Coord) => Math.hypot(a.lat - b.lat, a.lon - b.lon));
+    // mockIsToUni.mockReturnValue(true);
+    // const stamp = (_r: MatchRequest, wps: Waypoint[]) => wps.map(w => ({ ...w, latest: SCAN_MARK }));
+    // mockScanTo.mockImplementation(stamp);
+    // mockScanFrom.mockImplementation(stamp);
   });
 
-  // Find unique endpoint regardless of booking direction
+  // start lat 875 = nearest gap 2
+  const reqTo = () => mkReq(mkCoord(875), UNI);
+  // end lat 725 = nearest gap 3
+  const reqFrom = () => mkReq(UNI, mkCoord(725));
 
-  // start = lat 25 (nearest gap 2), end = lat 15 (nearest gap 1)
-  const req = () => mkReq(mkCoord(25), mkCoord(15));
+  jest.doMock('../../backend/server/matching', () => {
+    // Require the original module to not be mocked...
+    const originalModule =
+      jest.requireActual<typeof import('../../backend/server/matching')>('../../backend/server/matching');
+
+    return {
+      __esModule: true, // Use it when dealing with esModules
+      ...originalModule,
+      isBookingToUni: mockIsToUni,
+    };
+  });
+  jest.doMock('../../mobile/services/googlePlaces', () => {
+    const originalModule = jest.requireActual('../../mobile/services/googlePlaces');
+    return {
+      ...originalModule,
+      GOOGLE_MAPS_API_KEY: 'TEST_KEY',
+      isPlacesConfigured: mockAPIConfig,
+    };
+  });
+  jest.doMock('../../mobile/services/googleRoutes', () => {
+    const originalModule = jest.requireActual('../../mobile/services/googleRoutes');
+    return {
+      ...originalModule,
+      computeRoute: mockComputeRoute,
+    };
+  });
+
+  const { addPassenger } = require('../../backend/server/tripAdditions');
+
+  it('test the tests', async () => {
+    mockIsToUni.mockImplementation(() => true);
+    const { isBookingToUni } = require('../../backend/server/matching');
+
+    expect(jest.isMockFunction(isBookingToUni)).toBe(true);
+    expect(isBookingToUni(req2)).toBe(true);
+
+    const fake = {
+      start: { lat: 0, lon: 0 },
+      end: { lat: 10, lon: 10 },
+    };
+    expect(isBookingToUni(fake)).toBe(true);
+    expect(isBookingToUni(reqTo())).toBe(true);
+  });
 
   it('Unique endpoint - to-uni', async () => {
+    mockAPIConfig.mockReturnValue(true);
     mockIsToUni.mockReturnValue(true);
-    const t = await addPassenger(mkTrip(mkLine([0, 10, 20, 30])), req());
-    expect(stopIdx(t)).toBe(3);
-    expect(t!.waypoints[3].loc).toEqual(mkCoord(25));
+    mockComputeRoute.mockReturnValue(fakeCompRoute);
+
+    const t = await addPassenger(mkTrip(mkLine([300, 150, 100, 0].map(l => UNI.lat - l))), reqTo());
+    expect(t).not.toEqual(null);
+    expect(t!.waypoints[2].loc).toEqual(mkCoord(875));
   });
 
   it('Unique endpoint - from-uni', async () => {
+    mockAPIConfig.mockReturnValue(true);
     mockIsToUni.mockReturnValue(false);
-    const t = await addPassenger(mkTrip(mkLine([0, 10, 20, 30])), req());
-    expect(stopIdx(t)).toBe(2);
-    expect(t!.waypoints[2].loc).toEqual(mkCoord(15));
+    mockComputeRoute.mockReturnValue(fakeCompRoute);
+    const t = await addPassenger(mkTrip(mkLine([0, 100, 150, 300].map(l => UNI.lat - l))), reqFrom());
+    expect(t).not.toEqual(null);
+    expect(t!.waypoints[3].loc).toEqual(mkCoord(725));
   });
 
   // Choosing the best gap

@@ -195,6 +195,8 @@ export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | 
   // validate trip is populated
   if (curr.waypoints.length < 2 || curr.legs.length < 1 || curr.legDists.length < 1) throw new Error(`Current trip was not adequately populated. Found only ${curr.waypoints.length} waypoints (min 2), ${curr.legs.length < 1} leg times (min 1) and ${curr.legDists.length} leg distances (min 1)`);
   if (curr.waypoints.some(wp => wp === undefined)) throw new Error('Found an undefined waypoint in list:' + curr.waypoints.map((wp, i) => `\nWP#${i}-${coordToStr(wp.loc)}-[${formatDateTimeToStr(wp.earliest)} -> ${formatDateTimeToStr(wp.latest)}]`));
+  // validate API is set-up
+  if (!isPlacesConfigured()) throw new Error("Google API key was not properly configured. Could not retrieve travel data.");
 
   const newStop = {
     // get the end-point that isn't shared/uni
@@ -209,13 +211,11 @@ export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | 
   const newWaypoints = insertAt(curr.waypoints, [newStop], bestInd);
 
   // call Google API for new distances and times
-  if (!isPlacesConfigured()) throw new Error("Google API key was not properly configured. Could not retrieve travel data.");
-
   const routeReq: RoutesReqOptions = {
-    origin: newWaypoints[bestInd].loc,
-    dest: newWaypoints[bestInd + 2].loc,
-    inters: [newWaypoints[bestInd + 1].loc],
-    depTime: newWaypoints[bestInd].earliest,
+    origin: newWaypoints[bestInd - 1].loc,
+    dest: newWaypoints[bestInd + 1].loc,
+    inters: [newWaypoints[bestInd].loc],
+    depTime: newWaypoints[bestInd - 1].earliest,
     apiKey: GOOGLE_MAPS_API_KEY,
     fieldMask: "routes.legs.duration,routes.legs.distanceMeters",
   };
