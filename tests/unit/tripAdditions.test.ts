@@ -1,146 +1,54 @@
-import type { MatchOffer, MatchRequest, Waypoint, Trip, Coord } from "../../backend/server/matching.schema";
-import { MONASH_CLAYTON_LOCATION } from "../../mobile/services/googlePlaces";
-import { scanTripToUni, scanTripFromUni, addPassenger, calcDetours, findBestInd, updateLegDists, updateLegDurs } from "../../backend/server/tripAdditions";
-
-import { calcDist } from "../../mobile/utility/distances";
-import { isBookingToUni } from "../../backend/server/matching";
-import { computeRoute } from "../../mobile/services/googleRoutes";
-import { mockConfig, leg, routesResponse, emptyRoutesResponse, resetGoogleApiMock } from "../../__mocks__/googleRouteAPI";
-
-const req1: MatchRequest = {
-  reqId: -1,
-  start: { lat: 0, lon: 0 },
-  end: { lat: MONASH_CLAYTON_LOCATION.lat, lon: MONASH_CLAYTON_LOCATION.lng },
-  status: "unassigned",
-  window: {
-    start: new Date("2026-09-17T07:24:00"),
-    end: new Date("2026-09-17T10:00:00"),
-  },
-};
-
-const req2: MatchRequest = {
-  reqId: -1,
-  start: { lat: MONASH_CLAYTON_LOCATION.lat, lon: MONASH_CLAYTON_LOCATION.lng },
-  end: { lat: 0, lon: 0 },
-  status: "unassigned",
-  window: {
-    start: new Date("2026-09-17T07:24:00"),
-    end: new Date("2026-09-17T10:00:00"),
-  },
-};
-
-const offer1: MatchOffer = {
-  offerId: -1,
-  start: { lat: -37.8271566, lon: 145.1184227 }, // Aqualink Box Hill
-  end: { lat: MONASH_CLAYTON_LOCATION.lat, lon: MONASH_CLAYTON_LOCATION.lng },
-  status: "active",
-  window: {
-    start: new Date("2026-09-17T07:24:00"),
-    end: new Date("2026-09-17T11:00:00"),
-    maxDetour: 45,
-  },
-  currTrip: {
-    waypoints: [
-      {
-        loc: { lat: -37.8271566, lon: 145.1184227 },  // Aqualink Box Hill
-        earliest: new Date("2026-09-17T07:24:00"),
-        latest: new Date("2026-09-17T10:00:00"),
-      },
-      {
-        loc: { lat: -37.8647917, lon: 145.1267146 },  // Hungry Jacks Mt Waverley
-        earliest: new Date("2026-09-17T08:00:00"),
-        latest: new Date("2026-09-17T10:13:00"),
-      },
-      {
-        loc: { lat: -37.8863832, lon: 145.143038 },  // Waverley Private Hospital
-        earliest: new Date("2026-09-17T08:30:00"),
-        latest: new Date("2026-09-17T10:17:00"),
-      },
-      {
-        loc: { lat: -37.8961912, lon: 145.1283908 },  // Mt Waverley Badminton Centre
-        earliest: new Date("2026-09-17T09:00:00"),
-        latest: new Date("2026-09-17T10:23:00"),
-      },
-      {
-        loc: { lat: MONASH_CLAYTON_LOCATION.lat, lon: MONASH_CLAYTON_LOCATION.lng },
-        earliest: new Date("2026-09-17T09:30:00"),
-        latest: new Date("2026-09-17T10:28:00"),
-      },
-    ],
-    legs: [13, 5, 7, 6],
-    legDists: [7.1, 2.8, 2.6, 1.9],
-    currDist: 14.4,
-    currDur: 28,
-  },
-  capacity: 3,
-  rides: [
-    { rideId: -1, offerId: -1, status: "driver_pending" },
-    { rideId: -2, offerId: -1, status: "driver_pending" },
-    { rideId: -3, offerId: -1, status: "driver_pending" },
-  ],
-  directTime: 19,
-  directDist: 11.4,
-};
-
-const offer2: MatchOffer = {
-  offerId: -2,
-  start: { lat: MONASH_CLAYTON_LOCATION.lat, lon: MONASH_CLAYTON_LOCATION.lng },
-  end: { lat: -37.9077353, lon: 145.354052 },
-  status: "active",
-  window: {
-    start: new Date("2026-09-17T16:00:00"),
-    end: new Date("2026-09-17T22:00:00"),
-    maxDetour: 45,
-  },
-  currTrip: {
-    waypoints: [
-      {
-        loc: { lat: MONASH_CLAYTON_LOCATION.lat, lon: MONASH_CLAYTON_LOCATION.lng },
-        earliest: new Date("2026-09-17T17:00:00"),
-        latest: new Date("2026-09-17T19:00:00"),
-      },
-      {
-        loc: { lat: -37.8961912, lon: 145.1283908 },  // Mt Waverley Badminton Centre
-        earliest: new Date("2026-09-17T17:06:00"),
-        latest: new Date("2026-09-17T19:36:00"),
-      },
-      {
-        loc: { lat: -37.9022032, lon: 145.2079725 },  // Chesterfield Farm
-        earliest: new Date("2026-09-17T17:20:00"),
-        latest: new Date("2026-09-17T20:00:00"),
-      },
-      {
-        loc: { lat: -37.9275359, lon: 145.2681855 },  // Lysterfield Aged Care
-        earliest: new Date("2026-09-17T17:34:00"),
-        latest: new Date("2026-09-17T20:30:00"),
-      },
-      {
-        loc: { lat: -37.9077353, lon: 145.354052 },  // Puffing Billy Railway
-        earliest: new Date("2026-09-17T17:48:00"),
-        latest: new Date("2026-09-17T21:00:00"),
-      },
-
-    ],
-    legs: [6, 14, 14, 14],
-    legDists: [1.9, 8.4, 9.1, 14.2],
-    currDist: 33.6,
-    currDur: 48,
-  },
-  capacity: 4,
-  rides: [
-    { rideId: -4, offerId: -2, status: "driver_pending" },
-    { rideId: -5, offerId: -2, status: "driver_pending" },
-    { rideId: -6, offerId: -2, status: "driver_pending" },
-  ],
-  directTime: 31,
-  directDist: 23.4,
-};
+import type { MatchRequest, Waypoint, Trip, Coord } from "../../backend/server/matching.schema";
+import { scanTripToUni, scanTripFromUni, calcDetours, findBestInd, updateLegDists, updateLegDurs } from "../../backend/server/tripAdditions";
 
 // helper functions
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 // Fixed UTC dates so tests are timezone-independent. Minutes may overflow (hour(8, 60) = 9:00).
 const tOfDay = (h: number, m = 0) => new Date(Date.UTC(2030, 0, 1, h, m));
 const hm = (d: Date) => d.toISOString().slice(11, 16);
+
+// testing definition of uni
+const UNI: Coord = { lat: 1000, lon: 1000 };
+
+// simplify distances to be 1 dimensional by default
+const newPoint = (lat: number, lon: number = UNI.lon) => ({ lat, lon });
+const mkCoord = (lat: number, lon = 0): Coord => ({ lat, lon });
+
+// make data structures
+const mkWp = (lat: number, earliest = tOfDay(8), latest = tOfDay(23)): Waypoint => ({ loc: mkCoord(lat), earliest, latest });
+const newWp = (lat: number, lon: number = UNI.lon) => ({
+  loc: newPoint(lat, lon),
+  earliest: tOfDay(9),
+  latest: tOfDay(17),
+});
+const mkLine = (lats: number[]) => lats.map((lat, i) => mkWp(lat, tOfDay(8, 2 * i)));
+const mkTrip = (
+  wps: Waypoint[],
+  legs: number[] = wps.slice(1).map((_, i) => 10 + i),
+  legDists: number[] = legs.map((_, i) => 1000 + i * 10),
+): Trip => ({
+  waypoints: wps,
+  legs,
+  legDists,
+  currDur: sum(legs),
+  currDist: sum(legDists)
+});
+const mkReq = (start: Coord, end: Coord, window = { start: tOfDay(8, 15), end: tOfDay(12) }): MatchRequest => ({
+  reqId: -7, start, end, window, status: 'unassigned',
+});
+const toUniReq = (pickupLat: number, window?: { start: Date; end: Date; }) => mkReq(mkCoord(pickupLat), UNI, window);
+const fromUniReq = (dropLat: number, window?: { start: Date; end: Date; }) => mkReq(UNI, mkCoord(dropLat), window);
+
+type ApiLeg = { duration: string; distanceMeters: number; };
+const apiLeg = (seconds: number, meters: number): ApiLeg => ({ duration: `${seconds}s`, distanceMeters: meters });
+// API response builder
+const buildRouteResponse = (...legs: ApiLeg[]) => ({ routes: [{ legs }] });
+const emptyRouteResponse = () => ({ routes: [] as { legs: ApiLeg[]; }[] });
+// calcDist replacement
+const euclid = (a: Coord, b: Coord) => Math.hypot(a.lat - b.lat, a.lon - b.lon);
+// extract boundary times from waypoints
+const windows = (ws: Waypoint[] | null) => ws && ws.map(w => [hm(w.earliest), hm(w.latest)]);
 
 describe('scanTripToUni() testing', () => {
   // ------------------------- Helpers -------------------------
@@ -573,9 +481,6 @@ describe('scanTripFromUni() testing', () => {
   });
 });
 
-const newPoint = (lat: number, lon: number = UNI.lon) => ({ lat, lon });
-
-const UNI: Coord = { lat: 1000, lon: 1000 };
 describe('calcDetours() testing', () => {
   const currPoints = [
     { loc: { lat: 700, lon: UNI.lon }, earliest: tOfDay(9), latest: tOfDay(17) },
@@ -599,12 +504,6 @@ describe('calcDetours() testing', () => {
     const act = calcDetours(currPoints, newPoint(750));
     expect(act).toEqual(exp);
   });
-});
-
-const newWp = (lat: number, lon: number = UNI.lon) => ({
-  loc: newPoint(lat, lon),
-  earliest: tOfDay(9),
-  latest: tOfDay(17),
 });
 
 describe('findBestInd() testing', () => {
@@ -658,14 +557,6 @@ describe('findBestInd() testing', () => {
     else expect(act).toBe(exp2);
   });
 });
-
-// Set up
-const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
-const mkTrip = (
-  wps: Waypoint[],
-  legs: number[] = wps.slice(1).map((_, i) => 10 + i),
-  legDists: number[] = legs.map((_, i) => 1000 + i * 10),
-): Trip => ({ waypoints: wps, legs, legDists, currDur: sum(legs), currDist: sum(legDists) });
 
 describe('Updating legs testing', () => {
   // updateLegDists(currTrip: Trip, newLegs: { distanceMeters: number, duration: string; }[], ind: number);
@@ -727,34 +618,61 @@ describe('Updating legs testing', () => {
   });
 });
 
-const SCAN_MARK = tOfDay(1, 23);   // the default scan mock stamps this onto every `latest`
-const PAX_START = tOfDay(8, 15);   // unique value, so the new stop can be found by its `earliest`
+// set-up mocks for addPassenger calls
+function loadAddPassenger() {
+  const mocks = { isToUni: jest.fn(), apiConfig: jest.fn(), computeRoute: jest.fn(), calcDist: jest.fn() };
+  let addPassenger!: (curr: Trip, p: MatchRequest) => Promise<Trip | null>;
 
-const mkCoord = (lat: number, lon = 0): Coord => ({ lat, lon });
-const mkWp = (lat: number, earliest = tOfDay(8), latest = tOfDay(23)): Waypoint => ({ loc: mkCoord(lat), earliest, latest });
-// waypoints on a line, each with a distinct `earliest` (08:00, 08:02, ...)
-const mkLine = (lats: number[]) => lats.map((lat, i) => mkWp(lat, tOfDay(8, 2 * i)));
+  jest.isolateModules(() => {
+    jest.doMock('../../backend/server/matching', () => {
+      const originalModule = jest.requireActual('../../backend/server/matching');
+      return {
+        ...originalModule,
+        __esModule: true,
+        isBookingToUni: mocks.isToUni,
+      };
+    });
+    jest.doMock('../../mobile/services/googlePlaces', () => {
+      const originalModule = jest.requireActual('../../mobile/services/googlePlaces');
+      return {
+        ...originalModule,
+        GOOGLE_MAPS_API_KEY: 'TEST_KEY',
+        isPlacesConfigured: mocks.apiConfig,
+      };
+    });
+    jest.doMock('../../mobile/services/googleRoutes', () => {
+      const originalModule = jest.requireActual('../../mobile/services/googleRoutes');
+      return {
+        ...originalModule,
+        computeRoute: mocks.computeRoute,
+      };
+    });
+    jest.doMock('../../mobile/utility/distances', () => {
+      const originalModule = jest.requireActual('../../mobile/utility/distances');
+      return {
+        ...originalModule,
+        __esModule: true,
+        calcDist: mocks.calcDist,
+      };
+    });
+    addPassenger = require('../../backend/server/tripAdditions').addPassenger;
+  });
 
-const mkReq = (start: Coord, end: Coord, window = { start: PAX_START, end: tOfDay(12) }): MatchRequest => ({
-  reqId: -7, start, end, window, status: 'unassigned',
-});
-const toUniReq = (pickupLat: number, window?: { start: Date; end: Date; }) => mkReq(mkCoord(pickupLat), UNI, window);
-const fromUniReq = (dropLat: number, window?: { start: Date; end: Date; }) => mkReq(UNI, mkCoord(dropLat), window);
-
-const stopIdx = (t: Trip | null, c: Coord) => t!.waypoints.findIndex(w => w.loc.lat === c.lat && w.loc.lon === c.lon);
-const windows = (ws: Waypoint[] | null) => ws && ws.map(w => [hm(w.earliest), hm(w.latest)]);
+  return { addPassenger, ...mocks };
+}
 
 function deepFreeze<T>(o: T): T {
   Object.values(o as object).forEach(v => { if (v && typeof v === 'object') deepFreeze(v); });
   return Object.freeze(o);
 }
 
-describe('addPassengner testing', () => {
+describe('addPassenger testing', () => {
   jest.resetModules();
 
   const mockIsToUni = jest.fn();
   const mockAPIConfig = jest.fn();
   const mockComputeRoute = jest.fn();
+  const mockCalcDist = jest.fn();
 
   const fakeCompRoute = {
     routes: [{
@@ -764,29 +682,28 @@ describe('addPassengner testing', () => {
         { 'duration': '455s', 'distanceMeters': 2007 },
         { 'duration': '600s', 'distanceMeters': 3210 },
       ],
-      optimizedIntermediateWaypointIndex: [0, 1],
+      optimizedIntermediateWaypointIndex: [0],
     }]
   };
-  // const mockCalcDist = jest.fn();
-  // const mockScanTo = jest.fn();
-  // const mockScanFrom = jest.fn();
-
-  // jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').configModule);
-
-  beforeEach(() => {
-    // jest.resetAllMocks();
-    // resetGoogleApiMock();
-    // mockCalcDist.mockImplementation((a: Coord, b: Coord) => Math.hypot(a.lat - b.lat, a.lon - b.lon));
-    // mockIsToUni.mockReturnValue(true);
-    // const stamp = (_r: MatchRequest, wps: Waypoint[]) => wps.map(w => ({ ...w, latest: SCAN_MARK }));
-    // mockScanTo.mockImplementation(stamp);
-    // mockScanFrom.mockImplementation(stamp);
-  });
 
   // start lat 875 = nearest gap 2
   const reqTo = () => mkReq(mkCoord(875), UNI);
   // end lat 725 = nearest gap 3
   const reqFrom = () => mkReq(UNI, mkCoord(725));
+  // default trip
+  const defPoints = [300, 150, 100, 0].map(l => UNI.lat - l);
+  const defTrip = (to: boolean) => mkTrip(mkLine((to) ? defPoints : [...defPoints].reverse()));
+
+  // jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').configModule);
+
+  beforeEach(() => {
+    jest.resetAllMocks();
+    // default values
+    mockAPIConfig.mockReturnValue(true);
+    mockIsToUni.mockReturnValue(true);
+    mockComputeRoute.mockReturnValue(fakeCompRoute);
+    mockCalcDist.mockImplementation(euclid);
+  });
 
   jest.doMock('../../backend/server/matching', () => {
     // Require the original module to not be mocked...
@@ -803,7 +720,7 @@ describe('addPassengner testing', () => {
     const originalModule = jest.requireActual('../../mobile/services/googlePlaces');
     return {
       ...originalModule,
-      GOOGLE_MAPS_API_KEY: 'TEST_KEY',
+      GOOGLE_MAPS_API_KEY: 'test-api-key',
       isPlacesConfigured: mockAPIConfig,
     };
   });
@@ -817,27 +734,12 @@ describe('addPassengner testing', () => {
 
   const { addPassenger } = require('../../backend/server/tripAdditions');
 
-  it('test the tests', async () => {
-    mockIsToUni.mockImplementation(() => true);
-    const { isBookingToUni } = require('../../backend/server/matching');
-
-    expect(jest.isMockFunction(isBookingToUni)).toBe(true);
-    expect(isBookingToUni(req2)).toBe(true);
-
-    const fake = {
-      start: { lat: 0, lon: 0 },
-      end: { lat: 10, lon: 10 },
-    };
-    expect(isBookingToUni(fake)).toBe(true);
-    expect(isBookingToUni(reqTo())).toBe(true);
-  });
-
   it('Unique endpoint - to-uni', async () => {
     mockAPIConfig.mockReturnValue(true);
     mockIsToUni.mockReturnValue(true);
     mockComputeRoute.mockReturnValue(fakeCompRoute);
 
-    const t = await addPassenger(mkTrip(mkLine([300, 150, 100, 0].map(l => UNI.lat - l))), reqTo());
+    const t = await addPassenger(defTrip(true), reqTo());
     expect(t).not.toEqual(null);
     expect(t!.waypoints[2].loc).toEqual(mkCoord(875));
   });
@@ -846,97 +748,227 @@ describe('addPassengner testing', () => {
     mockAPIConfig.mockReturnValue(true);
     mockIsToUni.mockReturnValue(false);
     mockComputeRoute.mockReturnValue(fakeCompRoute);
-    const t = await addPassenger(mkTrip(mkLine([0, 100, 150, 300].map(l => UNI.lat - l))), reqFrom());
+    const t = await addPassenger(defTrip(false), reqFrom());
     expect(t).not.toEqual(null);
     expect(t!.waypoints[3].loc).toEqual(mkCoord(725));
   });
 
   // Choosing the best gap
-
   it.each([
-    ['gap 0: first gap (on lower boundary)', 5, 0],
-    ['gap 1: just above lower / just below upper boundary', 15, 1],
-    ['gap 2: last gap (on upper boundary, n-2)', 25, 2],
-    ['pickup before the driver start: still gap 0', -50, 0],
-    ['pickup beyond the uni: still gap 2, uni stays last', 100, 2],
-  ])('%s', async (_name, pickupLat, gap) => {
-    const curr = mkTrip(mkLine([0, 10, 20, 30]));
+    ['gap 0: first gap (on lower boundary)', 700, 1],
+    ['gap 1: just above lower / just below upper boundary', 899, 2],
+    ['gap 2: last gap (on upper boundary)', 1000, 3],
+    ['pickup before the driver start: still first gap', -50, 1],
+    ['pickup beyond the uni: still last gap, uni stays last', 2000, 3],
+  ])('%s', async (_name, pickupLat, expInd) => {
+    mockAPIConfig.mockReturnValue(true);
+    mockIsToUni.mockReturnValue(true);
+    mockComputeRoute.mockReturnValue(fakeCompRoute);
+
+    const curr = defTrip(true);
     const t = await addPassenger(curr, toUniReq(pickupLat));
 
     expect(t).not.toBeNull();
-    expect(t!.waypoints).toHaveLength(5);
-    expect(stopIdx(t)).toBe(gap + 1);
-    expect(t!.waypoints[0].loc).toEqual(curr.waypoints[0].loc);   // first waypoint unchanged
-    expect(t!.waypoints[4].loc).toEqual(curr.waypoints[3].loc);   // last waypoint unchanged
+
+    const newWps = t!.waypoints;
+    expect(newWps).toHaveLength(5);
+    expect(newWps[expInd].loc).toEqual(mkCoord(pickupLat, 0));
+    expect(newWps[0].loc).toEqual(curr.waypoints[0].loc);   // first waypoint unchanged
+    expect(newWps[4].loc).toEqual(curr.waypoints[3].loc);   // last waypoint unchanged
   });
 
-  // lat 9: gap0 = 9+1 = 10, gap1 = 1+11 = 12 | lat 10: 10 vs 10 (tie) | lat 11: 12 vs 10
-  it.each([
-    ['gap 0 better by a margin (just below the tie)', 9, 1],
-    ['exact tie: the earliest gap wins', 10, 1],
-    ['gap 1 better by a margin (just above the tie)', 11, 2],
-  ])('%s', async (_name, pickupLat, expectedStopIdx) => {
-    const t = await addPassenger(mkTrip(mkLine([0, 10, 20])), toUniReq(pickupLat));
-    expect(stopIdx(t)).toBe(expectedStopIdx);
-  });
+  it('inserts at the least ADDED distance, not the least summed distance', async () => {
+    // A = UNI-100, B = UNI-90, C = UNI, passenger P = (UNI-95, lon 30)
+    // summed:  gap A-B = 60.8,  gap B-C = 130.0  -> would pick A-B (bestInd 1)
+    // added:   gap A-B = 50.8,  gap B-C =  40.0  -> picks B-C     (bestInd 2)
+    const curr = mkTrip(mkLine([100, 90, 0].map(l => UNI.lat - l)));
+    const t = await addPassenger(curr, mkReq(mkCoord(UNI.lat - 95, 30), UNI));
 
-  // D1 (design question): expects "least added distance", i.e. subtract the existing leg.
-  it('prefers the smallest ADDED distance, not the smallest sum of distances', async () => {
-    // A(0,0) B(10,0) C(100,0), passenger at (5,30).
-    // sum metric:   gap0 = 60.8, gap1 = 130.0 -> picks gap 0
-    // true detour:  gap0 = 60.8-10 = 50.8, gap1 = 130.0-90 = 40.0 -> should pick gap 1
-    const wps = [mkWp(0), mkWp(10), mkWp(100)];
-    const t = await addPassenger(mkTrip(wps), mkReq(mkCoord(5, 30), UNI));
-    expect(stopIdx(t)).toBe(2);
-  });
-
-  // Validate trip sizes before and after insertion
-
-  it('1 waypoint (just below minimum) rejects', async () => {
-    await expect(addPassenger(mkTrip(mkLine([0])), toUniReq(5))).rejects.toThrow();
-  });
-  it('2 waypoints (on minimum): the new stop goes between driver and uni', async () => {
-    const t = await addPassenger(mkTrip(mkLine([0, 20]), [10], [1000]), toUniReq(10)); // FAILS now (B1)
-    expect(stopIdx(t)).toBe(1);
-    expect(t!.legs).toEqual([10, 15]);
-    expect(t!.currDur).toBe(25);
-  });
-  it('3 waypoints (just above minimum) is accepted', async () => {
-    const t = await addPassenger(mkTrip(mkLine([0, 10, 20])), toUniReq(15));
     expect(t).not.toBeNull();
-    expect(t!.waypoints).toHaveLength(4);
+    const newWps = t!.waypoints;
+    expect(newWps).toHaveLength(4);
+    expect(newWps[2].loc).toEqual(mkCoord(UNI.lat - 95, 30));
   });
 
-  // Test new waypoint's time window
-
-  it('earliest/latest come from the passenger window, passed to the scan', async () => {
-    const p = toUniReq(15, { start: tOfDay(8, 15), end: tOfDay(11, 45) });
-    await addPassenger(mkTrip(mkLine([0, 10, 20, 30])), p);
-
-    const stop = mockScanTo.mock.calls[0][1][3];
-    expect(stop).toEqual({ loc: mkCoord(15), earliest: tOfDay(8, 15), latest: tOfDay(11, 45) });
+  it('consults isBookingToUni with the request', async () => {
+    const p = reqTo();
+    await addPassenger(defTrip(true), p);
+    expect(mockIsToUni).toHaveBeenCalledWith(p);
   });
 
-  // ensure API call is only made once
+  // trip validation (before adding passenger)
+  describe('current trip validation', () => {
+    it.each([
+      ['0 waypoints', []],
+      ['1 waypoint (no end point)', [UNI.lat]],
+    ])('%s rejects before calling the API', async (_name, lats) => {
+      await expect(addPassenger(mkTrip(mkLine(lats)), reqTo())).rejects.toThrow(/not adequately populated/);
+      expect(mockComputeRoute).not.toHaveBeenCalled();
+    });
 
-  it('not configured: rejects and never calls the API', async () => {
-    mockConfig.isPlacesConfigured = false;
-    await expect(addPassenger(mkTrip(mkLine([0, 10, 20, 30])), toUniReq(15))).rejects.toThrow(/API key/);
-    expect(mockComputeRoute).not.toHaveBeenCalled();
+    it('2 waypoints (only driver\'s waypoints): the new stop goes between driver and uni', async () => {
+      // 23 min / 9100 m to the stop, then 13 min / 5600 m onward
+      mockComputeRoute.mockReturnValue(buildRouteResponse(apiLeg(1380, 9100), apiLeg(780, 5600)));
+      const t = await addPassenger(mkTrip(mkLine([300, 0].map(l => UNI.lat - l))), reqTo());
+
+      expect(t).not.toEqual(null);
+      const newWps = t!.waypoints;
+      expect(newWps).toHaveLength(3);
+      expect(newWps[1].loc).toEqual(mkCoord(875));
+      expect(t!.legs).toEqual([23, 13]);          // the single 10-min leg is replaced
+      expect(t!.legDists).toEqual([9100, 5600]);  // the single 1000 m leg is replaced
+      expect(t!.currDur).toBe(36);
+      expect(t!.currDist).toBe(14700);
+    });
+
+    it.each([
+      ['no leg times (0 legs)', [], [1000]],
+      ['no leg distances (0 legs)', [10], []],
+    ])('2 waypoints with %s rejects', async (_name, legs, legDists) => {
+      const curr = mkTrip(mkLine([300, 0].map(l => UNI.lat - l)), legs, legDists);
+      await expect(addPassenger(curr, reqTo())).rejects.toThrow(/not adequately populated/);
+    });
+
+    it('2 waypoints with exactly 1 leg time and 1 leg distance is accepted', async () => {
+      const curr = mkTrip(mkLine([300, 0].map(l => UNI.lat - l)), [10], [1000]);
+      await expect(addPassenger(curr, reqTo())).resolves.not.toBeNull();
+    });
+
+    it('an undefined waypoint in the list rejects with the intended message', async () => {
+      const curr = mkTrip([mkWp(UNI.lat - 300), undefined as unknown as Waypoint, mkWp(UNI.lat)]);
+      await expect(addPassenger(curr, reqTo())).rejects.toThrow(/undefined waypoint/);
+    });
   });
-  it('configured: calls the API exactly once', async () => {
-    await addPassenger(mkTrip(mkLine([0, 10, 20, 30])), toUniReq(15));
-    expect(mockComputeRoute).toHaveBeenCalledTimes(1);
+
+  // check for updated window
+  describe("new stop uses the passenger's window", () => {
+    it('to-uni, default window 08:15-12:00, scanned windows are returned, not the raw ones', async () => {
+      const t = await addPassenger(defTrip(true), reqTo());
+      expect(windows(t!.waypoints)).toEqual([
+        ['08:00', '11:20'],
+        ['08:10', '11:30'],
+        ['08:18', '11:38'], // new stop: raw window was 08:15-12:00
+        ['08:28', '11:48'],
+        ['08:40', '12:00'],
+      ]);
+    });
+
+    it('to-uni: passenger start (08:30) bounds the new stop, passenger end (11:45) bounds the arrival', async () => {
+      const p = mkReq(mkCoord(875), UNI, { start: tOfDay(8, 30), end: tOfDay(11, 45) });
+      const t = await addPassenger(defTrip(true), p);
+      expect(windows(t!.waypoints)).toEqual([
+        ['08:00', '11:05'],
+        ['08:10', '11:15'],
+        ['08:30', '11:23'], // earliest = passenger start, since the driver would arrive at 08:18
+        ['08:40', '11:33'],
+        ['08:52', '11:45'],
+      ]);
+    });
+
+    it('from-uni, default window 08:15-12:00, scanned windows are returned, not the raw ones', async () => {
+      mockIsToUni.mockReturnValue(false);
+      const t = await addPassenger(defTrip(false), reqFrom());
+      expect(windows(t!.waypoints)).toEqual([
+        ['08:15', '11:31'],
+        ['08:25', '11:41'],
+        ['08:36', '11:52'],
+        ['08:44', '12:00'], // new stop: raw window was 08:15-12:00
+        ['08:54', '23:00'],
+      ]);
+    });
+
+    it('from-uni: passenger start (08:30) is the uni departure, passenger end (11:45) bounds the new stop', async () => {
+      mockIsToUni.mockReturnValue(false);
+      const p = mkReq(UNI, mkCoord(725), { start: tOfDay(8, 30), end: tOfDay(11, 45) });
+      const t = await addPassenger(defTrip(false), p);
+      expect(windows(t!.waypoints)).toEqual([
+        ['08:30', '11:16'],
+        ['08:40', '11:26'],
+        ['08:51', '11:37'],
+        ['08:59', '11:45'],
+        ['09:09', '23:00'],
+      ]);
+    });
   });
 
-  // successful new route generation
+  // infeasible passengers
+  describe('infeasible passenger returns null', () => {
+    describe('to-uni: with a 08:15 start, the uni arrival must be no earlier than 08:40', () => {
+      const run = (end: Date) =>
+        addPassenger(defTrip(true), mkReq(mkCoord(875), UNI, { start: tOfDay(8, 15), end }));
 
+      it('end 08:39 (1 min too early): null', async () => {
+        await expect(run(tOfDay(8, 39))).resolves.toBeNull();
+      });
+      it('end 08:40 (exact fit): zero-slack windows', async () => {
+        expect(windows((await run(tOfDay(8, 40)))!.waypoints)).toEqual([
+          ['08:00', '08:00'],
+          ['08:10', '08:10'],
+          ['08:18', '08:18'],
+          ['08:28', '08:28'],
+          ['08:40', '08:40'],
+        ]);
+      });
+      it('end 08:41 (1 min of slack)', async () => {
+        expect(windows((await run(tOfDay(8, 41)))!.waypoints)).toEqual([
+          ['08:00', '08:01'],
+          ['08:10', '08:11'],
+          ['08:18', '08:19'],
+          ['08:28', '08:29'],
+          ['08:40', '08:41'],
+        ]);
+      });
+    });
+
+    describe('from-uni: with a 08:30 uni departure, the passenger must be dropped off no earlier than 08:59', () => {
+      beforeEach(() => mockIsToUni.mockReturnValue(false));
+      const run = (end: Date) =>
+        addPassenger(defTrip(false), mkReq(UNI, mkCoord(725), { start: tOfDay(8, 30), end }));
+
+      it('end 08:58 (1 min too early): null', async () => {
+        await expect(run(tOfDay(8, 58))).resolves.toBeNull();
+      });
+      it('end 08:59 (exact fit): zero-slack windows up to the new stop', async () => {
+        expect(windows((await run(tOfDay(8, 59)))!.waypoints)).toEqual([
+          ['08:30', '08:30'],
+          ['08:40', '08:40'],
+          ['08:51', '08:51'],
+          ['08:59', '08:59'],
+          ['09:09', '23:00'],
+        ]);
+      });
+      it('end 09:00 (1 min of slack)', async () => {
+        expect(windows((await run(tOfDay(9, 0)))!.waypoints)).toEqual([
+          ['08:30', '08:31'],
+          ['08:40', '08:41'],
+          ['08:51', '08:52'],
+          ['08:59', '09:00'],
+          ['09:09', '23:00'],
+        ]);
+      });
+    });
+  });
+
+  // check Google API config guard
+  describe('Places API configuration', () => {
+    it('not configured: rejects and never calls the API', async () => {
+      mockAPIConfig.mockReturnValue(false);
+      await expect(addPassenger(defTrip(true), reqTo())).rejects.toThrow(/API key/);
+      expect(mockComputeRoute).not.toHaveBeenCalled();
+    });
+    it('configured: calls the API exactly once', async () => {
+      await addPassenger(defTrip(true), reqTo());
+      expect(mockComputeRoute).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // check request object creation
   it.each([
-    ['gap 0 (first)', 0, 5],
-    ['gap 1 (middle)', 1, 15],
-    ['gap 2 (last)', 2, 25],
+    ['gap 0 (first)', 0, 700],
+    ['gap 1 (middle)', 1, 899],
+    ['gap 2 (last)', 2, 1000],
   ])('%s: route runs from the previous stop, via the new stop, to the next stop', async (_name, gap, pickupLat) => {
-    const curr = mkTrip(mkLine([0, 10, 20, 30]));
+    const curr = defTrip(true);
     await addPassenger(curr, toUniReq(pickupLat));
 
     expect(mockComputeRoute).toHaveBeenCalledWith({
@@ -949,114 +981,46 @@ describe('addPassengner testing', () => {
     });
   });
 
-  // application of API results
+  // confirm correct run-through of helper functions
+  it('replaces the old leg with the two API legs (minutes rounded up) and keeps totals consistent', async () => {
+    // 905 s = 15.08 min -> 16, 1260 s = 21 min exactly
+    mockComputeRoute.mockReturnValue(buildRouteResponse(apiLeg(905, 4321), apiLeg(1260, 6789)));
+    const t = (await addPassenger(defTrip(true), mkReq(mkCoord(899), UNI)))!;
 
-  const base = () => mkTrip(mkLine([0, 10, 20, 30]), [10, 20, 30], [1000, 2000, 3000]);
-
-  it('replaces the old leg with two new legs, in the right order and position', async () => {
-    mockComputeRoute.mockResolvedValue(routesResponse(leg(600, 1500), leg(900, 2500)));
-    const t = await addPassenger(base(), toUniReq(15));
-
-    expect(t!.legs).toEqual([10, 10, 15, 30]);
-    expect(t!.legDists).toEqual([1000, 1500, 2500, 3000]);
-    expect(t!.currDur).toBe(60 - 20 + 10 + 15);
-    expect(t!.currDist).toBe(6000 - 2000 + 1500 + 2500);
-  });
-
-  it('keeps totals and array lengths consistent', async () => {
-    const t = (await addPassenger(base(), toUniReq(15)))!;
+    expect(t.legs).toEqual([10, 16, 21, 12]);
+    expect(t.legDists).toEqual([1000, 4321, 6789, 1020]);
+    expect(t.currDur).toBe(33 - 11 + 16 + 21);          // 59 min
+    expect(t.currDist).toBe(3030 - 1010 + 4321 + 6789); // 13 130 m
+    // internal consistency
     expect(t.currDur).toBe(sum(t.legs));
     expect(t.currDist).toBe(sum(t.legDists));
     expect(t.legs).toHaveLength(t.waypoints.length - 1);
     expect(t.legDists).toHaveLength(t.legs.length);
   });
 
-  describe('duration string -> minutes (first leg)', () => {
-    it.each([
-      ['0s', 0],
-      ['60s', 1],
-      ['120s', 2],
-    ])('"%s" becomes %d min', async (seconds, minutes) => {
-      mockComputeRoute.mockResolvedValue({ routes: [{ legs: [{ duration: seconds, distanceMeters: 1000 }, leg(900, 2500)] }] });
-      const t = await addPassenger(base(), toUniReq(15));
-      expect(t!.legs[1]).toBe(minutes);
-      expect(t!.currDur).toBe(60 - 20 + minutes + 15);
-    });
-  });
-
-  it('legs are whole minutes (905s -> 16)', async () => {
-    mockComputeRoute.mockResolvedValue(routesResponse(leg(905, 1500), leg(900, 2500)));
-    const t = await addPassenger(base(), toUniReq(15));
-    expect(Number.isInteger(t!.legs[1])).toBe(true);
-    expect(t!.legs[1]).toBe(16);
-  });
-
+  // confirm API rejections handled
   describe('API failures', () => {
     it('rejects when computeRoute rejects', async () => {
       mockComputeRoute.mockRejectedValue(new Error('network down'));
-      await expect(addPassenger(base(), toUniReq(15))).rejects.toThrow('network down');
+      await expect(addPassenger(defTrip(true), reqTo())).rejects.toThrow('network down');
     });
     it('rejects when no routes are returned', async () => {
-      mockComputeRoute.mockResolvedValue(emptyRoutesResponse());
-      await expect(addPassenger(base(), toUniReq(15))).rejects.toThrow();
+      mockComputeRoute.mockReturnValue(emptyRouteResponse());
+      await expect(addPassenger(defTrip(true), reqTo())).rejects.toThrow();
     });
     it('rejects when only one leg is returned', async () => {
-      mockComputeRoute.mockResolvedValue(routesResponse(leg(600, 1500)));
-      await expect(addPassenger(base(), toUniReq(15))).rejects.toThrow();
+      mockComputeRoute.mockReturnValue(buildRouteResponse(apiLeg(840, 2950)));
+      await expect(addPassenger(defTrip(true), reqTo())).rejects.toThrow();
     });
   });
 
-  // scan and return results
-
-  it('to-uni: calls scanTripToUni once with (request, waypoints incl. new stop, new legs)', async () => {
-    const curr = base();
-    const p = toUniReq(15);
-    await addPassenger(curr, p);
-
-    expect(mockScanFrom).not.toHaveBeenCalled();
-    expect(mockScanTo).toHaveBeenCalledTimes(1);
-    const [reqArg, wpsArg, legsArg] = mockScanTo.mock.calls[0];
-    expect(reqArg).toBe(p);
-    expect(wpsArg).toEqual([
-      curr.waypoints[0], curr.waypoints[1],
-      { loc: mkCoord(15), earliest: p.window.start, latest: p.window.end },
-      curr.waypoints[2], curr.waypoints[3],
-    ]);
-    expect(legsArg).toEqual([10, 10, 15, 30]);
-  });
-
-  it('from-uni: calls scanTripFromUni once, and not scanTripToUni', async () => {
-    mockIsToUni.mockReturnValue(false);
-    const p = fromUniReq(15);
-    await addPassenger(base(), p);
-
-    expect(mockScanTo).not.toHaveBeenCalled();
-    expect(mockScanFrom).toHaveBeenCalledTimes(1);
-    expect(mockScanFrom.mock.calls[0][0]).toBe(p);
-    expect(mockScanFrom.mock.calls[0][2]).toEqual([10, 10, 15, 30]);
-  });
-
-  it.each([
-    ['to-uni', true, () => mockScanTo],
-    ['from-uni', false, () => mockScanFrom],
-  ])('%s: returns null when the scan says the passenger is infeasible', async (_name, toUni, scan) => {
-    mockIsToUni.mockReturnValue(toUni);
-    scan().mockReturnValue(null);
-    const p = toUni ? toUniReq(15) : fromUniReq(15);
-    await expect(addPassenger(base(), p)).resolves.toBeNull();
-  });
-
-  it('returns the SCANNED waypoints, not the unscanned ones', async () => { // FAILS now (B3)
-    const t = await addPassenger(base(), toUniReq(15));
-    expect(t!.waypoints).toHaveLength(5);
-    t!.waypoints.forEach(w => expect(w.latest).toEqual(SCAN_MARK));
-  });
-
-  // check for immutability
-
-  it('does not mutate the current trip or request (frozen inputs would throw)', async () => {
-    const curr = deepFreeze(mkTrip(mkLine([0, 10, 20, 30]), [10, 20, 30], [1000, 2000, 3000]));
-    const p = deepFreeze(toUniReq(15));
+  // check for immutability of input arguments
+  it('does not mutate the current trip or request', async () => {
+    const curr = defTrip(true);
+    const p = reqTo();
+    const before = JSON.stringify([curr, p]); // Dates serialise to ISO strings, so time changes are caught
+    deepFreeze(curr);
+    deepFreeze(p);
 
     const t = await addPassenger(curr, p);
 
@@ -1064,32 +1028,34 @@ describe('addPassengner testing', () => {
     expect(t!.waypoints).not.toBe(curr.waypoints);
     expect(t!.legs).not.toBe(curr.legs);
     expect(t!.legDists).not.toBe(curr.legDists);
-    expect(curr.legs).toEqual([10, 20, 30]);
-    expect(curr.currDur).toBe(60);
+    expect(JSON.stringify([curr, p])).toBe(before);
   });
 });
 
-// works with real scanTripToUni - move to integration testing folder later
-
+// =====================================================================
+// Integration: real scanTripToUni (API, calcDist, isBookingToUni, config mocked)
+// Move to the integration folder later.
+//   Trip: UNI-100 / UNI-50 / UNI, earliest 08:00, uni latest 09:30, legs 10/10.
+//   Passenger at UNI-75 -> gap 1. API: 10 min to the stop, 5 min onward => legs [10, 10, 5].
+//   Passenger earliest 08:30, so the stop's earliest is max(08:10 + 10, 08:30) = 08:30.
+// =====================================================================
 describe('addPassenger integration with real scanTripToUni', () => {
-  // --------------------- Mocks ---------------------
-  jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').routesModule);
-  jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').configModule);
-  jest.mock('../../backend/server/tripAdditions', () => ({ scanTripToUni: jest.fn(), scanTripFromUni: jest.fn() }));
-
-  const mockScanTo = jest.mocked(scanTripToUni);
-  const mockScanFrom = jest.mocked(scanTripFromUni);
-  const mockComputeRoute = jest.mocked(computeRoute);
+  jest.resetModules();
+  const m = loadAddPassenger();
 
   beforeEach(() => {
-    const real = jest.requireActual('../src/scan');
-    mockScanTo.mockImplementation(real.scanTripToUni);
-    mockScanFrom.mockImplementation(real.scanTripFromUni);
-    mockComputeRoute.mockResolvedValue(routesResponse(leg(600, 1500), leg(300, 800)));
+    jest.resetAllMocks();
+    m.apiConfig.mockReturnValue(true);
+    m.isToUni.mockReturnValue(true);
+    m.calcDist.mockImplementation(euclid);
+    m.computeRoute.mockResolvedValue(buildRouteResponse(apiLeg(600, 3200), apiLeg(300, 1750)));
   });
 
-  const trip = () => mkTrip([mkWp(0, tOfDay(8)), mkWp(10, tOfDay(8)), mkWp(20, tOfDay(8), tOfDay(9, 30))], [10, 10], [1000, 1000]);
-  const run = (end: Date) => addPassenger(trip(), toUniReq(15, { start: tOfDay(8, 30), end }));
+  const trip = () => mkTrip(
+    [mkWp(UNI.lat - 100, tOfDay(8)), mkWp(UNI.lat - 50, tOfDay(8)), mkWp(UNI.lat, tOfDay(8), tOfDay(9, 30))],
+    [10, 10], [1000, 1000],
+  );
+  const run = (end: Date) => m.addPassenger(trip(), toUniReq(UNI.lat - 25, { start: tOfDay(8, 30), end }));
 
   it('passenger end 09:00 (stricter than the uni 09:30): windows are tightened', async () => {
     const t = await run(tOfDay(9));
@@ -1125,36 +1091,30 @@ describe('addPassenger integration with real scanTripToUni', () => {
   });
 });
 
-// works with real scanTripFromUni - move to integrations tests folder later
-
+// =====================================================================
+// Integration: real scanTripFromUni (API, calcDist, isBookingToUni, config mocked)
+// Move to the integration folder later.
+//   Trip: UNI (uni) / UNI-50 / UNI-100, earliest 08:00, driver's final stop latest 09:30, legs 10/10.
+//   Passenger drops off at UNI-75 -> gap 1, latest 09:00. API: legs [10, 10, 5].
+//   Latest times (backward): final 09:30, stop 09:00, wp1 08:50, uni 08:40.
+// =====================================================================
 describe('integration with real scanTripFromUni', () => {
-  // --------------------- Mocks ---------------------
-  jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').routesModule);
-  jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').configModule);
-  jest.mock('../../backend/server/matching', () => ({ ...jest.requireActual('../../backend/server/matching'), isBookingToUni: jest.fn() }));
-  jest.mock('../../backend/server/tripAdditions', () => ({ scanTripToUni: jest.fn(), scanTripFromUni: jest.fn() }));
-
-  const mockIsToUni = jest.mocked(isBookingToUni);
-  const mockScanTo = jest.mocked(scanTripToUni);
-  const mockScanFrom = jest.mocked(scanTripFromUni);
-  const mockComputeRoute = jest.mocked(computeRoute);
+  jest.resetModules();
+  const m = loadAddPassenger();
 
   beforeEach(() => {
-    const real = jest.requireActual('../src/scan');
-    mockIsToUni.mockReturnValue(false);
-    mockScanTo.mockImplementation(real.scanTripToUni);
-    mockScanFrom.mockImplementation(real.scanTripFromUni);
-    mockComputeRoute.mockResolvedValue(routesResponse(leg(600, 1500), leg(300, 800)));
+    jest.resetAllMocks();
+    m.apiConfig.mockReturnValue(true);
+    m.isToUni.mockReturnValue(false);
+    m.calcDist.mockImplementation(euclid);
+    m.computeRoute.mockResolvedValue(buildRouteResponse(apiLeg(600, 2400), apiLeg(300, 1300)));
   });
 
-  const trip = () => mkTrip([mkWp(0, tOfDay(8)), mkWp(10, tOfDay(8)), mkWp(20, tOfDay(8), tOfDay(9, 30))], [10, 10], [1000, 1000]);
-  const run = (start: Date) => addPassenger(trip(), fromUniReq(15, { start, end: tOfDay(9) }));
-
-  it('uses the from-uni scan, not the to-uni scan', async () => {
-    await run(tOfDay(8, 30));
-    expect(mockScanFrom).toHaveBeenCalledTimes(1);
-    expect(mockScanTo).not.toHaveBeenCalled();
-  });
+  const trip = () => mkTrip(
+    [mkWp(UNI.lat, tOfDay(8)), mkWp(UNI.lat - 50, tOfDay(8)), mkWp(UNI.lat - 100, tOfDay(8), tOfDay(9, 30))],
+    [10, 10], [1000, 1000],
+  );
+  const run = (start: Date) => m.addPassenger(trip(), fromUniReq(UNI.lat - 75, { start, end: tOfDay(9) }));
 
   it('passenger departure 08:30 (later than the driver\'s 08:00): windows are tightened', async () => {
     const t = await run(tOfDay(8, 30));

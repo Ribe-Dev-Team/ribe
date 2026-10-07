@@ -176,6 +176,7 @@ export function updateLegDurs(currTrip: Trip, newLegs: { distanceMeters: number,
 
   // add new legs
   const newList = insertAt(currTrip.legs, [toAddTime, fromAddTime], ind, 1);
+
   return {
     ...currTrip,
     currDur: newDur,
@@ -193,8 +194,12 @@ export function updateLegDurs(currTrip: Trip, newLegs: { distanceMeters: number,
  */
 export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | null> {
   // validate trip is populated
-  if (curr.waypoints.length < 2 || curr.legs.length < 1 || curr.legDists.length < 1) throw new Error(`Current trip was not adequately populated. Found only ${curr.waypoints.length} waypoints (min 2), ${curr.legs.length < 1} leg times (min 1) and ${curr.legDists.length} leg distances (min 1)`);
-  if (curr.waypoints.some(wp => wp === undefined)) throw new Error('Found an undefined waypoint in list:' + curr.waypoints.map((wp, i) => `\nWP#${i}-${coordToStr(wp.loc)}-[${formatDateTimeToStr(wp.earliest)} -> ${formatDateTimeToStr(wp.latest)}]`));
+  if (curr.waypoints.length < 2 || curr.legs.length < 1 || curr.legDists.length < 1) throw new Error(`Current trip was not adequately populated. Found only ${curr.waypoints.length} waypoints (min 2), ${curr.legs.length} leg times (min 1) and ${curr.legDists.length} leg distances (min 1)`);
+  if (curr.waypoints.some(wp => wp === undefined)) throw new Error('Found an undefined waypoint in list:' + curr.waypoints.map((wp, i) => {
+    return (wp === undefined)
+      ? '[undefined]'
+      : `\nWP#${i}-${coordToStr(wp.loc)}-[${formatDateTimeToStr(wp.earliest)} -> ${formatDateTimeToStr(wp.latest)}]`;
+  }));
   // validate API is set-up
   if (!isPlacesConfigured()) throw new Error("Google API key was not properly configured. Could not retrieve travel data.");
 
