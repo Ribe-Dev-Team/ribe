@@ -3,37 +3,35 @@
 
 import type { Coord } from "../pages/schema/booking.schema";
 
-export interface RoutesReqOptions {
+export interface RouteDetails {
   origin: Coord;
   dest: Coord;
   inters?: Coord[];
   depTime: Date;
+};
+
+export interface RoutesReqOptions {
+  route: RouteDetails;
   apiKey: string;
   fieldMask?: string; // Comma-separated list of response fields
 }
 
 /**
- * Retrieve the route information for a given start/end and intermediatary waypoint
- * Currently not intended for multiple intermediary waypoint although this may change in the future.
+ * Takes the provided route information and formats it into JSON that the Google API can understand
  * 
- * @param origin the start location of the route 
- * @param dest the ending location of the route
- * @param inters a list of intermediate locations along the route
- * @param depTime the departure time from the first location
- * @param apiKey our PRIVATE API key
- * @param fieldMask the values we are requesting from the API
- * @returns a JSON object in the format provided by `fieldMask`
+ * @param {Coord} origin the start location of the route 
+ * @param {Coord} dest the ending location of the route
+ * @param {Coord[]} inters a list of intermediate locations along the route
+ * @param {Date} depTime the departure time from the first location
+ * @returns a JSON object in the format required by the Google API
  */
-export async function computeRoute({
+export function formatRequest({
   origin,
   dest,
   inters = [],
   depTime,
-  apiKey,
-  fieldMask = "routes.duration,routes.distanceMeters,routes.legs,routes.optimizedIntermediateWaypointIndex"
-}: RoutesReqOptions) {
-  // create request object
-  const routeReq = {
+}: RouteDetails) {
+  return {
     origin: {
       location: {
         latLng: {
@@ -69,6 +67,24 @@ export async function computeRoute({
     trafficModel: "PESSIMISTIC", // include a bit of buffer time in estimations
     // optimizeWaypointOrder: true,  <- can be included later if we decide to refactor
   };
+}
+
+/**
+ * Retrieve the route information for a given start/end and intermediatary waypoint
+ * Currently not intended for multiple intermediary waypoint although this may change in the future.
+ * 
+ * @param {RouteDetails} route the information sent to the API about the route
+ * @param {String} apiKey our PRIVATE API key
+ * @param {String} fieldMask the values we are requesting from the API
+ * @returns a JSON object in the format provided by `fieldMask`
+ */
+export async function computeRoute({
+  route,
+  apiKey,
+  fieldMask = "routes.duration,routes.distanceMeters,routes.legs,routes.optimizedIntermediateWaypointIndex"
+}: RoutesReqOptions) {
+  // create request object
+  const routeReq = formatRequest(route);
 
   const routeComp = await fetch(
     "https://routes.googleapis.com/directions/v2:computeRoutes", {
