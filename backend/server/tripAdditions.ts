@@ -217,10 +217,12 @@ export async function addPassenger(curr: Trip, p: MatchRequest): Promise<Trip | 
 
   // call Google API for new distances and times
   const routeReq: RoutesReqOptions = {
-    origin: newWaypoints[bestInd - 1].loc,
-    dest: newWaypoints[bestInd + 1].loc,
-    inters: [newWaypoints[bestInd].loc],
-    depTime: newWaypoints[bestInd - 1].earliest,
+    route: {
+      origin: newWaypoints[bestInd - 1].loc,
+      dest: newWaypoints[bestInd + 1].loc,
+      inters: [newWaypoints[bestInd].loc],
+      depTime: newWaypoints[bestInd - 1].earliest,
+    },
     apiKey: GOOGLE_MAPS_API_KEY,
     fieldMask: "routes.legs.duration,routes.legs.distanceMeters",
   };

@@ -6,6 +6,7 @@ import {
   isBookingToUni,
   insertAt,
   min,
+  sum,
 } from "../../backend/server/matching";
 import type { MatchOffer, MatchRequest, Trip } from "../../backend/server/matching.schema";
 import { MONASH_CLAYTON_LOCATION } from "../../mobile/services/googlePlaces";
@@ -505,6 +506,15 @@ describe('Matching utility - min()', () => {
     const l = ['n', 'e', 'v', 'e', 'r'];
     const exp = 'e';
     const act = min(l);
+    expect(act).toBe(exp);
+  });
+});
+
+describe('Matching utility - sum()', () => {
+  test('numeric minimum', () => {
+    const l = [9, 27, 0.1, 99, -1];
+    const exp = 134.1;
+    const act = sum(l);
     expect(act).toBe(exp);
   });
 });

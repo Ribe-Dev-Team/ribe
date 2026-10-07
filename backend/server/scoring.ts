@@ -5,66 +5,35 @@
  * into the trip at the optimal position, as expressed in the 'newTrip' variable.
  */
 
-import { Trip, MatchOffer, MatchRequest } from "./matching.schema";
+import { Trip, MatchOffer, MatchRequest, type Waypoint } from "./matching.schema";
 import { MS_PER_MIN } from "../../mobile/utility/times";
-import { coordIsUni } from "./matching";
+import { coordIsUni, coordToStr, sum } from "./matching";
+import {
+  DRIVING_TIME_FACTOR,
+  DR_SLACK_TIME_FACTOR,
+  P_SLACK_TIME_FACTOR,
+  PUNCTUALITY_FACTOR,
+} from "./scoringConst";
 
-export { calcDriverScore, calcPassengerScore };
+export {
+  calcDrivingTimeScore,
+  calcSlackScore,
+  calcOnTimeScore,
+  calcDriverScore,
+  calcPassengerScore,
+};
 
-// SCORING CONSTANTS
-const DRIVING_TIME_FACTOR: number = 0.8;
-const DR_SLACK_TIME_FACTOR: number = 0.2;
-const P_SLACK_TIME_FACTOR: number = 0.6;
-const PUNCTUALITY_FACTOR: number = 0.4;
-
-function getTimeFinder(toUni: boolean) {
-  return (toUni)
-    ? (t: Trip) => {
-      const res = t.waypoints.reduce(
-        ({ dur, prevTime }, p) => ({
-          dur: dur + (p.latest.valueOf() - prevTime.valueOf()),
-          prevTime: p.latest
-        }
-        ), { dur: 0, prevTime: t.waypoints[0].latest }
-      );
-
-      return res.dur / MS_PER_MIN;
-    }
-    : (t: Trip) => {
-      const res = t.waypoints.reduce(
-        ({ dur, prevTime }, p) => ({
-          dur: dur + (p.earliest.valueOf() - prevTime.valueOf()),
-          prevTime: p.earliest
-        }
-        ), { dur: 0, prevTime: t.waypoints[0].earliest }
-      );
-
-      return res.dur / MS_PER_MIN;
-    };
-}
-
-// calculate how much of the (remaining) detour time this passenger consumes (from [0, 1])
+// calculate how much of the (remaining) detour time this passenger leaves for others (from [0, 1])
 function calcDrivingTimeScore(d: MatchOffer, newTrip: Trip): number {
   // find the max trip time for the driver
   const maxTripTime = d.directTime + d.window.maxDetour;
-
-  // confirm one of the end points is actually uni
-  if (!coordIsUni(d.end) && !coordIsUni(d.start)) throw new Error("Ride Offer was not to or from uni: "
-    + `start=(${d.start.lat},${d.start.lon}) | end=(${d.end.lat},${d.end.lon})`
-  );
-
-  // get current trip time
-  const getTripTime: (t: Trip) => number = getTimeFinder(coordIsUni(d.end));
-  const currTime = getTripTime(d.currTrip);
-  const newTime = getTripTime(newTrip);
-
-  const currRemDetour = maxTripTime - currTime;
-  const newRemDetour = maxTripTime - newTime;
+  const currRemDetour = maxTripTime - d.currTrip.currDur;
+  const newRemDetour = maxTripTime - newTrip.currDur;
 
   return newRemDetour / currRemDetour;
 }
 
-// calculate how much slack time this passenger consumes (from [0, 1])
+// calculate how much slack time this passenger leaves for others (from [0, 1])
 function calcSlackScore(d: MatchOffer, newTrip: Trip): number {
   if (coordIsUni(d.end)) {
     // trip to uni - calculate from arrival (last waypoint)
@@ -81,7 +50,7 @@ function calcSlackScore(d: MatchOffer, newTrip: Trip): number {
     const currUni = d.currTrip.waypoints[0];
     const currSlack = currUni.latest.valueOf() - currUni.earliest.valueOf(); // ms
 
-    const newUni = newTrip.waypoints[0 + 1];
+    const newUni = newTrip.waypoints[0];
     const newSlack = newUni.latest.valueOf() - newUni.earliest.valueOf(); // ms
 
     return newSlack / currSlack;
@@ -94,34 +63,20 @@ function calcSlackScore(d: MatchOffer, newTrip: Trip): number {
 
 // calculate how much buffer arrival time this passenger gets (from [0, 1])
 function calcOnTimeScore(p: MatchRequest, newTrip: Trip): number {
-  // confirm one of the end points is actually uni
-  if (!coordIsUni(p.end) && !coordIsUni(p.start)) throw new Error("Ride Offer was not to or from uni: "
-    + `start=(${p.start.lat},${p.start.lon}) | end=(${p.end.lat},${p.end.lon})`
-  );
-
   // find location of end point in trip
   const startInd = newTrip.waypoints
     .findIndex(wp => wp.loc.lat === p.start.lat && wp.loc.lon === p.start.lon);
   const endInd = newTrip.waypoints
     .findIndex(wp => wp.loc.lat === p.end.lat && wp.loc.lon === p.end.lon);
 
-  // get the part of the trip the passenger is a part of
-  const waypointSubset = newTrip.waypoints.slice(startInd, endInd + 1);
-  const legsSubset = newTrip.legs.slice(startInd, endInd);
-  const legDistsSubset = newTrip.legDists.slice(startInd, endInd);
+  if (startInd == -1 || endInd == -1) throw new Error(`One or more passenger endpoints could not be found. Passenger requested ${coordToStr(p.start)} -> ${coordToStr(p.end)} but couldn't find in waypoints: ${newTrip.waypoints.map(wp => coordToStr(wp.loc))}`);
 
-  const passTrip: Trip = {
-    waypoints: waypointSubset,
-    legs: legsSubset,
-    legDists: legDistsSubset,
-    currDur: -1,
-    currDist: -1,
-  };
-  // calculate the duration of this part of the trip
-  passTrip.currDur = getTimeFinder(coordIsUni(p.end))(passTrip);
+  // get the part of the trip the passenger is a part of
+  const legsSubset = newTrip.legs.slice(startInd, endInd);
+  const passTransit = sum(legsSubset);
 
   // determine how much buffer time the passenger could theoretically have
-  const maxBuffer = (p.window.end.valueOf() - p.window.start.valueOf()) / MS_PER_MIN - passTrip.currDur;
+  const maxBuffer = (p.window.end.valueOf() - p.window.start.valueOf()) / MS_PER_MIN - passTransit;
   const uniqueWP = (coordIsUni(p.end))
     ? newTrip.waypoints[startInd]
     : newTrip.waypoints[endInd];
@@ -135,6 +90,11 @@ function calcOnTimeScore(p: MatchRequest, newTrip: Trip): number {
 function calcDriverScore(d: MatchOffer, newTrip: Trip | null): number {
   if (newTrip == null) return 0;
 
+  // confirm one of the end points is actually uni
+  if (!coordIsUni(d.end) && !coordIsUni(d.start)) throw new Error("Ride Offer was not to or from uni: "
+    + `start=(${d.start.lat},${d.start.lon}) | end=(${d.end.lat},${d.end.lon})`
+  );
+
   const timeScore = calcDrivingTimeScore(d, newTrip);
   const slackScore = calcSlackScore(d, newTrip);
   const finalScore = DRIVING_TIME_FACTOR * timeScore + DR_SLACK_TIME_FACTOR * slackScore;
@@ -145,6 +105,11 @@ function calcDriverScore(d: MatchOffer, newTrip: Trip | null): number {
 // calculate how much the passenger wants this driver (from [0, 1])
 function calcPassengerScore(d: MatchOffer, p: MatchRequest, newTrip: Trip | null): number {
   if (newTrip == null) return 0;
+
+  // confirm one of the end points is actually uni
+  if (!coordIsUni(d.end) && !coordIsUni(d.start)) throw new Error("Ride Offer was not to or from uni: "
+    + `start=(${d.start.lat},${d.start.lon}) | end=(${d.end.lat},${d.end.lon})`
+  );
 
   const onTimeScore = calcOnTimeScore(p, newTrip);
   const slackScore = calcSlackScore(d, newTrip);

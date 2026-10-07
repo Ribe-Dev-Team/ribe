@@ -909,10 +909,12 @@ describe('addPassenger testing', () => {
     await addPassenger(curr, toUniReq(pickupLat));
 
     expect(computeRoute).toHaveBeenCalledWith({
-      origin: curr.waypoints[gap].loc,
-      dest: curr.waypoints[gap + 1].loc,
-      inters: [mkCoord(pickupLat)],
-      depTime: curr.waypoints[gap].earliest,
+      route: {
+        origin: curr.waypoints[gap].loc,
+        dest: curr.waypoints[gap + 1].loc,
+        inters: [mkCoord(pickupLat)],
+        depTime: curr.waypoints[gap].earliest,
+      },
       apiKey: 'test-api-key',
       fieldMask: 'routes.legs.duration,routes.legs.distanceMeters',
     });

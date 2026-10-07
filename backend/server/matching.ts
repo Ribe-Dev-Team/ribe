@@ -5,7 +5,7 @@
 import type { Coord, MatchOffer, MatchRequest, Trip } from "./matching.schema";
 import { MONASH_CLAYTON_LOCATION } from "../../mobile/services/googlePlaces";
 
-const coordToStr: (c: Coord) => string = (c) => (`[lat=${c.lat}, long=${c.lon}]`);
+export const coordToStr: (c: Coord) => string = (c) => (`[lat=${c.lat}, long=${c.lon}]`);
 const uniToStr = () => (`[lat=${MONASH_CLAYTON_LOCATION.lat}, long=${MONASH_CLAYTON_LOCATION.lng}]`);
 
 export function coordIsUni(c: Coord) {
@@ -51,5 +51,10 @@ export function insertAt<T>(l: T[], add: T[], ind: number, replace: number = 0):
 export function min<T>(l: T[]): T {
   if (l.length === 0) throw new Error('No minimum of empty list');
   return l.reduce((acc, x) => (x < acc) ? x : acc, l[0]);
+};
+
+export function sum(l: number[]): number {
+  if (l.length === 0) return 0;
+  return l.reduce((acc, x) => acc + x, 0);
 };
 
