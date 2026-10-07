@@ -636,7 +636,7 @@ function loadAddPassenger() {
       const originalModule = jest.requireActual('../../mobile/services/googlePlaces');
       return {
         ...originalModule,
-        GOOGLE_MAPS_API_KEY: 'TEST_KEY',
+        GOOGLE_MAPS_API_KEY: 'test-api-key',
         isPlacesConfigured: mocks.apiConfig,
       };
     });
@@ -668,11 +668,13 @@ function deepFreeze<T>(o: T): T {
 
 describe('addPassenger testing', () => {
   jest.resetModules();
-
-  const mockIsToUni = jest.fn();
-  const mockAPIConfig = jest.fn();
-  const mockComputeRoute = jest.fn();
-  const mockCalcDist = jest.fn();
+  const {
+    addPassenger,
+    isToUni: mockIsToUni,
+    apiConfig: mockAPIConfig,
+    computeRoute: mockComputeRoute,
+    calcDist: mockCalcDist,
+  } = loadAddPassenger();
 
   const fakeCompRoute = {
     routes: [{
@@ -693,8 +695,6 @@ describe('addPassenger testing', () => {
   // default trip
   const defPoints = [300, 150, 100, 0].map(l => UNI.lat - l);
   const defTrip = (to: boolean) => mkTrip(mkLine((to) ? defPoints : [...defPoints].reverse()));
-
-  // jest.mock('../../mobile/services/googleRoutes', () => require('../../__mocks__/googleRouteAPI').configModule);
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -731,8 +731,6 @@ describe('addPassenger testing', () => {
       computeRoute: mockComputeRoute,
     };
   });
-
-  const { addPassenger } = require('../../backend/server/tripAdditions');
 
   it('Unique endpoint - to-uni', async () => {
     mockAPIConfig.mockReturnValue(true);
