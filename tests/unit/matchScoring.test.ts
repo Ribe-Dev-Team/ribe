@@ -194,19 +194,19 @@ describe.each(DIRS)('calcOnTimeScore (%s)', (_dir, toUni) => {
     ['maxBuffer 40, currBuffer 0', 40, 0, 0],
     ['maxBuffer 1 (just above 0), currBuffer 1', 1, 1, 1],
     ['maxBuffer 1 (just above 0), currBuffer 0', 1, 0, 0],
-    ['maxBuffer 0 (on boundary), currBuffer 0', 0, 0, 0], // FAILS now (NaN)
-    ['maxBuffer -1 (just below 0), currBuffer 0', -1, 0, 0],
-    ['maxBuffer -1, currBuffer 5: the maxBuffer check runs first', -1, 5, 0], // FAILS now (-5)
+    ['maxBuffer 0 (on boundary), currBuffer 0', 0, 0, 0],
   ])('%s', (_n, maxBuf, currBuf, expected) => {
     expect(run(maxBuf, currBuf)).toBeCloseTo(expected, 10);
   });
 
   it.each([
+    ['maxBuffer -1 (just below 0), currBuffer 0', -1, 0],
+    ['maxBuffer -1, currBuffer 5: the mismatch check runs first', -1, 5],
     ['currBuffer 41 (just above maxBuffer 40)', 40, 41],
     ['currBuffer 2 (maxBuffer 1)', 1, 2],
     ['currBuffer 1 (maxBuffer 0)', 0, 1],
   ])('%s: errors', (_n, maxBuf, currBuf) => {
-    expect(() => run(maxBuf, currBuf)).toThrow(); // FAILS now
+    expect(() => run(maxBuf, currBuf)).toThrow();
   });
 
   describe('passenger endpoint not in the trip', () => {
@@ -225,24 +225,81 @@ describe.each(DIRS)('calcOnTimeScore (%s)', (_dir, toUni) => {
 //   Expected: maxBuffer 30, passenger currBuffer 15 => 0.5. Decoys have 45 min of slack.
 //   Transit is the same whichever duplicate is found, because identical waypoints are 0 min apart.
 describe('calcOnTimeScore with duplicate coordinates (S4)', () => {
-  const pax = (lat: number) => stopWp(lat, 15);
-  const dec = (lat: number) => stopWp(lat, DECOY);
   const L = (n: number) => UNI.lat - n;
 
   const cases: [string, boolean, Waypoint[], number[], number, number][] = [
     // name, toUni, waypoints, legs, passenger transit, passenger lat
-    ['to-uni: pickup equals the driver\'s start (FAILS now: reads the driver\'s window)', true,
-      [dec(L(300)), pax(L(300)), dec(L(150)), uniWp(DECOY)], [0, 12, 8], 20, L(300)],
-    ['to-uni: pickup shared with an earlier passenger, new stop AFTER it (FAILS now)', true,
-      [dec(L(300)), dec(L(75)), pax(L(75)), uniWp(DECOY)], [10, 0, 8], 8, L(75)],
+    ['to-uni: pickup equals the driver\'s start', true,
+      [
+        stopWp(L(300), 15),
+        stopWp(L(300), 15),
+        stopWp(L(150), DECOY),
+        uniWp(DECOY)
+      ],
+      [0, 12, 8],
+      20,
+      L(300)
+    ],
+    ['to-uni: pickup shared with an earlier passenger, new stop AFTER it', true,
+      [
+        stopWp(L(300), DECOY),
+        stopWp(L(75), DECOY),
+        stopWp(L(75), 15),
+        uniWp(DECOY)
+
+      ],
+      [10, 0, 8],
+      8,
+      L(75)
+    ],
     ['to-uni: pickup shared with an earlier passenger, new stop BEFORE it', true,
-      [dec(L(300)), pax(L(75)), dec(L(75)), uniWp(DECOY)], [10, 0, 8], 8, L(75)],
+      [
+        stopWp(L(300), DECOY),
+        stopWp(L(75), 15),
+        stopWp(L(75), 15),
+        uniWp(DECOY)
+
+      ],
+      [10, 0, 8],
+      8,
+      L(75)
+    ],
     ['from-uni: drop-off equals the driver\'s final stop', false,
-      [uniWp(DECOY), dec(L(150)), pax(L(300)), dec(L(300))], [10, 12, 0], 22, L(300)],
+      [
+        uniWp(DECOY),
+        stopWp(L(150), DECOY),
+        stopWp(L(300), 15),
+        stopWp(L(300), DECOY)
+
+      ],
+      [10, 12, 0],
+      22,
+      L(300)
+    ],
     ['from-uni: drop-off shared with an earlier passenger, new stop AFTER it (FAILS now)', false,
-      [uniWp(DECOY), dec(L(225)), pax(L(225)), dec(L(300))], [10, 0, 12], 10, L(225)],
+      [
+        uniWp(DECOY),
+        stopWp(L(225), 15),
+        stopWp(L(225), 15),
+        stopWp(L(300), DECOY)
+
+      ],
+      [10, 0, 12],
+      10,
+      L(225)
+    ],
     ['from-uni: drop-off shared with an earlier passenger, new stop BEFORE it', false,
-      [uniWp(DECOY), pax(L(225)), dec(L(225)), dec(L(300))], [10, 0, 12], 10, L(225)],
+      [
+        uniWp(DECOY),
+        stopWp(L(225), 15),
+        stopWp(L(225), DECOY),
+        stopWp(L(300), DECOY)
+
+      ],
+      [10, 0, 12],
+      10,
+      L(225)
+    ],
   ];
 
   it.each(cases)('%s', (_n, toUni, wps, legs, transit, lat) => {
