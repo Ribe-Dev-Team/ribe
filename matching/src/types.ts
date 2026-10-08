@@ -61,6 +61,12 @@ export interface MatchOffer {
   travelWindow: TravelWindow;
   /** Minutes of detour the driver consented to across the whole trip. */
   maxDetour: number;
+  /** When the driver should be at their destination: their stated arrival,
+   *  less `arrivalMarginMinutes`. Trips to campus are planned backwards from
+   *  this and every rider's deadline - the car leaves as late as still gets
+   *  everyone there in time (see `slideMinutes` in route.ts). Absent, a trip
+   *  simply leaves at `travelWindow.start`. */
+  arriveBy?: Date;
 
   /** What the driver said upfront. */
   seatsOffered: number;
@@ -85,6 +91,10 @@ export interface OnBoardRider {
   maxDetour: number;
   /** Detour in minutes this rider is currently experiencing. */
   currentDetour: number;
+  /** Earliest the rider can be collected - their stated departure time. Named
+   *  after `Waypoint.earliest` in backend/server/matching.schema.ts. Optional so
+   *  older inputs without it simply skip the check (see `addPassenger`). */
+  earliest?: Date;
 }
 
 /** A viable (offer, request) pair that survived filtering, with both scores.
@@ -112,15 +122,81 @@ export type RejectReason =
   | 'OFFER_NOT_OPEN'
   | 'NO_SEATS'
   | 'DRIVER_CLOSED'
+  | 'OUT_OF_SLACK'          // someone aboard has no detour left to give
   | 'DIRECTION'
   | 'TIME_WINDOW'
   | 'BEARING'
   | 'CORRIDOR'
   | 'NO_FEASIBLE_INSERTION'
-  | 'RIDER_DETOUR_CAP'
+  | 'RIDER_DETOUR_CAP'      // the new rider's own detour would be too long
+  | 'ONBOARD_DETOUR_CAP'    // someone already aboard would exceed theirs
   | 'DRIVER_DETOUR_CAP'
   | 'ARRIVAL_WINDOW'
-  | 'MATCHING_CUTOFF';
+  | 'PICKUP_BEFORE_READY'
+  | 'MATCHING_CUTOFF'
+  | 'LOST_SLOT';            // feasible, but the one slot went to a cheaper rider
+
+/** One rider's place in a car's timetable. */
+export interface TripStop {
+  reqId: string;
+  /** When the car collects them: at their door going to campus, at campus
+   *  departure coming from it. */
+  pickupAt: Date;
+  /** When they reach their own destination. */
+  arriveAt: Date;
+}
+
+/** One rider offered to one driver by a matching run. */
+export interface ProposedMatch {
+  offerId: string;
+  reqId: string;
+  riderId: string;
+  driverId: string;
+  insertionIndex: number;
+  riderDetour: number;
+  driverAddedMinutes: number;
+  offerScore: number;
+  reqScore: number;
+  /** When the driver sets off - the start of the car's timetable. */
+  departAt: Date;
+  finalArrival: Date;
+  totalTripMinutes: number;
+  /** This rider's own estimated pickup and arrival. */
+  pickupAt: Date;
+  arriveAt: Date;
+  /** The whole car's timetable if this match is accepted: every rider on the
+   *  route, confirmed ones included, in pickup order. Adding a rider can move
+   *  the others' times, so the car's timetable is stored, not just this rider's. */
+  schedule: TripStop[];
+  /** When this batch produced the match — every match in one run shares it. */
+  matchedAt: Date;
+  /** By when the pair must accept, or the match lapses. Clamped to whichever
+   *  comes first: the normal approval window, or the matching cutoff — a
+   *  match proposed late must never promise more time to accept than the
+   *  batch can actually give it before the trip locks. */
+  acceptDeadline: Date;
+}
+
+export interface MatchRunResult {
+  batchKey: string;
+  matches: ProposedMatch[];
+  rejected: RejectedPairing[];
+  unmatchedRequestIds: string[];
+  /** For each unmatched rider, why each driver in the batch didn't take them. */
+  unmatchedReasons: Array<{ reqId: string; byOffer: Array<{ offerId: string; reason: RejectReason }> }>;
+  stats: {
+    requestsIn: number;
+    offersIn: number;
+    matchesMade: number;
+    matchRate: number;
+    avgRiderDetourMinutes: number;
+    avgDriverAddedMinutes: number;
+    seatsLeftOnClosedTrips: number;
+    closedByDriverChoice: number;
+    closedBySlack: number;
+    closedByCutoff: number;
+  };
+}
 
 /** Travel time between any two points, in minutes.
  *  The single seam between pure matching and the outside world. */
@@ -155,6 +231,12 @@ export interface MatchingConfig {
   riderDetourPercent: number;
   /** Lower bound on that derived cap, so short trips stay matchable. */
   riderDetourFloorMinutes: number;
+  /** Plan every rider's arrival this many minutes before the time they gave.
+   *  Drive times don't include traffic, and arriving late is the one outcome a
+   *  rider can't recover from, so the matcher aims early rather than exactly.
+   *  Applied by the adapter, which turns "on campus by 9:00" into a 8:50
+   *  `arriveBy`; the algorithm itself is unchanged. */
+  arrivalMarginMinutes: number;
 }
 
 export const DEFAULT_CONFIG: MatchingConfig = {
@@ -167,4 +249,5 @@ export const DEFAULT_CONFIG: MatchingConfig = {
   approvalWindowMinutes: 720,
   riderDetourPercent: 0.40,
   riderDetourFloorMinutes: 5,
+  arrivalMarginMinutes: 10,
 };

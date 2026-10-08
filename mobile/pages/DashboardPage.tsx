@@ -15,14 +15,24 @@ import { colors } from '../styles';
 import RideCard, { RideCardProps, RideStatus } from '../components/RideCard';
 import { useAuth } from '../auth/useAuth';
 import { fetchUserRides } from '../services/rideData';
+import { ridesForLane } from '../services/dashboardLanes';
 
 interface DashboardPageProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
+  /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
+  /** Rider or driver view, held by the parent so it survives the page being
+   *  remounted - which App does after every write (Lock, Seats, Accept...) to
+   *  reload, and on the way back from a ride's details. Uncontrolled (starts on
+   *  Rider) when omitted. */
+  mode?: DashboardMode;
+  onModeChange?: (mode: DashboardMode) => void;
 }
 
-type ViewMode = 'rider' | 'driver';
+export type DashboardMode = 'rider' | 'driver';
+type ViewMode = DashboardMode;
 
 interface LaneConfig {
   status: RideStatus;
@@ -75,9 +85,16 @@ const DRIVER_LANES: LaneConfig[] = [
 
 const CARD_GAP = 12;
 
-export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriverProfile }: DashboardPageProps) {
+export default function DashboardPage({
+  onScroll, onSeeRideDetails, onOpenDriverProfile, rideActions, mode: controlledMode, onModeChange,
+}: DashboardPageProps) {
   const { user } = useAuth();
-  const [mode, setMode] = useState<ViewMode>('rider');
+  const [ownMode, setOwnMode] = useState<ViewMode>('rider');
+  const mode = controlledMode ?? ownMode;
+  const setMode = (next: ViewMode) => {
+    setOwnMode(next);
+    onModeChange?.(next);
+  };
   const [riderRides, setRiderRides] = useState<RideCardProps[]>([]);
   const [driverDrives, setDriverDrives] = useState<RideCardProps[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,9 +183,9 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
       {loading ? (
         <View style={localStyles.loadingState}><ActivityIndicator color={colors.white} size="small" /></View>
       ) : currentLanes.map((lane) => {
-        const rides: RideCardProps[] = dataset
-          .filter((r: RideCardProps) => r.status === lane.status)
-          .sort((a: RideCardProps, b: RideCardProps) => a.date.getTime() - b.date.getTime());
+        // A driver's drive still open to passengers shows in Open Driving
+        // Offers as well as Upcoming Drives - see ridesForLane.
+        const rides = ridesForLane(dataset, lane.status, mode);
         return (
           <View key={lane.status} style={localStyles.lane}>
             <Text style={localStyles.laneTitle}>{lane.title}</Text>
@@ -193,20 +210,6 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
                   >
                     <RideCard
                       {...ride}
-                      onAccept={() =>
-                        Alert.alert(
-                          mode === 'rider' ? 'Ride accepted' : 'Drive confirmed',
-                          mode === 'rider'
-                            ? `Trip with ${ride.driver.name} confirmed.`
-                            : 'Rider match confirmed for your drive.'
-                        )
-                      }
-                      onDecline={() =>
-                        Alert.alert(
-                          mode === 'rider' ? 'Ride declined' : 'Request declined',
-                          mode === 'rider' ? 'The driver has been notified.' : 'The rider has been notified.'
-                        )
-                      }
                       onEdit={() =>
                         Alert.alert(
                           mode === 'rider' ? 'Edit ride request' : 'Edit driving offer',
@@ -221,6 +224,9 @@ export default function DashboardPage({ onScroll, onSeeRideDetails, onOpenDriver
                           mode === 'rider' ? 'This ride has been canceled.' : 'This drive offer has been canceled.'
                         )
                       }
+                      // Writes to Firestore - these used to only show a success alert.
+                      // After onCancel, so a driver's Remove offer really removes it.
+                      {...rideActions(ride)}
                       onSeeDetails={() => onSeeRideDetails(ride)}
                       onOpenDriverProfile={() => onOpenDriverProfile(ride)}
                     />

@@ -1,3 +1,14 @@
+/*
+Tests src/geo.ts - the straight-line maths the filters are built on.
+
+  haversine   distance in km between two lat/lon points
+  bearing     compass direction from one point to another (KEY-135), and the
+              angle between two directions - including across north, where
+              350 and 10 degrees are 20 apart, not 340
+
+Pure maths: no travel times involved.
+*/
+
 import { bearingDegrees, bearingDifference, haversineKm } from '../src/geo';
 import { CAMPUS } from './fixtures';
 

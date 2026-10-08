@@ -83,9 +83,10 @@ export class FixtureTravelTime implements TravelTimeMatrix {
 }
 
 /**
- * In-memory TravelTimeMatrix backed by one Google Distance Matrix batch.
+ * In-memory TravelTimeMatrix backed by one batch of Google travel times.
  *
- * Built once per matching run by `buildGoogleTravelTimeMatrix`; every
+ * Built once per matching run by `buildRoutesTravelTimeMatrix` (or the legacy
+ * `buildGoogleTravelTimeMatrix`); every
  * `minutes()` call afterwards is a Map read, per the README: "Build the
  * matrix once per batch and every feasibility check stays in-memory
  * arithmetic — no API calls inside the matching loop."
@@ -103,7 +104,7 @@ export class PrecomputedTravelTime implements TravelTimeMatrix {
     throw new Error(
       `No travel time for leg ${key(a, b)}. It wasn't in the point set the ` +
       `matrix was built from — pass every offer start/end and every request ` +
-      `waypoint to buildGoogleTravelTimeMatrix, or supply a fallback.`,
+      `waypoint to the matrix builder, or supply a fallback.`,
     );
   }
 }
@@ -132,6 +133,12 @@ interface DistanceMatrixResponse {
 }
 
 /**
+ * The runner's default: it is the API Ribe's Maps key has enabled. It is a
+ * LEGACY API - Google froze it on 1 March 2025, and Cloud projects created since
+ * cannot enable it (every call fails with REQUEST_DENIED). Projects that used it
+ * before keep it. `buildRoutesTravelTimeMatrix` is the replacement, behind the
+ * same interface, for when the key moves to a project with the Routes API.
+ *
  * Calls the Google Distance Matrix API once for every chunk pair covering
  * `points` x `points`, and returns a TravelTimeMatrix that answers every
  * `minutes(a, b)` lookup between them from memory.
@@ -177,6 +184,96 @@ export async function buildGoogleTravelTimeMatrix(
           }
         });
       });
+    }
+  }
+
+  return new PrecomputedTravelTime(table, opts.fallback);
+}
+
+export interface RoutesMatrixOptions {
+  apiKey: string;
+  /** Origins-per-request and destinations-per-request. 10x10 = 100 elements,
+   *  under every Route Matrix cap (625 for plain driving, 100 for
+   *  TRAFFIC_AWARE_OPTIMAL), so the default never trips a limit. */
+  chunkSize?: number;
+  /** Injectable for tests / non-global fetch runtimes. Defaults to global fetch. */
+  fetchImpl?: typeof fetch;
+  /** Overridable for tests. Defaults to the real computeRouteMatrix endpoint. */
+  baseUrl?: string;
+  /** Used for a leg Google couldn't route. Omit to throw lazily instead, only
+   *  if that leg is ever actually looked up. */
+  fallback?: TravelTimeMatrix;
+}
+
+/** One element of a computeRouteMatrix response. `status` is an empty object
+ *  on success; indices are typed optional because proto3 JSON may omit a 0. */
+interface RouteMatrixElement {
+  originIndex?: number;
+  destinationIndex?: number;
+  status?: { code?: number; message?: string };
+  condition?: string;
+  duration?: string; // e.g. "712s"
+}
+
+/**
+ * Same contract as `buildGoogleTravelTimeMatrix`, on the Routes API that
+ * replaced Distance Matrix: one POST to computeRouteMatrix per chunk pair
+ * covering `points` x `points`, and a TravelTimeMatrix that answers every
+ * lookup between them from memory. No API calls happen inside a matching run.
+ *
+ * Uses TRAFFIC_UNAWARE on purpose. A batch covers a whole day of departures, so
+ * no single departure time describes every leg, and live traffic for "now" is
+ * wrong for a trip tomorrow morning. It is also the cheapest Route Matrix tier.
+ *
+ * Cost scales with the square of the point count, which is why the runner builds
+ * one matrix per batch (a day in one direction) rather than across batches.
+ */
+export async function buildRoutesTravelTimeMatrix(
+  points: Coord[],
+  opts: RoutesMatrixOptions,
+): Promise<PrecomputedTravelTime> {
+  const uniquePoints = dedupePoints(points);
+  const chunks = chunkPoints(uniquePoints, opts.chunkSize ?? 10);
+  const doFetch = opts.fetchImpl ?? fetch;
+  const url = opts.baseUrl ?? 'https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix';
+
+  const asWaypoint = (c: Coord) => ({
+    waypoint: { location: { latLng: { latitude: c.lat, longitude: c.lon } } },
+  });
+
+  const table = new Map<string, number>();
+  for (const origins of chunks) {
+    for (const destinations of chunks) {
+      const res = await doFetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': opts.apiKey,
+          'X-Goog-FieldMask': 'originIndex,destinationIndex,status,condition,duration',
+        },
+        body: JSON.stringify({
+          origins: origins.map(asWaypoint),
+          destinations: destinations.map(asWaypoint),
+          travelMode: 'DRIVE',
+          routingPreference: 'TRAFFIC_UNAWARE',
+        }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        throw new Error(`Route Matrix request failed: ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ''}`);
+      }
+
+      const body: unknown = await res.json();
+      if (!Array.isArray(body)) throw new Error('Route Matrix returned something other than an element list');
+
+      for (const el of body as RouteMatrixElement[]) {
+        // Unroutable legs are left out, exactly like the legacy client:
+        // PrecomputedTravelTime falls back or throws only if one is looked up.
+        if (el.condition !== 'ROUTE_EXISTS' || (el.status?.code ?? 0) !== 0 || !el.duration) continue;
+        const from = origins[el.originIndex ?? 0];
+        const to = destinations[el.destinationIndex ?? 0];
+        if (from && to) table.set(key(from, to), parseFloat(el.duration) / 60);
+      }
     }
   }
 

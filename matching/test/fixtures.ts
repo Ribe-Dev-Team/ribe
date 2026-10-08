@@ -1,3 +1,13 @@
+/*
+Shared helpers for the tests - not tests themselves.
+
+  CAMPUS        Monash Clayton
+  at(h, m)      a Melbourne time on 15 Sep 2026 (UTC+10)
+  makeRequest   a to-campus rider with sensible defaults; override any field
+  makeOffer     an open, empty, 4-seat to-campus trip; override any field
+  ring          n points spread around campus, deterministic for a given seed
+*/
+
 import { Coord, MatchOffer, MatchRequest } from '../src/types';
 
 export const CAMPUS: Coord = { lat: -37.9105, lon: 145.1362 }; // Monash Clayton

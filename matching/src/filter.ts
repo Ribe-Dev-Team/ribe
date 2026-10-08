@@ -3,11 +3,21 @@ import {
   RejectedPairing, RejectReason,
 } from './types';
 import { bearingDegrees, bearingDifference, haversineKm } from './geo';
-import { isAcceptingRiders, minutesToDeparture } from './route';
+import { DepartureTime, departureOf, isAcceptingRiders, minutesToDeparture, NewPassenger } from './route';
 
 /** The end of a rider's trip that is NOT campus - the point the driver deviates to. */
 export function waypointOf(req: MatchRequest): Coord {
   return req.direction === 'TO_CAMPUS' ? req.start : req.end;
+}
+
+/** A request as `addPassenger` takes it. */
+export function passengerOf(req: MatchRequest): NewPassenger {
+  return {
+    waypoint: waypointOf(req),
+    maxDetour: req.maxDetour,
+    arriveBy: req.arriveBy,
+    earliest: req.travelWindow.start,
+  };
 }
 
 /** KEY-133. Two windows overlap unless one ends before the other begins. */
@@ -79,7 +89,7 @@ export function hardFilter(
   requests: MatchRequest[],
   offers: MatchOffer[],
   cfg: MatchingConfig,
-  departAt: Date,
+  departAt: DepartureTime,
   now: Date,
   avgSpeedKmh = 40,
 ): FilterResult {
@@ -93,11 +103,15 @@ export function hardFilter(
       for (const req of requests) reject(offer, req, 'OFFER_NOT_OPEN');
       continue;
     }
-    if (!isAcceptingRiders(offer, cfg, departAt, now)) {
+    const offerDepartAt = departureOf(departAt, offer);
+    if (!isAcceptingRiders(offer, cfg, offerDepartAt, now)) {
+      // Same order as isAcceptingRiders; once seats, cutoff and the driver's
+      // own toggle are ruled out, the only thing left is detour slack.
       const why: RejectReason =
         offer.seatsFilled >= offer.seatsOffered ? 'NO_SEATS' :
-          minutesToDeparture(departAt, now) <= cfg.matchingCutoffMinutes ? 'MATCHING_CUTOFF' :
-            'DRIVER_CLOSED';
+        minutesToDeparture(offerDepartAt, now) <= cfg.matchingCutoffMinutes ? 'MATCHING_CUTOFF' :
+        !offer.acceptingMore ? 'DRIVER_CLOSED' :
+        'OUT_OF_SLACK';
       for (const req of requests) reject(offer, req, why);
       continue;
     }

@@ -21,6 +21,8 @@ interface HomePageProps {
   onNewRide: () => void;
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
+  /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
 }
 
 const notifications = [
@@ -40,6 +42,7 @@ export default function HomePage({
   onNewRide,
   onSeeRideDetails,
   onOpenDriverProfile,
+  rideActions,
 }: HomePageProps) {
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'there';
@@ -152,6 +155,7 @@ export default function HomePage({
           <RideCard
             key={`${ride.date.toISOString()}-${index}`}
             {...ride}
+            {...rideActions(ride)}
             onSeeDetails={() => onSeeRideDetails(ride)}
             onOpenDriverProfile={() => onOpenDriverProfile(ride)}
           />
@@ -174,6 +178,7 @@ export default function HomePage({
           <RideCard
             key={`${drive.date.toISOString()}-${index}`}
             {...drive}
+            {...rideActions(drive)}
             onSeeDetails={() => onSeeRideDetails(drive)}
             onOpenDriverProfile={() => onOpenDriverProfile(drive)}
           />

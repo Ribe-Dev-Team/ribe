@@ -8,7 +8,7 @@ import NewRideButton from '../components/NewRideButton';
 import CalendarRideRow from '../components/CalendarRideRow';
 import { useAuth } from '../auth/useAuth';
 import { RideCardProps } from '../components/RideCard';
-import { fetchUserRides } from '../services/rideData';
+import { fetchUserRides, rideTimeSummary } from '../services/rideData';
 
 export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
 
@@ -18,6 +18,9 @@ export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
 //TODO: make past days greyed out.
 
 export interface Ride {
+  /** Firestore doc id, carried through so Accept/Decline can write back. */
+  rideId?: string;
+  kind?: 'request' | 'offer';
   status: RideStatus;
   date?: Date;
   time: string;
@@ -85,10 +88,11 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
 
         const allTrips: Ride[] = [
           ...requests.map((ride: RideCardProps) => ({
+            rideId: ride.rideId,
+            kind: ride.kind,
             status: ride.status,
             date: ride.date,
-            time: ride.pickup.time,
-            duration: `${ride.etaMinutes} min`,
+            ...rideTimeSummary(ride),
             start: ride.pickup.address,
             destination: ride.destination.address,
             driver: ride.driver.name,
@@ -96,10 +100,11 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             vehicle: ride.driver.vehicle,
           })),
           ...offers.map((ride: RideCardProps) => ({
+            rideId: ride.rideId,
+            kind: ride.kind,
             status: ride.status,
             date: ride.date,
-            time: ride.pickup.time,
-            duration: `${ride.etaMinutes} min`,
+            ...rideTimeSummary(ride),
             start: ride.pickup.address,
             destination: ride.destination.address,
             driver: ride.driver.name,

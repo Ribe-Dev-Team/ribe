@@ -1,3 +1,17 @@
+/*
+Tests src/filter.ts - the cheap checks that throw out a rider/driver pair
+before any route is worked out (hardFilter).
+
+  time windows   whether the rider's and driver's departure windows overlap
+                 (KEY-133), including windows that only touch
+  corridor       how far off the driver's straight-line path a rider's stop
+                 is: near zero on the way, large behind the driver
+  closed trips   a trip the driver closed rejects every rider, with a reason
+
+Not tested directly: hardFilter's SAME_PERSON, DIRECTION and BEARING
+rejections. The cutoff rejection is checked in deferredAcceptance.test.ts.
+*/
+
 import { windowsOverlap, hardFilter, corridorDetourKm } from '../src/filter';
 import { DEFAULT_CONFIG } from '../src/types';
 import { CAMPUS, at, makeOffer, makeRequest, ring } from './fixtures';
@@ -46,5 +60,17 @@ describe('closed trips are excluded (KEY-137)', () => {
     const { candidates, rejected } = hardFilter([r], [o], DEFAULT_CONFIG, at(9), at(0));
     expect(candidates).toHaveLength(0);
     expect(rejected[0].reason).toBe('DRIVER_CLOSED');
+  });
+});
+
+describe('why a trip takes nobody', () => {
+  it('names slack, not the driver, when someone aboard has no detour to spare', () => {
+    const r = makeRequest({ reqId: 'r', start: near });
+    const o = makeOffer({
+      offerId: 'o', start: near, seatsFilled: 1,
+      onBoard: [{ reqId: 'x', riderId: 'x', waypoint: near, arriveBy: at(9), maxDetour: 10, currentDetour: 9 }],
+    });
+    const { rejected } = hardFilter([r], [o], DEFAULT_CONFIG, at(9), at(0));
+    expect(rejected[0].reason).toBe('OUT_OF_SLACK');
   });
 });
