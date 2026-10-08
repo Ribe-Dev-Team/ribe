@@ -1,7 +1,7 @@
 import type { MatchRequest, Waypoint, Trip, Coord } from "../../backend/server/matching.schema";
 import { scanTripToUni, scanTripFromUni, calcDetours, findBestInd, updateLegDists, updateLegDurs } from "../../backend/server/tripAdditions";
 import { computeRoute, mockConfig } from '../../__mocks__/googleRouteAPI';
-import { sum, tOfDay, hm, UNI, newPoint, mkCoord, mkWp, newWp, mkLine, mkTrip, mkReq, toUniReq, fromUniReq, apiLeg, buildRouteResponse, emptyRouteResponse, windows } from '../../tests/helpers';
+import { sum, tOfDay, hm, UNI, newPoint, mkCoord, mkWp, newWp, mkLine, mkTrip, mkReq, toUniReq, fromUniReq, apiLeg, buildRouteResponse, emptyRouteResponse, windows, deepFreeze } from '../../tests/helpers';
 import { euclid as e } from "../../__mocks__/distances";
 
 jest.doMock('../../mobile/services/googleRoutes', () => {
@@ -616,11 +616,6 @@ function loadAddPassenger() {
   });
 
   return { addPassenger, ...mocks };
-}
-
-function deepFreeze<T>(o: T): T {
-  Object.values(o as object).forEach(v => { if (v && typeof v === 'object') deepFreeze(v); });
-  return Object.freeze(o);
 }
 
 describe('addPassenger testing', () => {
