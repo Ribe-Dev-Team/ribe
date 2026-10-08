@@ -30,7 +30,11 @@ function calcDrivingTimeScore(d: MatchOffer, newTrip: Trip): number {
   const currRemDetour = maxTripTime - d.currTrip.currDur;
   const newRemDetour = maxTripTime - newTrip.currDur;
 
-  return newRemDetour / currRemDetour;
+  if (0 > currRemDetour) throw new Error(`Current trip has an invalid detour amount of ${currRemDetour} (shouldn't be less than 0)`);
+  if (newRemDetour > currRemDetour) throw new Error(`Detour amount increased from ${currRemDetour} to ${newRemDetour} which should not be possible.`);
+
+  return (0 > newRemDetour || 0 === currRemDetour) ? 0
+    : newRemDetour / currRemDetour;
 }
 
 // calculate how much slack time this passenger leaves for others (from [0, 1])
