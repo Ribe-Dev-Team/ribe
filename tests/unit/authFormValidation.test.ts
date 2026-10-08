@@ -10,7 +10,7 @@ const validSignup: AuthFormValues = {
   name: 'Anika Kamleshwaran',
   dob: '01/01/1990',
   phoneNumber: '0412345678',
-  email: 'anika@example.com',
+  email: 'anika@student.monash.edu',
   password: 'Password1',
   confirmPassword: 'Password1',
 };
@@ -20,7 +20,7 @@ const validLogin: AuthFormValues = {
   name: '',
   dob: '',
   phoneNumber: '',
-  email: 'anika@example.com',
+  email: 'anika@student.monash.edu',
   password: 'Password1',
   confirmPassword: '',
 };
@@ -36,7 +36,7 @@ describe('getFormValidationError - login mode', () => {
 
   it('rejects a malformed email', () => {
     expect(getFormValidationError({ ...validLogin, email: 'not-an-email' })).toBe(
-      'Enter a valid email address.',
+      'Please enter a valid Monash email address.',
     );
   });
 
@@ -72,7 +72,7 @@ describe('getFormValidationError - signup mode', () => {
 
   it('rejects a malformed email', () => {
     expect(getFormValidationError({ ...validSignup, email: 'not-an-email' })).toBe(
-      'Enter a valid email address.',
+      'Please enter a valid Monash email address.',
     );
   });
 

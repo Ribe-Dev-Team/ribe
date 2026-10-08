@@ -4,6 +4,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
+  sendEmailVerification,
   updateProfile,
   type User,
 } from 'firebase/auth';
@@ -47,7 +48,7 @@ type AuthContextType = {
 
   updateProfileDetails: (data: ProfileExtras) => Promise<void>;
   handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
-  handleSignup: (fields: SignupFields, extra?: ProfileExtras) => Promise<void>;
+  handleSignup: (fields: SignupFields, extra?: ProfileExtras) => Promise<boolean>;
   handleLogout: () => Promise<void>;
 };
 
@@ -104,6 +105,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser && !currentUser.emailVerified) {
+        // If they just signed up or haven't verified yet, ignore them in React state.
+        // We handle signing them out in handleSignup/handleLogin.
+        setUser(null);
+        setProfileData(null);
+        setLoading(false);
+        return;
+      }
+
       setUser(currentUser);
 
       if (!currentUser) {
@@ -198,7 +208,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      if (!userCredential.user.emailVerified) {
+        await firebaseSignOut(auth);
+        setError('Please verify your email address to log in.');
+        return;
+      }
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {
@@ -206,7 +221,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSignup = async (fields: SignupFields, extra?: ProfileExtras) => {
+  const handleSignup = async (fields: SignupFields, extra?: ProfileExtras): Promise<boolean> => {
     // Clean inputs exactly once for the signup process
     const trimmedName = fields.name.trim();
     const trimmedDob = fields.dob.trim();
@@ -225,7 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (validationError || submitting) {
       setError(validationError ?? 'Please complete the form correctly.');
-      return;
+      return false;
     }
 
     setSubmitting(true);
@@ -296,8 +311,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...(currentProfile ?? {}),
         ...profilePayload,
       }));
+
+      await sendEmailVerification(currentUser);
+      await firebaseSignOut(auth);
+      setError('Account created. Please check your email to verify your account before logging in.');
+      return true;
     } catch (err) {
       setError(getAuthErrorMessage(err));
+      return false;
     } finally {
       setSubmitting(false);
     }
