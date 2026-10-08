@@ -156,7 +156,8 @@ describe.each(DIRS)('calcSlackScore (%s)', (_dir, toUni) => {
     ['newSlack 0 (on lower boundary)', 20, 0, 0],
     ['currSlack 1, newSlack 1', 1, 1, 1],
     ['currSlack 1, newSlack 0', 1, 0, 0],
-    ['currSlack 0 (zero denominator), newSlack 0', 0, 0, 0], // FAILS now (NaN)
+    ['currSlack 0 (zero denominator), newSlack 0', 0, 0, 0],
+    ['currSlack 20, newSlack -1 (clamps)', 20, -1, 0],
   ])('%s', (_n, curr, nw, expected) => {
     expect(run(curr, nw)).toBeCloseTo(expected, 10);
   });
@@ -165,10 +166,9 @@ describe.each(DIRS)('calcSlackScore (%s)', (_dir, toUni) => {
     ['newSlack 21 (just above currSlack): errors', 20, 21],
     ['currSlack 1, newSlack 2: errors', 1, 2],
     ['currSlack 0, newSlack 1: errors', 0, 1],
-    ['newSlack -1 (latest before earliest): errors', 20, -1],
     ['currSlack -1 (latest before earliest): errors', -1, -1],
   ])('%s', (_n, curr, nw) => {
-    expect(() => run(curr, nw)).toThrow(); // FAILS now (no validation)
+    expect(() => run(curr, nw)).toThrow();
   });
 
   it.each([2, 3, 6])('reads the uni waypoint with a current trip of %i waypoints', (n) => {

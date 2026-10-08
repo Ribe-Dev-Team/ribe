@@ -39,30 +39,28 @@ function calcDrivingTimeScore(d: MatchOffer, newTrip: Trip): number {
 
 // calculate how much slack time this passenger leaves for others (from [0, 1])
 function calcSlackScore(d: MatchOffer, newTrip: Trip): number {
-  if (coordIsUni(d.end)) {
-    // trip to uni - calculate from arrival (last waypoint)
-    const l_ind = d.currTrip.waypoints.length - 1;
-    const currUni = d.currTrip.waypoints[l_ind];
-    const currSlack = currUni.latest.valueOf() - currUni.earliest.valueOf(); // ms
+  if (!coordIsUni(d.end) && !coordIsUni(d.start)) throw new Error("Ride Offer was not to or from uni: "
+    + `start=(${d.start.lat},${d.start.lon}) | end=(${d.end.lat},${d.end.lon})`
+  );
 
-    const newUni = newTrip.waypoints[l_ind + 1];
-    const newSlack = newUni.latest.valueOf() - newUni.earliest.valueOf(); // ms
+  const l_ind = (coordIsUni(d.end))
+    ? d.currTrip.waypoints.length - 1
+    : 0;
+  const currUni = d.currTrip.waypoints[l_ind];
+  const currSlack = currUni.latest.valueOf() - currUni.earliest.valueOf(); // ms
 
-    return newSlack / currSlack;
-  } else if (coordIsUni(d.start)) {
-    // trip from uni - calculate from depature (first waypoint)
-    const currUni = d.currTrip.waypoints[0];
-    const currSlack = currUni.latest.valueOf() - currUni.earliest.valueOf(); // ms
+  if (0 > currSlack) throw new Error(`Existing slack (${currSlack}) was negative which should not be possible.`);
 
-    const newUni = newTrip.waypoints[0];
-    const newSlack = newUni.latest.valueOf() - newUni.earliest.valueOf(); // ms
+  const new_ind = (coordIsUni(d.end))
+    ? l_ind + 1
+    : 0;
+  const newUni = newTrip.waypoints[new_ind];
+  const newSlack = newUni.latest.valueOf() - newUni.earliest.valueOf(); // ms
 
-    return newSlack / currSlack;
-  } else {
-    throw new Error("Ride Offer was not to or from uni: "
-      + `start=(${d.start.lat},${d.start.lon}) | end=(${d.end.lat},${d.end.lon})`
-    );
-  }
+  if (newSlack > currSlack) throw new Error(`More stops cannot have less slack but slack time increased from ${currSlack} to ${newSlack}`);
+
+  return (0 > newSlack || 0 === currSlack) ? 0
+    : newSlack / currSlack;
 }
 
 // calculate how much buffer arrival time this passenger gets (from [0, 1])
