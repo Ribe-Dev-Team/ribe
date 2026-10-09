@@ -46,7 +46,7 @@ export async function fetchPlacePredictions(input: string, sessionToken: string)
     const response = await fetch(url);
     const json = await response.json();
     if (json.status !== 'OK') return [];
-    return (json.predictions ?? []).map((prediction: { place_id: string; description: string }) => ({
+    return (json.predictions ?? []).map((prediction: { place_id: string; description: string; }) => ({
       placeId: prediction.place_id,
       description: prediction.description,
     }));

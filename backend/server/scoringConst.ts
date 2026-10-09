@@ -1,0 +1,12 @@
+export {
+    DRIVING_TIME_FACTOR,
+    DR_SLACK_TIME_FACTOR,
+    P_SLACK_TIME_FACTOR,
+    PUNCTUALITY_FACTOR,
+};
+
+// SCORING CONSTANTS
+const DRIVING_TIME_FACTOR: number = 0.8;
+const DR_SLACK_TIME_FACTOR: number = 0.2;
+const P_SLACK_TIME_FACTOR: number = 0.6;
+const PUNCTUALITY_FACTOR: number = 0.4;

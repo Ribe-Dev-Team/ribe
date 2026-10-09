@@ -1,11 +1,9 @@
 {
     "name": "root-testing-environment",
     "private": true,
-    "workspaces": [
-        "mobile"
-    ],
     "scripts": {
-        "test": "jest --config mobile/jest.config.js"
+        "test": "jest --config mobile/jest.config.js",
+        "test:live": "jest --config mobile/jest.live.config.js"
     },
     "devDependencies": {
         "@babel/core": "^7.24.0",

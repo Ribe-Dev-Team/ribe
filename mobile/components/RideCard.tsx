@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
+import NumberStepper from './NumberStepper';
 
 const APPROVAL_WINDOW_MS = 12 * 60 * 60 * 1000;
 
@@ -14,8 +15,13 @@ function formatCountdown(remainingMs: number) {
   return `${hours}h ${minutes}m`;
 }
 
-function useApprovalCountdown(matchedAt?: Date) {
-  const deadline = matchedAt ? matchedAt.getTime() + APPROVAL_WINDOW_MS : null;
+// Counts down to the matcher's own acceptDeadline when there is one: that is the
+// deadline the runner enforces, and it is clamped to the matching cutoff, so it
+// is often much sooner than 12h. matchedAt + 12h is only a fallback.
+function useApprovalCountdown(matchedAt?: Date, acceptDeadline?: Date) {
+  const deadline = acceptDeadline
+    ? acceptDeadline.getTime()
+    : matchedAt ? matchedAt.getTime() + APPROVAL_WINDOW_MS : null;
   const [remainingMs, setRemainingMs] = useState(() => (deadline ? deadline - Date.now() : 0));
 
   useEffect(() => {
@@ -81,20 +87,55 @@ export function formatRideDate(date: Date) {
   return `${weekday}, ${month} ${date.getDate()}${ordinalSuffix(date.getDate())} ${date.getFullYear()}`;
 }
 
+/** A stop between the start and the end of the trip. */
+export interface RideStop {
+  /** Who's picked up there: name and address on the driver's card, never
+   *  another rider's address on a rider's. */
+  label: string;
+  /** The estimated pickup, e.g. "~08:31". */
+  time: string;
+}
+
 export interface RideCardProps {
+  /** Firestore document id of the rideRequest/rideOffer this card renders.
+   *  Accept/Decline need it to write back. Optional so hand-built sample cards
+   *  still typecheck. */
+  rideId?: string;
+  /** Which collection `rideId` belongs to. */
+  kind?: 'request' | 'offer';
   status: RideStatus;
   date: Date;
+  /** Same as `rideId` - the name main's cancellation and notification code uses. */
   id?: string;
-  kind?: 'request' | 'offer';
   pickup: { address: string; time: string };
   destination: { address: string; eta: string };
   etaMinutes: number;
+  /** When a matched rider should be waiting - a buffer before the estimated
+   *  pickup. Absent until the matcher has planned a pickup time. */
+  readyBy?: string;
+  /** Set while there's no planned trip yet (still searching): the person's own
+   *  window, "HH:mm" to "HH:mm". The card then shows the range they gave
+   *  rather than a trip length or times that look like real pickups. */
+  timeWindow?: { from: string; to: string };
+  /** The window this person booked, whether or not a trip has been planned
+   *  inside it - what `timeWindow` is set to while still searching. */
+  bookingWindow?: { from: string; to: string };
+  /** The car's seats: a rider's once they're confirmed in it, a driver's always.
+   *  `open` while the drive is still being offered new passengers. */
+  seats?: { filled: number; total: number; open: boolean; locked: boolean };
+  /** The arrival time this person asked for ("HH:mm"). */
+  arriveBy?: string;
+  /** Pickups the car makes between this card's first row and campus, in
+   *  order, each with its estimated time. Only shown once the trip is planned. */
+  stops?: RideStop[];
   cost: string;
   co2SavedKg: number;
   driver: { uid?: string; name: string; vehicle: string; avatarUri?: string };
   plate: string;
   /** When a driver match was found - only used for 'awaiting' cards to show a 12h approval countdown */
   matchedAt?: Date;
+  /** The matcher's enforced accept-by time; when present the countdown runs to this instead */
+  acceptDeadline?: Date;
   /** Only relevant for 'confirmed' cards - driver's phone, masked until 12h before pickup */
   driverPhone?: string;
   /** Exact pickup date/time - used to decide when driverPhone gets revealed */
@@ -109,19 +150,33 @@ export interface RideCardProps {
   onSeeDetails?: () => void;
   /** Opens the driver's full profile page. Falls back to the in-card modal when omitted. */
   onOpenDriverProfile?: () => void;
+  /** Driver only: stop (true) or resume (false) taking passengers. */
+  onSetLocked?: (locked: boolean) => void;
+  /** Driver only: change how many passengers the drive takes. */
+  onChangeSeats?: (seats: number) => void;
 }
 
+/** Most passengers an offer can take - the booking form's limit. */
+const MAX_SEATS = 12;
+
 export default function RideCard({
+  kind,
   status,
   date,
   pickup,
   destination,
   etaMinutes,
+  readyBy,
+  timeWindow,
+  seats,
+  arriveBy,
+  stops,
   cost,
   co2SavedKg,
   driver,
   plate,
   matchedAt,
+  acceptDeadline,
   driverPhone,
   pickupDateTime,
   onAccept,
@@ -130,14 +185,73 @@ export default function RideCard({
   onCancel,
   onSeeDetails,
   onOpenDriverProfile,
+  onSetLocked,
+  onChangeSeats,
 }: RideCardProps) {
   const accent = statusAccent[status];
-  const remainingMs = useApprovalCountdown(status === 'awaiting' ? matchedAt : undefined);
+  const remainingMs = useApprovalCountdown(
+    status === 'awaiting' ? matchedAt : undefined,
+    status === 'awaiting' ? acceptDeadline : undefined,
+  );
   const msUntilPickup = useTimeUntil(status === 'confirmed' ? pickupDateTime : undefined);
   const phoneRevealed = msUntilPickup <= PHONE_REVEAL_WINDOW_MS;
   const [showCostInfo, setShowCostInfo] = useState(false);
   const [showPhoneInfo, setShowPhoneInfo] = useState(false);
   const [detailsVisible, setDetailsVisible] = useState(false);
+  // Only riders answer a match. A driver is told a rider was found and how long
+  // the rider has to accept; all they can do is remove the whole offer.
+  const isDriver = kind === 'offer';
+  const confirmRemoveOffer = () =>
+    Alert.alert(
+      'Remove this drive offer?',
+      'Any rider matched to it will go back to searching for another driver.',
+      [
+        { text: 'Keep Offer', style: 'cancel' },
+        { text: 'Remove Offer', style: 'destructive', onPress: onCancel },
+      ],
+    );
+
+  // Seats: a rider sees them once confirmed; a driver always sees their own.
+  const showSeats = Boolean(seats) && (isDriver || status === 'confirmed');
+  // A rider deciding on a match holds a seat too, so seats can't drop below it.
+  const seatsTaken = (seats?.filled ?? 0) + (isDriver && status === 'awaiting' ? 1 : 0);
+  const [seatEditorVisible, setSeatEditorVisible] = useState(false);
+  const [seatDraft, setSeatDraft] = useState(seats?.total ?? 1);
+  // Locked, the car is as full as it's going to get: it reads 1/1, not 1/3,
+  // because the empty seats aren't on offer any more.
+  const seatTotal = seats && seats.locked && seats.filled > 0 ? seats.filled : seats?.total ?? 0;
+  // The driver's own controls: seats any time, lock/unlock once someone's
+  // aboard (a full car that isn't locked has nothing to lock).
+  const canEditSeats = isDriver && Boolean(onChangeSeats);
+  const canToggleLock = isDriver && Boolean(onSetLocked) && (seats?.filled ?? 0) > 0
+    && Boolean(seats?.open || seats?.locked);
+  const seatLabel = !seats ? '' : seats.open
+    ? (isDriver ? 'Still looking for passengers' : 'Driver may add passengers')
+    : !isDriver ? 'No more passengers will be added'
+      : seats.locked ? 'Locked' : 'Full';
+
+  const confirmLockToggle = () => {
+    if (!seats || !onSetLocked) return;
+    if (seats.open) {
+      Alert.alert(
+        'Stop taking passengers?',
+        `You keep the ${seats.filled} rider${seats.filled === 1 ? '' : 's'} already confirmed. No new riders will be matched to this drive.`,
+        [
+          { text: 'Keep Looking', style: 'cancel' },
+          { text: 'Lock Drive', onPress: () => onSetLocked(true) },
+        ],
+      );
+    } else {
+      Alert.alert(
+        'Take more passengers?',
+        'This drive goes back into matching for its free seats. New riders still have to fit your route and everyone\'s arrival time.',
+        [
+          { text: 'Keep Locked', style: 'cancel' },
+          { text: 'Unlock', onPress: () => onSetLocked(false) },
+        ],
+      );
+    }
+  };
 
   return (
     <View style={[styles.card, { borderLeftColor: accent }]}>
@@ -146,28 +260,47 @@ export default function RideCard({
           <View style={[styles.statusDot, { backgroundColor: accent }]} />
           <Text style={styles.statusLabel}>{formatRideDate(date)}</Text>
         </View>
-        <Text style={styles.etaBadge}>{etaMinutes} min</Text>
+        {/* Still searching: the window they gave, not a trip length - nothing
+            has been planned yet, so there is no trip to time. */}
+        <Text style={styles.etaBadge}>
+          {timeWindow ? `${timeWindow.from}–${timeWindow.to}` : `${etaMinutes} min`}
+        </Text>
       </View>
 
       <View style={styles.stopRow}>
         <Ionicons name="ellipse" size={10} color={colors.white} style={styles.stopIcon} />
         <Text style={styles.stopAddress} numberOfLines={1}>{pickup.address}</Text>
-        <Text style={styles.stopTime}>{pickup.time}</Text>
+        <Text style={styles.stopTime}>{timeWindow ? `from ${timeWindow.from}` : pickup.time}</Text>
       </View>
+      {readyBy && <Text style={styles.readyBy}>Be ready by {readyBy}</Text>}
+      {/* The other pickups on the way, in route order. A card showing a range
+          has no planned trip, so no stops to time. */}
+      {!timeWindow && stops?.map((stop, index) => (
+        <React.Fragment key={`${stop.label}-${index}`}>
+          <View style={styles.stopConnector} />
+          <View style={styles.stopRow} accessibilityLabel={`Stop: ${stop.label}, ${stop.time}`}>
+            <Ionicons name="ellipse-outline" size={10} color={colors.white} style={styles.stopIcon} />
+            <Text style={styles.stopAddress} numberOfLines={1}>{stop.label}</Text>
+            <Text style={styles.stopTime}>{stop.time}</Text>
+          </View>
+        </React.Fragment>
+      ))}
       <View style={styles.stopConnector} />
       <View style={styles.stopRow}>
         <Ionicons name="location" size={13} color={colors.white} style={styles.stopIcon} />
         <Text style={styles.stopAddress} numberOfLines={1}>{destination.address}</Text>
-        <Text style={styles.stopTime}>ETA {destination.eta}</Text>
+        <Text style={styles.stopTime}>{timeWindow ? `by ${timeWindow.to}` : `ETA ${destination.eta}`}</Text>
       </View>
 
       {status === 'awaiting' && matchedAt && (
         <View style={styles.countdownBanner}>
           <Ionicons name="time-outline" size={14} color={colors.darkBlue} />
           <Text style={styles.countdownText}>
-            {remainingMs > 0
-              ? `You have ${formatCountdown(remainingMs)} to review and accept before this trip is canceled.`
-              : 'This match has expired.'}
+            {remainingMs <= 0
+              ? 'This match has expired.'
+              : isDriver
+                ? `Rider found. They have ${formatCountdown(remainingMs)} to review and accept before this match is cancelled and a new rider is searched for.`
+                : `You have ${formatCountdown(remainingMs)} to review and accept before this trip is canceled.`}
           </Text>
         </View>
       )}
@@ -210,17 +343,24 @@ export default function RideCard({
             <Ionicons name="eye-outline" size={16} color={colors.white} />
             <Text style={styles.seeDetailsText}>See Details</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
-            <Ionicons name="checkmark" size={16} color={colors.white} />
-            <Text style={styles.acceptText}>Accept</Text>
-          </TouchableOpacity>
+          {isDriver ? (
+            <TouchableOpacity style={styles.removeOfferButton} onPress={confirmRemoveOffer}>
+              <Ionicons name="close" size={16} color={colors.white} />
+              <Text style={styles.acceptText}>Remove offer</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
+              <Ionicons name="checkmark" size={16} color={colors.white} />
+              <Text style={styles.acceptText}>Accept</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : status === 'pending' ? (
         <>
           <View style={styles.footerRow}>
             <View style={styles.searchingRow}>
               <Ionicons name="search" size={14} color={colors.white} />
-              <Text style={styles.searchingText}>Searching for driver...</Text>
+              <Text style={styles.searchingText}>{isDriver ? 'Searching for riders...' : 'Searching for driver...'}</Text>
             </View>
             <View style={styles.pendingIconRow}>
               <TouchableOpacity
@@ -231,9 +371,9 @@ export default function RideCard({
                 <Ionicons name="create-outline" size={16} color={colors.white} />
               </TouchableOpacity>
               <TouchableOpacity
-                accessibilityLabel="Cancel ride request"
+                accessibilityLabel={isDriver ? 'Remove drive offer' : 'Cancel ride request'}
                 style={[styles.pendingIconButton, styles.cancelIconButton]}
-                onPress={() =>
+                onPress={() => isDriver ? confirmRemoveOffer() :
                   Alert.alert(
                     'Cancel ride request?',
                     'Are you sure you want to cancel this ride request?',
@@ -275,15 +415,118 @@ export default function RideCard({
             </TouchableOpacity>
             <Text style={styles.plateBadge}>{plate}</Text>
           </View>
-          <TouchableOpacity
-            style={styles.seeMoreLink}
-            onPress={() => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true))}
-          >
-            <Text style={styles.seeMoreLinkText}>See more information</Text>
-            <Ionicons name="chevron-forward" size={13} color={colors.white} />
-          </TouchableOpacity>
+          {/* "See more information" for an upcoming ride is at the very
+              bottom of the card, below the seats - see after the seat section. */}
         </>
       )}
+
+      {showSeats && seats && (
+        <View style={styles.seatSection}>
+          {/* The status gets the whole line - the driver's buttons sit on
+              their own row below, so they never squeeze it out. */}
+          <View style={styles.seatRow}>
+            <Ionicons name="people" size={14} color={colors.white} />
+            <Text style={styles.seatCount}>{seats.filled}/{seatTotal} seats</Text>
+            <Text style={styles.seatLabel}>{seatLabel}</Text>
+          </View>
+          {/* A progress bar of the car filling up: green for seats taken,
+              orange for seats still on offer (1 of 3 = one third green). Once
+              the car is full or locked there's nothing left on offer, so it's
+              all green. */}
+          {seats.filled > 0 && (
+            <View style={styles.seatBar} accessibilityLabel={seats.open ? 'Confirmed, still taking passengers' : 'Confirmed, no more passengers'}>
+              <View
+                testID="seat-bar-taken"
+                style={[styles.seatBarPart, { flex: seats.open ? seats.filled : 1, backgroundColor: colors.confirmed }]}
+              />
+              {seats.open && (
+                <View
+                  testID="seat-bar-free"
+                  style={[styles.seatBarPart, { flex: seats.total - seats.filled, backgroundColor: colors.awaiting }]}
+                />
+              )}
+            </View>
+          )}
+          {!isDriver && seats.open && (
+            <Text style={styles.seatNote}>
+              Your driver may still pick up more passengers on the way. You'll still arrive by {arriveBy ?? 'your requested time'}.
+            </Text>
+          )}
+          {(canEditSeats || canToggleLock) && (
+            <View style={styles.seatActionRow}>
+              {canEditSeats && (
+                <TouchableOpacity
+                  accessibilityLabel="Change number of seats"
+                  style={styles.seatAction}
+                  onPress={() => { setSeatDraft(seats.total); setSeatEditorVisible(true); }}
+                >
+                  <Ionicons name="create-outline" size={14} color={colors.white} />
+                  <Text style={styles.seatActionText}>Seats</Text>
+                </TouchableOpacity>
+              )}
+              {canToggleLock && (
+                <TouchableOpacity
+                  accessibilityLabel={seats.open ? 'Stop taking passengers' : 'Take more passengers'}
+                  style={styles.seatAction}
+                  onPress={confirmLockToggle}
+                >
+                  <Ionicons name={seats.open ? 'lock-closed-outline' : 'lock-open-outline'} size={14} color={colors.white} />
+                  <Text style={styles.seatActionText}>{seats.open ? 'Lock' : 'Unlock'}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
+      )}
+
+      {status === 'confirmed' && (
+        <TouchableOpacity
+          style={styles.seeMoreLink}
+          onPress={() => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true))}
+        >
+          <Text style={styles.seeMoreLinkText}>See more information</Text>
+          <Ionicons name="chevron-forward" size={13} color={colors.white} />
+        </TouchableOpacity>
+      )}
+
+      <Modal
+        visible={seatEditorVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSeatEditorVisible(false)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => setSeatEditorVisible(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalDriverName}>Seats for this drive</Text>
+            <Text style={styles.seatEditorHint}>
+              {seatsTaken > 0
+                ? `${seatsTaken} already taken, so at least ${seatsTaken}.`
+                : 'How many passengers you can take.'}
+            </Text>
+            <NumberStepper
+              value={seatDraft}
+              onChange={setSeatDraft}
+              min={Math.max(1, seatsTaken)}
+              max={MAX_SEATS}
+              style={styles.seatEditorStepper}
+            />
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity style={styles.declineButton} onPress={() => setSeatEditorVisible(false)}>
+                <Text style={styles.declineText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.acceptButton}
+                onPress={() => {
+                  setSeatEditorVisible(false);
+                  if (seats && seatDraft !== seats.total) onChangeSeats?.(seatDraft);
+                }}
+              >
+                <Text style={styles.acceptText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal
         visible={detailsVisible}
@@ -326,7 +569,22 @@ export default function RideCard({
               </Text>
             )}
 
-            {status === 'awaiting' ? (
+            {status === 'awaiting' && isDriver ? (
+              <View style={styles.modalButtonRow}>
+                <TouchableOpacity style={styles.declineButton} onPress={() => setDetailsVisible(false)}>
+                  <Text style={styles.declineText}>Close</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.declineButton}
+                  onPress={() => {
+                    setDetailsVisible(false);
+                    confirmRemoveOffer();
+                  }}
+                >
+                  <Text style={styles.declineText}>Remove offer</Text>
+                </TouchableOpacity>
+              </View>
+            ) : status === 'awaiting' ? (
               <View style={styles.modalButtonRow}>
                 <TouchableOpacity
                   style={styles.declineButton}
@@ -412,6 +670,80 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.85,
     marginLeft: 8,
+  },
+  readyBy: {
+    color: colors.white,
+    fontSize: 12,
+    opacity: 0.85,
+    marginLeft: 22, // under the address, past the stop icon and gap
+    marginTop: 2,
+  },
+  seatSection: {
+    marginTop: 12,
+  },
+  seatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  seatCount: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  seatLabel: {
+    flex: 1,
+    color: colors.white,
+    fontSize: 12,
+    opacity: 0.85,
+  },
+  seatActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 10,
+  },
+  seatAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.whiteA50,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  seatActionText: {
+    color: colors.white,
+    fontSize: 12,
+  },
+  // Split green/orange when the car may still take a passenger, solid green
+  // once it's full or locked.
+  seatBar: {
+    flexDirection: 'row',
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
+  seatBarPart: {
+    height: '100%',
+  },
+  seatNote: {
+    color: colors.white,
+    fontSize: 12,
+    opacity: 0.85,
+    marginTop: 6,
+  },
+  seatEditorHint: {
+    color: colors.white,
+    fontSize: 13,
+    opacity: 0.8,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  seatEditorStepper: {
+    marginTop: 14,
   },
   stopConnector: {
     width: 1,
@@ -597,6 +929,18 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 13,
     fontWeight: '600',
+  },
+  // Outlined rather than filled: removing an offer is the destructive choice.
+  removeOfferButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.whiteA50,
+    paddingVertical: 9,
   },
   acceptButton: {
     flex: 1,

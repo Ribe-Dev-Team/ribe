@@ -1,0 +1,153 @@
+/*
+Runs one matching pass against Firestore. From matching/:
+
+    npm run match                  write matches and expiries
+    npm run match -- --dry-run     compute and print only, write nothing
+    npm run match -- --synthetic   estimated travel times, no Google calls
+    npm run match -- --routes      Routes API instead of Distance Matrix, once
+                                   the key's project has the Routes API enabled
+
+Configuration, from the environment, falling back to mobile/.env for the two
+values the app already has:
+
+    FIREBASE_SERVICE_ACCOUNT   path to a service-account JSON key (or set
+                               GOOGLE_APPLICATION_CREDENTIALS instead)
+    FIREBASE_PROJECT_ID        falls back to EXPO_PUBLIC_FIREBASE_PROJECT_ID
+    GOOGLE_MAPS_API_KEY        falls back to EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+                               needs the Distance Matrix API enabled (or the
+                               Routes API, with --routes). With no key, travel
+                               times are synthetic estimates.
+
+Distance Matrix is the default because it is the one Ribe's Maps key has
+enabled (checked with `npm run test:live`). Google made it a legacy API in
+March 2025: projects that already use it keep it, new projects cannot turn it
+on. If the key ever moves to a newer project, switch to --routes.
+    FIRESTORE_EMULATOR_HOST    run against the local emulator, no credentials
+
+One run is one pass. How often to run it (every 15 minutes, hourly) is a
+scheduling choice - cron, Task Scheduler or a CI schedule all work - and more
+frequent runs fill cars faster, since each run offers a driver one new rider.
+*/
+
+import { SkipReason } from '../src/adapter';
+import { RejectMap } from '../src/types';
+import { CAMPUS_TIME_ZONE } from '../src/melbourneTime';
+import {
+  buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, SyntheticTravelTime,
+} from '../../tests/travelTime';
+import { envValue } from './env';
+import { connect, settleMatched, loadPending, loadRequestsById, writeMatches, writeSchedules } from './firestore';
+import { MatchingStore, RunReport, runOnce } from './runOnce';
+
+/** "08:35" in Melbourne, whatever clock the machine running this is on. */
+const clock = (d: Date) =>
+  d.toLocaleTimeString('en-AU', { timeZone: CAMPUS_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false });
+
+function printReport(report: RunReport, dryRun: boolean): void {
+  const { released, expired } = report.settled;
+  if (released.length) {
+    console.log(`Returned ${released.length} rider(s) to the pool after their driver removed the offer: ${released.join(', ')}`);
+  }
+  if (expired.length) {
+    console.log(`Expired ${expired.length} match(es) past their accept deadline: ${expired.join(', ')}`);
+  }
+
+  if (report.skipped.length) {
+    const counts = new Map<SkipReason, number>();
+    for (const s of report.skipped) counts.set(s.reason, (counts.get(s.reason) ?? 0) + 1);
+    console.log(`Left out ${report.skipped.length} booking(s): ${[...counts].map(([r, n]) => `${r} x${n}`).join(', ')}`);
+  }
+
+  if (report.batches.length === 0) console.log('Nothing to match.');
+  for (const b of report.batches) {
+    const head = `${b.batchKey}: ${b.requests} rider(s), ${b.offers} driver(s)`;
+    if (b.error) { console.log(`${head} -> FAILED: ${b.error}`); continue; }
+    const filled = b.timetablesFilled.length
+      ? `  ${dryRun ? 'would fill in' : 'filled in'} the missing timetable of: ${b.timetablesFilled.join(', ')}`
+      : '';
+    if (!b.requests || !b.offers) {
+      console.log(`${head} -> nothing to pair`);
+      if (filled) console.log(filled);
+      continue;
+    }
+
+    const written = dryRun ? 'dry run, not written' : `${b.applied.length} written`;
+    console.log(`${head} -> ${b.matches.length} match(es), ${written}`);
+    if (filled) console.log(filled);
+    for (const m of b.matches) {
+      const added = `${m.driverAddedMinutes >= 0 ? '+' : ''}${m.driverAddedMinutes.toFixed(1)}`;
+      console.log(`  ${m.reqId} -> ${m.offerId}   rider detour ${m.riderDetour.toFixed(1)} min, driver ${added} min`);
+      console.log(`      driver leaves ${clock(m.departAt)}, pickup ~${clock(m.pickupAt)}, arrives ~${clock(m.arriveAt)}`);
+    }
+    for (const s of b.writeSkips) console.log(`  not written: ${s.reqId} (${s.reason})`);
+    for (const u of b.unmatched) {
+      console.log(`  not matched: ${u.reqId}`);
+      for (const { offerId, reason } of u.byOffer) console.log(`      ${offerId}: ${RejectMap[reason]}`);
+    }
+  }
+}
+
+async function main(): Promise<number> {
+  const args = new Set(process.argv.slice(2));
+  if (args.has('--help') || args.has('-h')) {
+    console.log('Usage: npm run match -- [--dry-run] [--synthetic | --routes]');
+    return 0;
+  }
+  const dryRun = args.has('--dry-run');
+  const useRoutes = args.has('--routes');
+  if (useRoutes && args.has('--synthetic')) {
+    throw new Error('--synthetic and --routes both choose travel times; pass one.');
+  }
+
+  const apiKey = args.has('--synthetic') ? undefined : envValue('GOOGLE_MAPS_API_KEY', 'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY');
+  const db = connect({
+    projectId: envValue('FIREBASE_PROJECT_ID', 'EXPO_PUBLIC_FIREBASE_PROJECT_ID'),
+    serviceAccountPath: envValue('FIREBASE_SERVICE_ACCOUNT'),
+  });
+
+  const store: MatchingStore = {
+    settleMatched: (now) => settleMatched(db, now),
+    loadPending: () => loadPending(db),
+    loadRequestsById: (ids) => loadRequestsById(db, ids),
+    writeMatches: (writes) => writeMatches(db, writes),
+    writeSchedules: (writes) => writeSchedules(db, writes),
+  };
+
+  const now = new Date();
+  const stamp = now.toLocaleString('en-AU', { timeZone: CAMPUS_TIME_ZONE });
+  console.log(`Ribe matching run - ${stamp} (Melbourne)${dryRun ? ' - DRY RUN' : ''}`);
+  const buildMatrix = useRoutes ? buildRoutesTravelTimeMatrix : buildGoogleTravelTimeMatrix;
+  console.log(!apiKey
+    ? 'Travel times: SYNTHETIC estimates - no Google key, or --synthetic given'
+    : useRoutes
+      ? 'Travel times: Google Routes API (Route Matrix), one matrix per batch'
+      : 'Travel times: Google Distance Matrix API, one matrix per batch');
+
+  const report = await runOnce(store, {
+    now,
+    dryRun,
+    travelTimes: async (points) => apiKey
+      // Synthetic fallback only for a leg Google can't route at all.
+      ? buildMatrix(points, { apiKey, fallback: new SyntheticTravelTime() })
+      : new SyntheticTravelTime(),
+  });
+
+  printReport(report, dryRun);
+  return report.batches.some((b) => b.error) ? 1 : 0;
+}
+
+main().then(
+  (code) => { process.exitCode = code; },
+  (err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Matching run failed: ${message}`);
+    if (/default credentials/i.test(message)) {
+      console.error(
+        'No Firebase admin credentials. In the Firebase console: Project settings > Service accounts >\n' +
+        'Generate new private key. Save it OUTSIDE the repo (it grants full database access) and set\n' +
+        'FIREBASE_SERVICE_ACCOUNT=<path to the .json>. Or set FIRESTORE_EMULATOR_HOST to use the emulator.',
+      );
+    }
+    process.exitCode = 1;
+  },
+);

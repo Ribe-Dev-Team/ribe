@@ -120,7 +120,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   }, [hydrated]);
 
   const timeOrderWarning = getTimeOrderWarning(depTime, arrTime);
-  const detourWarning = getDetourWarning(isDriving, detourTime, depTime, arrTime);
+  const detourWarning = getDetourWarning(detourTime, depTime, arrTime);
 
   const validateTripStep = (): boolean => {
     const { addrErr } = validateTripStepFields(address);
@@ -135,7 +135,6 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     setNumSeatsErr(result.numSeatsErr);
     setDepTimeErr(result.depTimeErr);
     setArrTimeErr(result.arrTimeErr);
-    if (result.resetDetourTime) setDetourTime(0);
     return result.valid;
   };
 
@@ -155,6 +154,16 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     setIsSubmitting(true);
 
     try {
+      // Last-chance resolve. The draft-restore effect is async and the blur
+      // handler only geocodes an address the user typed, so addressPlace can
+      // still be null here for an otherwise perfectly valid address. Matching
+      // needs the point, so it's worth one more lookup - but a booking without
+      // one is still worth accepting, hence the null-tolerant fallback.
+      let place = addressPlace;
+      if (!place && address.trim()) {
+        place = await geocodeAddress(address.trim());
+      }
+
       // Build common booking data
       const commonData: Booking = {
         userId: user?.uid,
@@ -162,17 +171,18 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         isDriving,
         toUni,
         address: address.trim(),
+        // Google says `lng`, the matching module says `lon`. Converted here, at
+        // the boundary, so nothing downstream has to remember the difference.
+        ...(place ? { coord: { lat: place.lat, lon: place.lng } } : {}),
         travelDate: travelDate.trim(),
         depTime: depTime.trim(),
         arrTime: arrTime.trim(),
       };
-      // add detour time for drivers
+      // Detour and seats are driver-only; a rider's detour cap is derived at
+      // match time rather than collected here.
       const bookingData: Booking = (isDriving)
-        ? {
-          ...commonData,
-          detourTime: detourTime,
-          capacity: numSeats,
-        } : commonData;
+        ? { ...commonData, detourTime, capacity: numSeats }
+        : commonData;
 
       // Pass object to firebaseBookingMethods which converts it to Firestore format
       if (isDriving) {
@@ -439,10 +449,16 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               {arrTimeErr === '' && timeOrderWarning !== '' && <Text style={localStyles.warningText}>{timeOrderWarning}</Text>}
             </View>
 
+            {/* Drivers only. Riders are not asked for a detour tolerance - the
+                matcher derives theirs from their own direct trip at match time
+                (matching/src/riderPolicy.ts). */}
             {isDriving && (
               <View style={localStyles.card}>
                 <Text style={localStyles.cardLabel}>Driver details</Text>
                 <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
+                <Text style={localStyles.fieldHint}>
+                  How much longer your trip can take to pick riders up.
+                </Text>
                 <NumberStepper max={120} min={0} onChange={setDetourTime} step={5} style={localStyles.fieldInput} value={detourTime} />
                 {detourTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{detourTimeErr}</Text>}
                 {detourTimeErr === '' && detourWarning !== '' && <Text style={localStyles.warningText}>{detourWarning}</Text>}
@@ -615,6 +631,11 @@ const localStyles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
     marginBottom: 6,
+  },
+  fieldHint: {
+    color: colors.whiteA40,
+    fontSize: 12,
+    marginBottom: 8,
   },
   fieldInput: {
     borderColor: colors.whiteA30,

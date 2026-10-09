@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
-import { doc, getDoc } from 'firebase/firestore';
-import { deleteRideRequest, deleteRideOffer } from './schema/firebaseBookingMethods';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import MapPreview from '../components/MapPreview';
-import { db } from '../firebaseConfig';
+import { fetchDriverProfile } from '../services/rideData';
 
 interface RideDetailPageProps {
 	ride: Ride;
@@ -45,7 +43,11 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 	const [profile, setProfile] = useState<DriverProfileInfo>(fallbackDriverProfile);
 	const [loadingProfile, setLoadingProfile] = useState(Boolean(ride.driverUid));
 	const isConfirmed = ride.status === 'confirmed';
-	const status = ride.status === 'confirmed' ? 'Confirmed ride' : ride.status === 'awaiting' ? 'Awaiting confirmation' : 'Pending ride';
+	// Drivers don't answer matches, so their awaiting offer reads as a rider found.
+	const isDriver = ride.kind === 'offer';
+	const status = ride.status === 'confirmed' ? 'Confirmed ride'
+		: ride.status === 'awaiting' ? (isDriver ? 'Rider found - awaiting their confirmation' : 'Awaiting confirmation')
+		: 'Pending ride';
 	const statusColor = ride.status === 'confirmed' ? colors.confirmed : ride.status === 'awaiting' ? colors.awaiting : colors.pending;
 
 	useEffect(() => {
@@ -67,11 +69,12 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			}
 
 			try {
-				const driverDoc = await getDoc(doc(db, 'drivers', ride.driverUid));
+				// Driver registration and account profile merged - a driver may not
+				// have finished registration, and only the account has bio/degree/phone.
+				const data = await fetchDriverProfile(ride.driverUid);
 				if (!active) return;
 
-				if (driverDoc.exists()) {
-					const data = driverDoc.data();
+				if (Object.keys(data).length > 0) {
 					setProfile({
 						initials: (data['name'] ?? ride.driver).split(' ').map((part: string) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
 						bio: data['bio'] ?? 'This driver has not added a bio yet.',
@@ -157,54 +160,41 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 				</View>
 			)}
 
-						{(isConfirmed || ride.status === 'pending') && (
-								<Pressable
-									onPress={() => {
-										const confirmTitle = ride.status === 'pending' ? 'Cancel this ride request?' : 'Cancel this ride?';
-										const confirmMsg =
-											ride.status === 'pending'
-												? 'Are you sure you want to cancel this ride request?'
-												: 'Are you sure you want to cancel this confirmed ride?';
-										Alert.alert(confirmTitle, confirmMsg, [
-											{ text: 'Keep', style: 'cancel' },
-											{
-												text: ride.status === 'pending' ? 'Cancel Request' : 'Cancel Ride',
-												style: 'destructive',
-												onPress: async () => {
-													try {
-														if (onCancel) {
-															console.log('RideDetailPage: delegating cancel to onCancel prop');
-															await onCancel();
-															return;
-														}
-														// fallback: attempt to delete directly if id/kind available
-														if (!('id' in ride) || !ride.id || !('kind' in ride) || !ride.kind) {
-															Alert.alert('Unable to cancel', 'Cannot determine which ride to cancel.');
-															return;
-														}
-														console.log('RideDetailPage: attempting direct delete', ride.id, ride.kind);
-														if (ride.kind === 'request') {
-															await deleteRideRequest(ride.id);
-														} else {
-															await deleteRideOffer(ride.id);
-														}
-														console.log('RideDetailPage: delete successful', ride.id);
-														Alert.alert('Ride canceled', 'This ride has been canceled.');
-														if (onBack) onBack();
-													} catch (err) {
-														console.warn('RideDetailPage: failed to cancel', err);
-														const msg = err instanceof Error ? err.message : String(err);
-														Alert.alert('Error', `Failed to cancel ride: ${msg}`);
-													}
-												},
-											},
-										]);
-									}}
-									style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
-								>
-									<Text style={styles.dangerButtonText}>{ride.status === 'pending' ? 'Cancel pending ride' : 'Cancel ride'}</Text>
-								</Pressable>
-						)}
+			{(isConfirmed || ride.status === 'pending' || isDriver) && onCancel && (
+				<Pressable
+					onPress={() =>
+						isDriver
+							? Alert.alert(
+								'Remove this drive offer?',
+								'Any rider matched to it will go back to searching for another driver.',
+								[
+									{ text: 'Keep Offer', style: 'cancel' },
+									{ text: 'Remove Offer', style: 'destructive', onPress: onCancel },
+								],
+							)
+							: ride.status === 'pending'
+							? Alert.alert(
+								'Cancel this ride request?',
+								'Are you sure you want to cancel this ride request?',
+								[
+									{ text: 'Keep Request', style: 'cancel' },
+									{ text: 'Cancel Request', style: 'destructive', onPress: onCancel },
+								],
+							)
+							: Alert.alert(
+								'Cancel this ride?',
+								'Are you sure you want to cancel this confirmed ride?',
+								[
+									{ text: 'Keep Ride', style: 'cancel' },
+									{ text: 'Cancel Ride', style: 'destructive', onPress: onCancel },
+								],
+							)
+					}
+					style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
+				>
+					<Text style={styles.dangerButtonText}>{isDriver ? 'Remove offer' : ride.status === 'pending' ? 'Cancel pending ride' : 'Cancel ride'}</Text>
+				</Pressable>
+			)}
 		</ScrollView>
 	);
 }

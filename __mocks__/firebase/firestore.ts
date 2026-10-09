@@ -88,6 +88,10 @@ export const setDoc = async (docRef: any, data: any) => {
     mockDb[docRef.collectionName][docRef.id] = data;
 };
 
+// deleteField - a sentinel that updates remove the field for, as Firestore does
+const DELETE_FIELD = Symbol("deleteField");
+export const deleteField = () => DELETE_FIELD;
+
 // updateDoc
 export const updateDoc = async (docRef: any, data: any) => {
     await new Promise(r => setTimeout(r, 5));
@@ -96,10 +100,25 @@ export const updateDoc = async (docRef: any, data: any) => {
         throw { code: "not-found", message: "Document does not exist" };
     }
 
-    mockDb[docRef.collectionName][docRef.id] = {
-        ...mockDb[docRef.collectionName][docRef.id],
-        ...data,
+    const merged = { ...mockDb[docRef.collectionName][docRef.id], ...data };
+    for (const [field, value] of Object.entries(data)) {
+        if (value === DELETE_FIELD) delete merged[field];
+    }
+    mockDb[docRef.collectionName][docRef.id] = merged;
+};
+
+// runTransaction - reads go straight through; updates are buffered and applied
+// only once the callback succeeds, so a throw inside it writes nothing (no
+// retries or contention, unlike the real thing)
+export const runTransaction = async (_db: any, fn: (tx: any) => Promise<any>) => {
+    const writes: Array<[any, any]> = [];
+    const tx = {
+        get: (docRef: any) => getDoc(docRef),
+        update: (docRef: any, data: any) => { writes.push([docRef, data]); return tx; },
     };
+    const result = await fn(tx);
+    for (const [docRef, data] of writes) await updateDoc(docRef, data);
+    return result;
 };
 
 // addDoc
