@@ -14,6 +14,7 @@ interface FirestoreRideRecord {
   seatCapacity?: number;
   requestID?: string;
   offerID?: string;
+  emissionsSavedKg?: number;
 }
 
 interface UserRideBundle {
@@ -55,7 +56,7 @@ function buildRideCard(record: FirestoreRideRecord, kind: 'request' | 'offer'): 
     },
     etaMinutes: durationMinutes,
     cost: '$8.50',
-    co2SavedKg: 2.4,
+    co2SavedKg: record.emissionsSavedKg ?? 0,
     driver: {
       uid: undefined,
       name: driverName,

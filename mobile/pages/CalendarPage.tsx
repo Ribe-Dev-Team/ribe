@@ -27,6 +27,7 @@ export interface Ride {
   driver: string;
   driverUid?: string;
   vehicle: string;
+  co2SavedKg?: number;
 }
 
 const monthNames = [
@@ -94,6 +95,7 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             driver: ride.driver.name,
             driverUid: ride.driver.uid,
             vehicle: ride.driver.vehicle,
+            co2SavedKg: ride.co2SavedKg,
           })),
           ...offers.map((ride: RideCardProps) => ({
             status: ride.status,
@@ -105,6 +107,7 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             driver: ride.driver.name,
             driverUid: ride.driver.uid,
             vehicle: ride.driver.vehicle,
+            co2SavedKg: ride.co2SavedKg,
           })),
         ];
 

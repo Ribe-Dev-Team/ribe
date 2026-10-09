@@ -37,6 +37,7 @@ function toDetailRide(ride: RideCardProps): Ride {
     driver: ride.driver.name,
     driverUid: ride.driver.uid,
     vehicle: ride.driver.vehicle,
+    co2SavedKg: ride.co2SavedKg,
   };
 }
 

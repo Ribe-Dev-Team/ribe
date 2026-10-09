@@ -30,6 +30,14 @@ jest.mock('../../mobile/services/googlePlaces', () => ({
   geocodeAddress: async () => null,
 }));
 
+jest.mock('../../mobile/auth/useAuth', () => ({
+  useAuth: () => ({ user: { uid: 'test-user-id' } }),
+}));
+
+jest.mock('../../mobile/utility/emissions', () => ({
+  estimateEmissionsSaved: async () => 2.4,
+}));
+
 // The Firestore/AsyncStorage mocks use real setTimeout delays internally;
 // jest.setup.js switches the suite to fake timers by default, which would
 // hang these awaits forever.

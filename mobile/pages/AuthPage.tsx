@@ -55,7 +55,7 @@ interface AuthPageProps {
   error: string | null;
   clearError: () => void;
   handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
-  handleSignup: (fields: SignupFields, extra?: SignupProfileExtras) => Promise<void>;
+  handleSignup: (fields: SignupFields, extra?: SignupProfileExtras) => Promise<boolean>;
 }
 
 type SignupStep = 'about' | 'account' | 'profile' | 'driver' | 'confirm';
@@ -263,8 +263,8 @@ export default function AuthPage({
     if (validateDriverStep()) setSignupStep('confirm');
   };
 
-  const submitSignup = () => {
-    handleSignup(
+  const submitSignup = async () => {
+    const success = await handleSignup(
       { name, dob, phoneNumber, email, password, confirmPassword },
       {
         profilePhotoBase64: profilePhotoBase64 ?? undefined,
@@ -283,6 +283,14 @@ export default function AuthPage({
           : {}),
       },
     );
+    if (success) {
+      alert('Account created! Please check your email to verify your account, then log in.');
+      setMode('login');
+      setSignupStep('about');
+      // Clear fields to avoid logging in with password if user navigates back
+      setPassword('');
+      setConfirmPassword('');
+    }
   };
 
   const signupProgress = (

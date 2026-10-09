@@ -10,6 +10,7 @@ export interface RideRequest {
   departureTime: string; // "HH:mm", 24-hr time
   arrivalTime: string;   // "HH:mm", 24-hr time
   createdAt?: string;
+  emissionsSavedKg?: number;
 }
 
 export interface RideOffer {
@@ -24,4 +25,5 @@ export interface RideOffer {
   maxDetourTime: number;    // time in minutes
   seatCapacity: number;  // max number of passengers
   createdAt?: string;
+  emissionsSavedKg?: number;
 }

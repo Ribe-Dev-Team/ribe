@@ -4,6 +4,7 @@ import { Booking } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
 import { timePattern, toMinutes } from '../../utility/times';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
+import { estimateEmissionsSaved } from '../../utility/emissions';
 
 // convert DD-MM-YYYY string to Firestore Timestamp
 const parseDateToTimestamp = (dateStr: string): Timestamp => {
@@ -63,6 +64,15 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
   } else if (toMinutes(req.arrivalTime) <= toMinutes(req.departureTime)) {
     // range checking (time in bounds)
     throw new Error("arrivalTime must be later than departureTime");
+  }
+
+  try {
+    const emissions = await estimateEmissionsSaved(req.address, 1);
+    if (emissions !== null) {
+      req.emissionsSavedKg = emissions;
+    }
+  } catch (e) {
+    console.warn('Failed to estimate emissions:', e);
   }
 
   const docRef = await addDoc(collectionRef, req);
@@ -150,6 +160,15 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
 
   if (offer.seatCapacity < 1 || offer.seatCapacity > 12) {
     throw new Error(`Ride offers require 1 to 12 seats (inclusive) be available but ${offer.seatCapacity} were given.`);
+  }
+
+  try {
+    const emissions = await estimateEmissionsSaved(offer.address, offer.seatCapacity);
+    if (emissions !== null) {
+      offer.emissionsSavedKg = emissions;
+    }
+  } catch (e) {
+    console.warn('Failed to estimate emissions:', e);
   }
 
   const docRef = await addDoc(collectionRef, offer);

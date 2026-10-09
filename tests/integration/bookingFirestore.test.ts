@@ -8,6 +8,10 @@ import { db } from '../../mobile/firebaseConfig';
 import { collection, doc, getDoc, getDocs, query } from 'firebase/firestore';
 import { Booking } from '../../mobile/pages/schema/booking.schema';
 
+jest.mock('../../mobile/utility/emissions', () => ({
+  estimateEmissionsSaved: async () => 2.4,
+}));
+
 // The mocked Firestore/AsyncStorage use real setTimeout delays internally;
 // jest.setup.js switches the suite to fake timers by default, which would
 // hang these awaits forever.
@@ -28,6 +32,7 @@ const baseRiderBooking: Booking = {
   travelDate: futureDateStr(7),
   depTime: '08:00',
   arrTime: '09:00',
+  userId: 'test-user-id',
 };
 
 const baseDriverBooking: Booking = {

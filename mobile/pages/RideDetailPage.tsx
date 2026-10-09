@@ -5,6 +5,7 @@ import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import MapPreview from '../components/MapPreview';
 import { db } from '../firebaseConfig';
+import GreenhouseEmissionCard from '../components/GreenhouseEmissionCard';
 
 interface RideDetailPageProps {
 	ride: Ride;
@@ -130,7 +131,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			{isConfirmed && <Section title="Driver's car"><View style={styles.carRow}><Text style={styles.carIcon}>▣</Text><View><Text style={styles.personName}>{loadingProfile ? 'Loading vehicle...' : profile.vehicle}</Text><Text style={styles.infoLine}>{ride.vehicle || 'Vehicle details coming soon'}</Text></View></View></Section>}
 			{isConfirmed && <Section title="Other riders"><View style={styles.personRow}><View style={styles.avatar}><Text style={styles.avatarText}>EP</Text></View><View><Text style={styles.personName}>Elena Park</Text><Text style={styles.personBio}>Monash student, studying design.</Text></View></View></Section>}
 
-			<View style={styles.savingsPanel}><Text style={styles.savingsKicker}>CO2 SAVINGS</Text><Text style={styles.savingsValue}>2.4 kg saved</Text><Text style={styles.savingsText}>Sharing this ride keeps another car off the road.</Text></View>
+			<GreenhouseEmissionCard co2SavedKg={ride.co2SavedKg ?? 0} />
 			<View style={styles.costPanel}><Text style={styles.costTitle}>Estimated cost split</Text><View style={styles.costRow}><Text style={styles.costLabel}>Estimated trip cost</Text><Text style={styles.costValue}>$8.50</Text></View><View style={styles.costRow}><Text style={styles.costLabel}>Your share</Text><Text style={styles.costValue}>$4.25</Text></View><Text style={styles.costNote}>Final amount may change with route detours.</Text></View>
 
 			{ride.status === 'awaiting' && (onAccept || onDecline) && (
