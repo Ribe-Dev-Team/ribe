@@ -2,6 +2,13 @@ import { MatchOffer, MatchPairing, MatchRequest, TravelTimeMatrix } from './type
 import { addPassenger, evaluateRoute, RouteEvaluation } from './route';
 import { passengerOf } from './filter';
 
+import {
+  DRIVING_TIME_FACTOR,
+  DR_SLACK_TIME_FACTOR,
+  P_SLACK_TIME_FACTOR,
+  PUNCTUALITY_FACTOR,
+} from '../../backend/server/scoringConst';
+
 /**
  * KEY-139. Two-sided scoring, mirroring matchPairing { offerScore, reqScore }.
  * Structured and named after David's scoring (backend/server/scoring.ts):
@@ -64,11 +71,11 @@ export interface ScoreWeights {
  * car's slack. Sweepable; the sensitivity sweep is still outstanding.
  */
 export const DEFAULT_WEIGHTS: ScoreWeights = {
-  drivingTimeFactor: 0.8,
-  driverSlackFactor: 0.2,
-  detourFactor: 0.6,
-  punctualityFactor: 0.2,
-  passengerSlackFactor: 0.2,
+  drivingTimeFactor: DRIVING_TIME_FACTOR,
+  driverSlackFactor: DR_SLACK_TIME_FACTOR,
+  detourFactor: 0,
+  punctualityFactor: P_SLACK_TIME_FACTOR,
+  passengerSlackFactor: PUNCTUALITY_FACTOR,
 };
 
 export interface ScoredPairing extends MatchPairing {
@@ -121,14 +128,14 @@ export function driverLatestArrival(offer: MatchOffer, departAt: Date, t: Travel
  * measured at their own stop - the driver at the final one, each rider where
  * `addPassenger` checks their deadline (`RouteEvaluation.riderArrivals`).
  */
-export function arrivalSlackMinutes(stops: Array<{ deadline: Date; arrival: Date }>): number {
+export function arrivalSlackMinutes(stops: Array<{ deadline: Date; arrival: Date; }>): number {
   return Math.min(...stops.map((s) => (s.deadline.getTime() - s.arrival.getTime()) / 60_000));
 }
 
 /** `arrivalSlackMinutes` for an evaluated route. `riders` in route order. */
 export function routeSlackMinutes(
   driverDeadline: Date,
-  riders: Array<{ arriveBy: Date }>,
+  riders: Array<{ arriveBy: Date; }>,
   ev: RouteEvaluation,
 ): number {
   return arrivalSlackMinutes([
@@ -154,7 +161,7 @@ export interface PairingMetrics {
 
 /** The one definition of both scores, shared by `scorePairing` and the run's
  *  final accounting in deferredAcceptance.ts. */
-export function scoreFromMetrics(m: PairingMetrics, w: ScoreWeights): { offerScore: number; reqScore: number } {
+export function scoreFromMetrics(m: PairingMetrics, w: ScoreWeights): { offerScore: number; reqScore: number; } {
   const slack = calcSlackScore(m.slackBefore, m.slackAfter);
   return {
     offerScore: calcDriverScore(calcDrivingTimeScore(m.marginalDriverMinutes, m.driverRemainingDetour), slack, w),

@@ -1,5 +1,6 @@
-import { Coord, TravelTimeMatrix } from '../matching/src/types';
+import { TravelTimeMatrix } from '../matching/src/types';
 import { haversineKm } from '../matching/src/geo';
+import { Coord } from '../backend/server/matching.schema';
 
 /** Ordered-pair cache key, shared by every TravelTimeMatrix implementation in
  *  this file so a leg computed one way is never missed by a lookup done another. */

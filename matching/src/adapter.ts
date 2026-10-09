@@ -1,7 +1,8 @@
 import {
-  Coord, DEFAULT_CONFIG, Direction, MatchingConfig, MatchOffer, MatchRequest,
+  DEFAULT_CONFIG, Direction, MatchingConfig, MatchOffer, MatchRequest,
   OnBoardRider, TravelTimeMatrix,
 } from './types';
+import { Coord } from '../../backend/server/matching.schema';
 import { evaluateRoute } from './route';
 import { deriveRiderMaxDetour } from './riderPolicy';
 import {
