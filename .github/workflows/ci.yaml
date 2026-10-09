@@ -24,7 +24,7 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm install
+        run: cd ./mobile; npm install --prefix .; cd ../backend; npm install --prefix .; cd ..; npm install
         
       - name: Run TypeScript check
         run: npx tsc --noEmit -p mobile
