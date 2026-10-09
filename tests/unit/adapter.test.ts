@@ -22,7 +22,7 @@ import {
 import { zonedDateTime } from '../../matching/src/melbourneTime';
 import { deriveRiderMaxDetour } from '../../matching/src/riderPolicy';
 import { evaluateRoute } from '../../matching/src/route';
-import { SyntheticTravelTime } from '../../matching/src/travelTime';
+import { SyntheticTravelTime } from '../travelTime';
 import { DEFAULT_CONFIG } from '../../matching/src/types';
 
 // 60 km/h over straight lines, no noise: one minute per km, easy to reason about.

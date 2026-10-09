@@ -19,7 +19,7 @@
 import { runMatchingProvisional } from '../../matching/src/deferredAcceptance';
 import { waypointOf } from '../../matching/src/filter';
 import { evaluateRoute } from '../../matching/src/route';
-import { SyntheticTravelTime } from '../../matching/src/travelTime';
+import { SyntheticTravelTime } from '../travelTime';
 import {
   DEFAULT_CONFIG, MatchOffer, MatchRequest, MatchingConfig, ProposedMatch, TravelTimeMatrix,
 } from '../../matching/src/types';

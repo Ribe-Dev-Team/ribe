@@ -20,7 +20,7 @@ minutes quoted in comments can be checked by hand.
 */
 
 import { addPassenger, evaluateRoute, isAcceptingRiders, minSlackMinutes } from '../../matching/src/route';
-import { SyntheticTravelTime } from '../../matching/src/travelTime';
+import { SyntheticTravelTime } from '../travelTime';
 import { DEFAULT_CONFIG } from '../../matching/src/types';
 import { CAMPUS, at, makeOffer, ring } from '../fixtures';
 

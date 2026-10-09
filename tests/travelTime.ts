@@ -1,5 +1,5 @@
-import { Coord, TravelTimeMatrix } from './types';
-import { haversineKm } from './geo';
+import { Coord, TravelTimeMatrix } from '../matching/src/types';
+import { haversineKm } from '../matching/src/geo';
 
 /** Ordered-pair cache key, shared by every TravelTimeMatrix implementation in
  *  this file so a leg computed one way is never missed by a lookup done another. */
@@ -75,7 +75,7 @@ export class FixtureTravelTime implements TravelTimeMatrix {
   constructor(
     private readonly table: Map<string, number>,
     private readonly fallback: TravelTimeMatrix,
-  ) {}
+  ) { }
 
   minutes(a: Coord, b: Coord): number {
     return this.table.get(key(a, b)) ?? this.fallback.minutes(a, b);
@@ -95,7 +95,7 @@ export class PrecomputedTravelTime implements TravelTimeMatrix {
   constructor(
     private readonly table: Map<string, number>,
     private readonly fallback?: TravelTimeMatrix,
-  ) {}
+  ) { }
 
   minutes(a: Coord, b: Coord): number {
     const hit = this.table.get(key(a, b));
@@ -128,7 +128,7 @@ interface DistanceMatrixResponse {
   status: string;
   error_message?: string;
   rows: Array<{
-    elements: Array<{ status: string; duration?: { value: number } }>;
+    elements: Array<{ status: string; duration?: { value: number; }; }>;
   }>;
 }
 
@@ -210,7 +210,7 @@ export interface RoutesMatrixOptions {
 interface RouteMatrixElement {
   originIndex?: number;
   destinationIndex?: number;
-  status?: { code?: number; message?: string };
+  status?: { code?: number; message?: string; };
   condition?: string;
   duration?: string; // e.g. "712s"
 }

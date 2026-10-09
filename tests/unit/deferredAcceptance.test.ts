@@ -24,7 +24,7 @@ Travel times: synthetic, no noise, except where a table sets exact minutes.
 */
 
 import { runMatchingProvisional } from '../../matching/src/deferredAcceptance';
-import { FixtureTravelTime, SyntheticTravelTime, legKey } from '../../matching/src/travelTime';
+import { FixtureTravelTime, SyntheticTravelTime, legKey } from '../travelTime';
 import { DEFAULT_CONFIG } from '../../matching/src/types';
 import { CAMPUS, at, makeOffer, makeRequest } from '../fixtures';
 

@@ -15,7 +15,7 @@ enabled). One failing while the other passes says which API the key's project
 has enabled.
 */
 import { MONASH_CLAYTON } from '../../matching/src/adapter';
-import { buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix } from '../../matching/src/travelTime';
+import { buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix } from '../travelTime';
 import { envValue } from '../../matching/runner/env';
 
 const BOX_HILL = { lat: -37.8189, lon: 145.1218 }; // ~10 km north of campus

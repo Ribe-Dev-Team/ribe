@@ -26,11 +26,11 @@ import {
 
 export interface MatchingStore {
   settleMatched(now: Date): Promise<Settled>;
-  loadPending(): Promise<{ requests: RequestDoc[]; offers: OfferDoc[] }>;
+  loadPending(): Promise<{ requests: RequestDoc[]; offers: OfferDoc[]; }>;
   loadRequestsById(ids: string[]): Promise<Map<string, RequestDoc>>;
   writeMatches(writes: MatchWrite[]): Promise<{
     applied: string[];
-    skipped: Array<{ reqId: string; reason: MatchWriteSkip }>;
+    skipped: Array<{ reqId: string; reason: MatchWriteSkip; }>;
   }>;
   /** Returns the offers whose timetable was written. */
   writeSchedules(writes: ScheduleWrite[]): Promise<string[]>;
@@ -61,7 +61,7 @@ export interface BatchReport {
   /** Riders this batch didn't match, with each driver's reason. */
   unmatched: MatchRunResult['unmatchedReasons'];
   applied: string[];
-  writeSkips: Array<{ reqId: string; reason: MatchWriteSkip }>;
+  writeSkips: Array<{ reqId: string; reason: MatchWriteSkip; }>;
   /** Confirmed cars whose missing or outdated timetable this run filled in
    *  (on a dry run: would have). */
   timetablesFilled: string[];
@@ -102,16 +102,13 @@ export async function runOnce(store: MatchingStore, opts: RunOptions): Promise<R
     };
     reports.push(report);
 
-    // Confirmed cars whose stored timetable is missing (matched before
-    // timetables were stored) or lists different riders. A rider's card reads
-    // their pickup and arrival from it, so without one they're left looking at
-    // their booking window.
+    // Check there are scheduled riders who haven't been matched to this ride
     const needTimetable = new Set(batch.offers
       .filter((o) => (o.confirmedRequestIds ?? []).length > 0
         && !sameList(o.scheduledRiders ?? [], o.confirmedRequestIds ?? []))
       .map((o) => o.id));
 
-    // Nothing to pair or fill in - and no reason to pay for a travel-time matrix.
+    // Nothing to pair or fill in - and no reason to run travel-time matrix for this batch
     if (batch.offers.length === 0 || (batch.requests.length === 0 && needTimetable.size === 0)) continue;
 
     try {

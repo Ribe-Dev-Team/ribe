@@ -5,10 +5,7 @@
  * module drops into the team's existing vocabulary rather than competing with it.
  */
 
-export interface Coord {
-  lat: number;
-  lon: number;
-}
+import { Coord } from '../../backend/server/matching.schema';
 
 export type Direction = 'TO_CAMPUS' | 'FROM_CAMPUS';
 
@@ -72,7 +69,7 @@ export interface MatchOffer {
   seatsOffered: number;
   /** Confirmed riders so far. */
   seatsFilled: number;
-  /** The driver's live choice — they may stop early at 2 of 4. */
+  /** The driver's live choice - they may stop early at 2 of 4. */
   acceptingMore: boolean;
 
   status: OfferStatus;
@@ -85,7 +82,7 @@ export interface MatchOffer {
 export interface OnBoardRider {
   reqId: string;
   riderId: string;
-  /** The rider's waypoint — pickup going to campus, drop-off coming from it. */
+  /** The rider's waypoint - pickup going to campus, drop-off coming from it. */
   waypoint: Coord;
   arriveBy: Date;
   maxDetour: number;

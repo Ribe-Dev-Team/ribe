@@ -21,7 +21,7 @@ Travel times: synthetic at exactly 1 minute per km.
 import { MatchingStore, runOnce } from '../../matching/runner/runOnce';
 import { MONASH_CLAYTON as CAMPUS, OfferDoc, RequestDoc } from '../../matching/src/adapter';
 import { zonedDateTime } from '../../matching/src/melbourneTime';
-import { SyntheticTravelTime } from '../../matching/src/travelTime';
+import { SyntheticTravelTime } from '../travelTime';
 import { Coord } from '../../matching/src/types';
 import { FieldUpdate, planMatchWrite, planScheduleWrite, planSettle, Settled } from '../../matching/src/writes';
 

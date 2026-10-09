@@ -15,7 +15,7 @@ Travel times: synthetic, straight lines, 2.1 min per km, no noise.
 import {
   arrivalSlackMinutes, calcDrivingTimeScore, calcSlackScore, DEFAULT_WEIGHTS, scorePairing,
 } from '../../matching/src/score';
-import { SyntheticTravelTime } from '../../matching/src/travelTime';
+import { SyntheticTravelTime } from '../travelTime';
 import { CAMPUS, at, makeOffer, makeRequest } from '../fixtures';
 
 const t = new SyntheticTravelTime({ jitter: 0 }); // 2.1 min per km

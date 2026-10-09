@@ -34,7 +34,7 @@ import { RejectMap } from '../src/types';
 import { CAMPUS_TIME_ZONE } from '../src/melbourneTime';
 import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, SyntheticTravelTime,
-} from '../src/travelTime';
+} from '../../tests/travelTime';
 import { envValue } from './env';
 import { connect, settleMatched, loadPending, loadRequestsById, writeMatches, writeSchedules } from './firestore';
 import { MatchingStore, RunReport, runOnce } from './runOnce';

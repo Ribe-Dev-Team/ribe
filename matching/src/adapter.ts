@@ -7,6 +7,7 @@ import { deriveRiderMaxDetour } from './riderPolicy';
 import {
   CalendarDate, CAMPUS_TIME_ZONE, calendarDateIn, dateKey, isHhMm, zonedDateTime,
 } from './melbourneTime';
+import { MONASH_CLAYTON_LOCATION } from '../../mobile/services/googlePlaces';
 
 /**
  * Firestore bookings -> matcher inputs.
@@ -18,8 +19,7 @@ import {
  * other. Everything here is pure; runner/firestore.ts does the reading.
  */
 
-/** Same point as MONASH_CLAYTON_LOCATION in mobile/services/googlePlaces.ts. */
-export const MONASH_CLAYTON: Coord = { lat: -37.9106, lon: 145.1361 };
+const MONASH_CLAYTON = { ...MONASH_CLAYTON_LOCATION, lon: MONASH_CLAYTON_LOCATION.lng };
 
 /** The only stored status the matcher may pick up. The app's 'pending' means
  *  "not matched yet" (the matcher's 'unassigned') - see matchStatus.ts. */
@@ -81,7 +81,7 @@ export interface DocBatch {
 const directionOf = (doc: RequestDoc): Direction => (doc.toUni ? 'TO_CAMPUS' : 'FROM_CAMPUS');
 
 /** Rider or driver: [own start, own end]. One end is always campus. */
-function endpoints(doc: RequestDoc & { coord: Coord }, campus: Coord): [Coord, Coord] {
+function endpoints(doc: RequestDoc & { coord: Coord; }, campus: Coord): [Coord, Coord] {
   return doc.toUni ? [doc.coord, campus] : [campus, doc.coord];
 }
 
@@ -101,7 +101,7 @@ export function groupIntoBatches(
   offerDocs: OfferDoc[],
   now: Date,
   timeZone = CAMPUS_TIME_ZONE,
-): { batches: DocBatch[]; skipped: Skipped[] } {
+): { batches: DocBatch[]; skipped: Skipped[]; } {
   const skipped: Skipped[] = [];
   const byKey = new Map<string, DocBatch>();
 
@@ -178,20 +178,20 @@ export function toMatchInputs(
   confirmedById: Map<string, RequestDoc>,
   t: TravelTimeMatrix,
   opts: AdapterOptions = {},
-): { requests: MatchRequest[]; offers: MatchOffer[]; skipped: Skipped[] } {
+): { requests: MatchRequest[]; offers: MatchOffer[]; skipped: Skipped[]; } {
   const campus = opts.campus ?? MONASH_CLAYTON;
   const cfg = opts.cfg ?? DEFAULT_CONFIG;
   const timeZone = opts.timeZone ?? CAMPUS_TIME_ZONE;
   const skipped: Skipped[] = [];
 
   const requests = batch.requests
-    .filter((doc): doc is RequestDoc & { coord: Coord } => Boolean(doc.coord))
+    .filter((doc): doc is RequestDoc & { coord: Coord; } => Boolean(doc.coord))
     .map((doc) => toMatchRequest(doc, campus, t, cfg, timeZone));
 
   const offers: MatchOffer[] = [];
   for (const doc of batch.offers) {
     const offer = doc.coord
-      ? toMatchOffer(doc as OfferDoc & { coord: Coord }, confirmedById, campus, t, cfg, timeZone)
+      ? toMatchOffer(doc as OfferDoc & { coord: Coord; }, confirmedById, campus, t, cfg, timeZone)
       : null;
     if (offer) offers.push(offer);
     else skipped.push({ kind: 'offer', id: doc.id, reason: doc.coord ? 'CONFIRMED_RIDER_UNKNOWN' : 'NO_COORD' });
@@ -211,7 +211,7 @@ export const offerDeparture = (offer: MatchOffer): Date => offer.travelWindow.st
  * direct trip (riderPolicy.ts) because the app never asks for one.
  */
 function toMatchRequest(
-  doc: RequestDoc & { coord: Coord },
+  doc: RequestDoc & { coord: Coord; },
   campus: Coord,
   t: TravelTimeMatrix,
   cfg: MatchingConfig,
@@ -262,7 +262,7 @@ function toMatchRequest(
  *    arrives in time.
  */
 function toMatchOffer(
-  doc: OfferDoc & { coord: Coord },
+  doc: OfferDoc & { coord: Coord; },
   confirmedById: Map<string, RequestDoc>,
   campus: Coord,
   t: TravelTimeMatrix,
@@ -325,7 +325,7 @@ function rebuildOnBoard(
   for (const id of ids) {
     const r = confirmedById.get(id);
     if (!r || !r.coord || !hasValidTimes(r)) return null;
-    const [start, end] = endpoints(r as RequestDoc & { coord: Coord }, campus);
+    const [start, end] = endpoints(r as RequestDoc & { coord: Coord; }, campus);
     const date = calendarDateIn(r.date, timeZone);
     onBoard.push({
       reqId: r.id,

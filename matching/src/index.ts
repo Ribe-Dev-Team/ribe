@@ -4,7 +4,7 @@ export * from './route';
 export * from './filter';
 export * from './score';
 export * from './deferredAcceptance';
-export * from './travelTime';
+export * from '../../tests/travelTime';
 export * from './riderPolicy';
 export * from './melbourneTime';
 export * from './adapter';
