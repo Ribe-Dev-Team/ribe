@@ -22,6 +22,7 @@ function futureDateStr(daysFromNow: number): string {
 }
 
 const baseRiderBooking: Booking = {
+  userId: 'test-user-123',
   isDriving: false,
   toUni: true,
   address: '123 Main St',
@@ -50,6 +51,15 @@ describe('addRideRequest', () => {
     expect(data.arrivalTime).toBe('09:00');
     // the doc is stamped with its own generated id after creation
     expect(data.requestID).toBe(id);
+    expect(data.userId).toBe('test-user-123');
+    expect(data.status).toBe('pending');
+  });
+
+  test('requires a signed-in user', async () => {
+    const { userId, ...withoutUser } = baseRiderBooking;
+    await expect(addRideRequest(withoutUser as Booking)).rejects.toThrow(
+      /must be signed in to create a ride request/,
+    );
   });
 
   test('trims whitespace from the address before saving', async () => {
@@ -100,6 +110,14 @@ describe('addRideOffer', () => {
     expect(data.maxDetourTime).toBe(15);
     expect(data.seatCapacity).toBe(3);
     expect(data.offerID).toBe(id);
+    expect(data.userId).toBe('test-user-123');
+  });
+
+  test('requires a signed-in user', async () => {
+    const { userId, ...withoutUser } = baseDriverBooking;
+    await expect(addRideOffer(withoutUser as Booking)).rejects.toThrow(
+      /must be signed in to create a ride offer/,
+    );
   });
 
   test('requires a detour time', async () => {
