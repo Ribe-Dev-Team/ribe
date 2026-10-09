@@ -5,9 +5,9 @@
   "type": "commonjs",
   "scripts": {
     "build": "tsc",
-    "test": "jest",
-    "test:live": "jest -c jest.live.config.js",
-    "simulate": "ts-node test/simulate.ts",
+    "test": "npm test --prefix ..",
+    "test:live": "npm run test:live --prefix ..",
+    "simulate": "ts-node ../tests/component/simulate.ts",
     "match": "ts-node runner/run.ts"
   },
   "devDependencies": {

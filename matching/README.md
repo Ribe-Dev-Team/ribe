@@ -7,11 +7,11 @@ Firestore, builds Google travel times, calls `src/`, and writes the matches back
 
 ```bash
 npm install
-npm test                          # 108 tests, offline
+npm test                          # offline; runs the whole repo suite (tests/ at the repo root)
 npm run test:live                 # the real Google APIs - billed, see "Testing"
 npm run match -- --dry-run        # one run against Firestore, printed, nothing written
 npm run match                     # one real run - see "Running it against Firestore"
-npx ts-node test/simulate.ts      # SMART Goal 1 evidence run
+npm run simulate                  # SMART Goal 1 evidence run
 ```
 
 ## Files, and the tickets they close
@@ -119,7 +119,7 @@ left unmatched: two matches become one.
 
 ## Why bumping
 
-Worked example (see `test/deferredAcceptance.test.ts` for the runnable version,
+Worked example (see `tests/unit/deferredAcceptance.test.ts` for the runnable version,
 with exact numbers): riders A and B, drivers D1 and D2 with one seat each. B can
 only reach D1; A can reach both, and D1 is also A's own best option. One-shot
 greedy — the matcher this replaced — sorts by combined score and takes the
@@ -203,7 +203,7 @@ riding  = (time from their pickup to campus along the shared route)
 
 With `riding` alone, the **last** person collected always scores exactly zero,
 because their final leg is by definition the direct leg. That silently makes
-"add one more rider at the end" look free. See `test/route.test.ts`.
+"add one more rider at the end" look free. See `tests/unit/route.test.ts`.
 
 **Leaving campus, a rider's detour is `waiting` alone.** Everyone boards at
 campus and the waypoint is where the rider gets out, so the legs after it are
@@ -213,7 +213,7 @@ and the same arrival feeds their punctuality and slack scores.
 
 ## Simulation results (seed 20260917)
 
-`npx ts-node test/simulate.ts` runs the matcher the way the app uses it: the
+`npm run simulate` runs the matcher the way the app uses it: the
 same batch is run repeatedly, with **every** match accepted in between, until a
 run offers nobody new (3-4 runs here). Accepting everything is the best case -
 real riders sometimes decline or don't answer, and an unanswered match holds its
@@ -450,28 +450,30 @@ which is why the matrix is built per batch rather than across days.
 
 ### Automated suite
 
-`npm test` runs Jest through `ts-jest` (see `jest.config.js`: `testMatch: ['**/test/**/*.test.ts']`,
-no separate build step — TypeScript is compiled in-memory per test run). Each
-source file has a companion test file that exercises it directly:
+The tests live in the repo-level `tests/` folder alongside the app's, and `npm test` here just
+runs that whole suite from the repo root (`jest --config mobile/jest.config.js`, no separate build
+step — TypeScript is compiled in-memory per test run). Each source file has a companion test file
+that exercises it directly:
 
 | Test file | Exercises |
 |---|---|
-| `test/geo.test.ts` | `haversineKm`, `bearingDegrees`, `bearingDifference` (KEY-135) — including the 350°/10° wraparound case |
-| `test/filter.test.ts` | `windowsOverlap` (KEY-133), `corridorDetourKm`, and `hardFilter`'s reject-reason ordering (KEY-137) |
-| `test/route.test.ts` | `evaluateRoute`'s waiting+riding detour math (the "last rider scores zero" bug), each rider's own arrival and detour leaving campus, and `addPassenger`'s re-check of every existing rider and its pickup time-window check (KEY-138) |
-| `test/deferredAcceptance.test.ts` | `runMatchingProvisional` end to end — the worked bumping example, confirmed riders never being bumped, one new rider per trip per run, capacity, `acceptDeadline` clamping and the matching cutoff |
-| `test/travelTime.test.ts` | both Google clients (Routes and legacy Distance Matrix) against a fake `fetch` — batching, dedup, request shape, and fallback on failed legs. `SyntheticTravelTime` has no tests of its own |
-| `test/melbourneTime.test.ts` | stored local-midnight dates and `"HH:mm"` times across the daylight-saving change |
-| `test/adapter.test.ts` | batching, every skip reason, rider/driver windows and detour caps, confirmed riders rebuilt in pickup order |
-| `test/writes.test.ts` | every reason a match write is refused; expiry, and riders returned when a driver removes the offer |
-| `test/score.test.ts` | each sub-score, the 0.8 / 0.2 driver blend, and slack telling apart two riders who cost the same minutes |
-| `test/runOnce.test.ts` | the whole run against an in-memory store: match → wait → accept → fill the next seat in pickup order; a removed offer returning its riders; expiry freeing a driver; dry run; one failing batch |
+| `tests/unit/geo.test.ts` | `haversineKm`, `bearingDegrees`, `bearingDifference` (KEY-135) — including the 350°/10° wraparound case |
+| `tests/unit/filter.test.ts` | `windowsOverlap` (KEY-133), `corridorDetourKm`, and `hardFilter`'s reject-reason ordering (KEY-137) |
+| `tests/unit/route.test.ts` | `evaluateRoute`'s waiting+riding detour math (the "last rider scores zero" bug), each rider's own arrival and detour leaving campus, and `addPassenger`'s re-check of every existing rider and its pickup time-window check (KEY-138) |
+| `tests/unit/deferredAcceptance.test.ts` | `runMatchingProvisional` end to end — the worked bumping example, confirmed riders never being bumped, one new rider per trip per run, capacity, `acceptDeadline` clamping and the matching cutoff |
+| `tests/component/travelTime.test.ts` | both Google clients (Routes and legacy Distance Matrix) against a fake `fetch` — batching, dedup, request shape, and fallback on failed legs. `SyntheticTravelTime` has no tests of its own |
+| `tests/unit/melbourneTime.test.ts` | stored local-midnight dates and `"HH:mm"` times across the daylight-saving change |
+| `tests/unit/adapter.test.ts` | batching, every skip reason, rider/driver windows and detour caps, confirmed riders rebuilt in pickup order |
+| `tests/component/writes.test.ts` | every reason a match write is refused; expiry, and riders returned when a driver removes the offer |
+| `tests/unit/score.test.ts` | each sub-score, the 0.8 / 0.2 driver blend, and slack telling apart two riders who cost the same minutes |
+| `tests/integration/runOnce.test.ts` | the whole run against an in-memory store: match → wait → accept → fill the next seat in pickup order; a removed offer returning its riders; expiry freeing a driver; dry run; one failing batch |
 
-`npm run test:live` runs `test/travelTime.live.test.ts` instead: one small real
+`npm run test:live` runs `tests/integration/travelTime.live.test.ts` instead: one small real
 request to each Google API (2×2 matrix, campus to Box Hill), to check the fakes
 above still match what Google sends. It needs the key from `mobile/.env`, is
 billed (well inside the free tier), and is kept out of `npm test` by
-`jest.config.js`. One API passing while the other fails says which one the key's
+`mobile/jest.config.js`. It runs under `mobile/jest.live.config.js`, in plain Node rather than
+the jest-expo preset, because that preset stubs out `fetch`. One API passing while the other fails says which one the key's
 project has enabled.
 
 The runner's Firestore layer (`runner/firestore.ts`) is the one piece these tests
@@ -481,7 +483,7 @@ which are tested. Try it first with `npm run match -- --dry-run`.
 The app's side of the round trip — `acceptMatch` / `declineMatch` / `cancelOffer` — is covered by
 `tests/integration/matchResponse.test.ts` in the app's own suite.
 
-`test/fixtures.ts` is not a test file itself. It holds shared builders
+`tests/fixtures.ts` is not a test file itself. It holds shared builders
 (`makeRequest`, `makeOffer`, `ring`, `at`, `CAMPUS`) that every test file
 imports, so scenarios are built the same way everywhere and date handling
 (`at()` assumes Melbourne, UTC+10) lives in one place instead of being
@@ -491,7 +493,7 @@ re-derived per test.
 
 Two ways to poke at the algorithm without writing a Jest test:
 
-1. **The simulate.ts evidence run** — `npx ts-node test/simulate.ts` builds a
+1. **The simulate.ts evidence run** — `npm run simulate` builds a
    batch of synthetic riders/drivers on a fixed seed, runs
    `runMatchingProvisional` repeatedly until it settles, and prints match rate
    and detour stats. Good for eyeballing the effect of a config or weight change
@@ -505,7 +507,7 @@ Two ways to poke at the algorithm without writing a Jest test:
    import { runMatchingProvisional } from './src/deferredAcceptance';
    import { SyntheticTravelTime } from './src/travelTime';
    import { DEFAULT_CONFIG } from './src/types';
-   import { makeRequest, makeOffer, at, CAMPUS } from './test/fixtures';
+   import { makeRequest, makeOffer, at, CAMPUS } from '../tests/fixtures';
 
    const req = makeRequest({ reqId: 'r1', start: { lat: CAMPUS.lat + 0.05, lon: CAMPUS.lon } });
    const offer = makeOffer({ offerId: 'o1', start: { lat: CAMPUS.lat + 0.1, lon: CAMPUS.lon } });
@@ -522,7 +524,7 @@ Two ways to poke at the algorithm without writing a Jest test:
    ```
 
    Run it the same way `simulate.ts` is run. Delete the scratch file when
-   done — it is not part of the suite, and `fixtures.ts` is under `test/`
+   done — it is not part of the suite, and `fixtures.ts` is under `tests/`
    precisely so throwaway scripts and real tests can share the same builders.
 
 ## Known limitations

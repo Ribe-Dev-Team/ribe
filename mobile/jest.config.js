@@ -6,6 +6,8 @@ module.exports = {
     "<rootDir>/../tests",
     "<rootDir>"
   ],
+  // *.live.test.ts calls real, billed external APIs - run those with `npm run test:live`.
+  testPathIgnorePatterns: ["/node_modules/", "\\.live\\.test\\.ts$"],
   setupFilesAfterEnv: [
     "<rootDir>/jest.setup.js"
   ],
