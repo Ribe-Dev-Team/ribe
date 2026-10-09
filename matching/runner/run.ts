@@ -30,7 +30,7 @@ frequent runs fill cars faster, since each run offers a driver one new rider.
 */
 
 import { SkipReason } from '../src/adapter';
-import { RejectReason } from '../src/types';
+import { RejectMap } from '../src/types';
 import { CAMPUS_TIME_ZONE } from '../src/melbourneTime';
 import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, SyntheticTravelTime,
@@ -38,28 +38,6 @@ import {
 import { envValue } from './env';
 import { connect, settleMatched, loadPending, loadRequestsById, writeMatches, writeSchedules } from './firestore';
 import { MatchingStore, RunReport, runOnce } from './runOnce';
-
-/** Why a driver didn't take a rider, in words. A Record so a new reason
- *  without wording fails the build instead of printing a code. */
-const WHY: Record<RejectReason, string> = {
-  SAME_PERSON: 'same person as the driver',
-  OFFER_NOT_OPEN: 'not taking riders (full or closed)',
-  NO_SEATS: 'no seats left',
-  DRIVER_CLOSED: 'driver has stopped taking riders',
-  OUT_OF_SLACK: 'someone already in the car has no detour to spare',
-  DIRECTION: 'going the other way',
-  TIME_WINDOW: "travel times don't overlap",
-  BEARING: 'coming from a different direction',
-  CORRIDOR: "too far off the driver's route",
-  NO_FEASIBLE_INSERTION: 'no pickup position works',
-  RIDER_DETOUR_CAP: "the detour would be too long for this rider",
-  ONBOARD_DETOUR_CAP: 'would push someone already in the car past their detour limit',
-  DRIVER_DETOUR_CAP: "would go over the driver's detour limit",
-  ARRIVAL_WINDOW: 'someone would arrive too late',
-  PICKUP_BEFORE_READY: 'the car would arrive before the rider is ready',
-  MATCHING_CUTOFF: 'too close to departure to match',
-  LOST_SLOT: "fits, but the driver's one new seat this run went to a rider who adds fewer minutes",
-};
 
 /** "08:35" in Melbourne, whatever clock the machine running this is on. */
 const clock = (d: Date) =>
@@ -104,7 +82,7 @@ function printReport(report: RunReport, dryRun: boolean): void {
     for (const s of b.writeSkips) console.log(`  not written: ${s.reqId} (${s.reason})`);
     for (const u of b.unmatched) {
       console.log(`  not matched: ${u.reqId}`);
-      for (const { offerId, reason } of u.byOffer) console.log(`      ${offerId}: ${WHY[reason]}`);
+      for (const { offerId, reason } of u.byOffer) console.log(`      ${offerId}: ${RejectMap[reason]}`);
     }
   }
 }

@@ -136,6 +136,28 @@ export type RejectReason =
   | 'MATCHING_CUTOFF'
   | 'LOST_SLOT';            // feasible, but the one slot went to a cheaper rider
 
+/** Why a driver didn't take a rider, in words. A Record so a new reason
+ *  without wording fails the build instead of printing a code. */
+export const RejectMap: Record<RejectReason, string> = {
+  SAME_PERSON: 'same person as the driver',
+  OFFER_NOT_OPEN: 'not taking riders (full or closed)',
+  NO_SEATS: 'no seats left',
+  DRIVER_CLOSED: 'driver has stopped taking riders',
+  OUT_OF_SLACK: 'someone already in the car has no detour to spare',
+  DIRECTION: 'going the other way',
+  TIME_WINDOW: "travel times don't overlap",
+  BEARING: 'coming from a different direction',
+  CORRIDOR: "too far off the driver's route",
+  NO_FEASIBLE_INSERTION: 'no pickup position works',
+  RIDER_DETOUR_CAP: "the detour would be too long for this rider",
+  ONBOARD_DETOUR_CAP: 'would push someone already in the car past their detour limit',
+  DRIVER_DETOUR_CAP: "would go over the driver's detour limit",
+  ARRIVAL_WINDOW: 'someone would arrive too late',
+  PICKUP_BEFORE_READY: 'the car would arrive before the rider is ready',
+  MATCHING_CUTOFF: 'too close to departure to match',
+  LOST_SLOT: "fits, but the driver's one new seat this run went to a rider who adds fewer minutes",
+};
+
 /** One rider's place in a car's timetable. */
 export interface TripStop {
   reqId: string;
@@ -183,7 +205,7 @@ export interface MatchRunResult {
   rejected: RejectedPairing[];
   unmatchedRequestIds: string[];
   /** For each unmatched rider, why each driver in the batch didn't take them. */
-  unmatchedReasons: Array<{ reqId: string; byOffer: Array<{ offerId: string; reason: RejectReason }> }>;
+  unmatchedReasons: Array<{ reqId: string; byOffer: Array<{ offerId: string; reason: RejectReason; }>; }>;
   stats: {
     requestsIn: number;
     offersIn: number;
