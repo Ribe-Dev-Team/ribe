@@ -17,10 +17,6 @@ jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
 }));
 
-jest.mock('../../mobile/auth/useAuth', () => ({
-  useAuth: () => ({ user: { uid: 'mock-test-uid' } }),
-}));
-
 // Plain functions rather than jest.fn(): nothing here asserts on calls, and jest.config.js's
 // resetMocks strips a jest.fn()'s mockResolvedValue before every test (including the first),
 // so a jest.fn() default set here would silently return undefined instead of resolving.
@@ -33,6 +29,15 @@ jest.mock('../../mobile/services/googlePlaces', () => ({
   fetchPlaceDetails: async () => null,
   geocodeAddress: async () => null,
 }));
+
+// BookingPage reads the signed-in user's uid from useAuth to stamp bookings, and the real hook
+// throws outside an AuthProvider. Stub it with a fixed signed-in user instead of standing up
+// Firebase Auth. A plain function (not jest.fn()) so resetMocks doesn't wipe the return value.
+const TEST_USER_ID = 'test-user-123';
+jest.mock('../../mobile/auth/useAuth', () => {
+  const useAuth = () => ({ user: { uid: 'test-user-123' } });
+  return { __esModule: true, useAuth, default: useAuth };
+});
 
 // The Firestore/AsyncStorage mocks use real setTimeout delays internally;
 // jest.setup.js switches the suite to fake timers by default, which would
@@ -63,6 +68,17 @@ async function flushHydration() {
   });
 }
 
+// Submitting chains several mocked Firestore/AsyncStorage calls (each a few ms of real
+// setTimeout). fireEvent only wraps the synchronous part of the press handler in act(), so the
+// handler's final state update (setIsSubmitting(false)) lands outside it. Wrap the whole press in
+// an outer act() and keep it open until the submit has settled.
+async function pressSubmit() {
+  await act(async () => {
+    await fireEvent.press(screen.getByText('Submit request'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+}
+
 
 beforeEach(() => {
   (global as any).alert = jest.fn();
@@ -86,13 +102,13 @@ describe('BookingPage - rider requesting a ride', () => {
     // the draft restore effect should have hydrated the address field
     await screen.findByDisplayValue('123 Main St');
 
-    fireEvent.press(screen.getByText('Next')); // trip -> details
+    await fireEvent.press(screen.getByText('Next')); // trip -> details
     await screen.findByText('Trip details');
 
-    fireEvent.press(screen.getByText('Next')); // details -> confirm
+    await fireEvent.press(screen.getByText('Next')); // details -> confirm
     await screen.findByText('Confirm your request');
 
-    fireEvent.press(screen.getByText('Submit request'));
+    await pressSubmit();
 
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(global.alert).toHaveBeenCalledWith('Ride request successfully created!');
@@ -100,6 +116,7 @@ describe('BookingPage - rider requesting a ride', () => {
     const snapshot = await getDocs(query(collection(db, 'rideRequests')));
     expect(snapshot.size).toBe(1);
     expect(snapshot.docs[0].data().address).toBe('123 Main St');
+    expect(snapshot.docs[0].data().userId).toBe(TEST_USER_ID);
 
     // the in-progress draft is cleared once the booking is submitted
     expect(await AsyncStorage.getItem(BOOKING_DRAFT_KEY)).toBeNull();
@@ -125,13 +142,13 @@ describe('BookingPage - driver offering a ride', () => {
 
     await screen.findByDisplayValue('456 Example Ave');
 
-    fireEvent.press(screen.getByText('Next')); // trip -> details
+    await fireEvent.press(screen.getByText('Next')); // trip -> details
     await screen.findByText('Trip details');
 
-    fireEvent.press(screen.getByText('Next')); // details -> confirm
+    await fireEvent.press(screen.getByText('Next')); // details -> confirm
     await screen.findByText('Confirm your request');
 
-    fireEvent.press(screen.getByText('Submit request'));
+    await pressSubmit();
 
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(global.alert).toHaveBeenCalledWith('Ride offer successfully created!');
@@ -140,6 +157,7 @@ describe('BookingPage - driver offering a ride', () => {
     expect(snapshot.size).toBe(1);
     expect(snapshot.docs[0].data().maxDetourTime).toBe(15);
     expect(snapshot.docs[0].data().seatCapacity).toBe(3);
+    expect(snapshot.docs[0].data().userId).toBe(TEST_USER_ID);
   });
 });
 
@@ -150,7 +168,7 @@ describe('BookingPage - trip step validation blocks incomplete submissions', () 
     await flushHydration();
 
     await screen.findByText('Request a ride');
-    fireEvent.press(screen.getByText('Next'));
+    await fireEvent.press(screen.getByText('Next'));
 
     expect(await screen.findByText('Address is required.')).toBeTruthy();
     // still on the trip step
@@ -176,11 +194,11 @@ describe('BookingPage - Firestore write failure', () => {
     await flushHydration();
 
     await screen.findByDisplayValue('123 Main St');
-    fireEvent.press(screen.getByText('Next'));
+    await fireEvent.press(screen.getByText('Next'));
     await screen.findByText('Trip details');
-    fireEvent.press(screen.getByText('Next'));
+    await fireEvent.press(screen.getByText('Next'));
     await screen.findByText('Confirm your request');
-    fireEvent.press(screen.getByText('Submit request'));
+    await pressSubmit();
 
     await waitFor(() =>
       expect(global.alert).toHaveBeenCalledWith(expect.stringContaining('Error submitting booking')),
