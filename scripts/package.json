@@ -1,0 +1,17 @@
+{
+  "name": "ribe-scripts",
+  "private": true,
+  "description": "One-off admin scripts run against Firestore with the Admin SDK. Kept out of the root workspaces so firebase-admin never ends up in the app bundle.",
+  "type": "commonjs",
+  "scripts": {
+    "backfill:cost-splits": "ts-node --transpile-only backfillCostSplits.ts"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}
