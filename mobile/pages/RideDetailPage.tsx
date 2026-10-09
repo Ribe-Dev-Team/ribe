@@ -10,9 +10,9 @@ interface RideDetailPageProps {
 	date: Date;
 	backLabel?: string;
 	onBack: () => void;
-	onAccept?: () => void;
-	onDecline?: () => void;
-	onCancel?: () => void;
+	onAccept?: () => Promise<void> | void;
+	onDecline?: () => Promise<void> | void;
+	onCancel?: () => Promise<void> | void;
 }
 
 type DriverProfileInfo = {

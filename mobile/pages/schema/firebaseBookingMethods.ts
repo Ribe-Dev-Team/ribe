@@ -1,7 +1,7 @@
 import {
-  collection, addDoc, updateDoc, doc, Timestamp, runTransaction, deleteField,
+  collection, addDoc, updateDoc, doc, Timestamp, runTransaction, deleteField, deleteDoc, getDoc,
 } from 'firebase/firestore';
-import { db } from '../../firebaseConfig';
+import { auth, db } from '../../firebaseConfig';
 import { Booking, Coord } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
 import { BOOKING_STATUSES, BookingStatus, isBookingStatus } from './matchStatus';
@@ -450,4 +450,70 @@ export async function updateRideRequest(
   updates: Partial<Omit<RideRequest, 'requestID' | 'status'>>,
 ): Promise<void> {
   await updateDoc(doc(db, 'rideRequests', requestID), updates);
+}
+
+export async function deleteRideRequest(requestID: string): Promise<void> {
+  if (!requestID || typeof requestID !== 'string') throw new Error('requestID must be provided');
+  const docRef = doc(db, 'rideRequests', requestID);
+  console.log('deleteRideRequest: attempting to delete', requestID);
+  try {
+    const before = await getDoc(docRef);
+    console.log('deleteRideRequest: exists before delete?', before.exists());
+    console.log('deleteRideRequest: before data', before.data());
+    try {
+      console.log('deleteRideRequest: auth uid', auth.currentUser?.uid);
+    } catch (e) {
+      console.warn('deleteRideRequest: failed to read auth currentUser', e);
+    }
+  } catch (err) {
+    console.warn('deleteRideRequest: failed to read before-delete state', err);
+  }
+
+  try {
+    await deleteDoc(docRef);
+    console.log('deleteRideRequest: deleteDoc() returned for', requestID);
+  } catch (err) {
+    console.warn('deleteRideRequest: deleteDoc failed', err);
+    throw err;
+  }
+
+  try {
+    const after = await getDoc(docRef);
+    console.log('deleteRideRequest: exists after delete?', after.exists());
+  } catch (err) {
+    console.warn('deleteRideRequest: failed to read after-delete state', err);
+  }
+}
+
+export async function deleteRideOffer(offerID: string): Promise<void> {
+  if (!offerID || typeof offerID !== 'string') throw new Error('offerID must be provided');
+  const docRef = doc(db, 'rideOffers', offerID);
+  console.log('deleteRideOffer: attempting to delete', offerID);
+  try {
+    const before = await getDoc(docRef);
+    console.log('deleteRideOffer: exists before delete?', before.exists());
+    console.log('deleteRideOffer: before data', before.data());
+    try {
+      console.log('deleteRideOffer: auth uid', auth.currentUser?.uid);
+    } catch (e) {
+      console.warn('deleteRideOffer: failed to read auth currentUser', e);
+    }
+  } catch (err) {
+    console.warn('deleteRideOffer: failed to read before-delete state', err);
+  }
+
+  try {
+    await deleteDoc(docRef);
+    console.log('deleteRideOffer: deleteDoc() returned for', offerID);
+  } catch (err) {
+    console.warn('deleteRideOffer: deleteDoc failed', err);
+    throw err;
+  }
+
+  try {
+    const after = await getDoc(docRef);
+    console.log('deleteRideOffer: exists after delete?', after.exists());
+  } catch (err) {
+    console.warn('deleteRideOffer: failed to read after-delete state', err);
+  }
 }

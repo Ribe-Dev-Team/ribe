@@ -1,5 +1,7 @@
-import { collection, doc, DocumentData, getDoc, getDocs, query, Timestamp, where } from 'firebase/firestore';
-import { RideCardProps, RideStop } from '../components/RideCard';
+import {
+  collection, doc, DocumentData, getDoc, getDocs, query, serverTimestamp, Timestamp, updateDoc, where, writeBatch,
+} from 'firebase/firestore';
+import { RideCardProps, RideStatus, RideStop } from '../components/RideCard';
 import { db } from '../firebaseConfig';
 import { Coord } from '../pages/schema/booking.schema';
 import { BookingStatus, DisplayableBookingStatus, isDisplayable } from '../pages/schema/matchStatus';
@@ -35,6 +37,11 @@ interface FirestoreRideRecord {
   // An offer's timetables (see firebaseBooking.schema.ts).
   schedule?: StoredSchedule;
   pendingSchedule?: StoredSchedule;
+  // Cancellation metadata (cancelRideRequest / cancelRideOffer / cancelConfirmedRide).
+  matchedRequestId?: string;
+  cancelledAt?: Timestamp | Date | string;
+  cancelledBy?: string;
+  cancelReason?: string;
 }
 
 type StoredTime = Timestamp | Date | string;
@@ -423,6 +430,7 @@ function buildRideCard(
 
   return {
     rideId: docId,
+    id: docId,
     kind,
     status,
     date,
@@ -539,4 +547,68 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
   };
 }
 
-export type { UserRideBundle };
+// ==========================================
+// CANCELLATION FUNCTIONS
+// ==========================================
+
+/**
+ * Cancels an unmatched pending ride request.
+ */
+export async function cancelRideRequest(requestId: string, userId: string, reason?: string): Promise<void> {
+  const requestRef = doc(db, 'rideRequests', requestId);
+  await updateDoc(requestRef, {
+    status: 'cancelled' as RideStatus,
+    cancelledAt: serverTimestamp(),
+    cancelledBy: userId,
+    ...(reason ? { cancelReason: reason } : {}),
+  });
+}
+
+/**
+ * Cancels an unmatched pending ride offer.
+ */
+export async function cancelRideOffer(offerId: string, userId: string, reason?: string): Promise<void> {
+  const offerRef = doc(db, 'rideOffers', offerId);
+  await updateDoc(offerRef, {
+    status: 'cancelled' as RideStatus,
+    cancelledAt: serverTimestamp(),
+    cancelledBy: userId,
+    ...(reason ? { cancelReason: reason } : {}),
+  });
+}
+
+/**
+ * Cancels a confirmed ride by atomically updating both the request and offer.
+ */
+export async function cancelConfirmedRide(params: {
+  requestId: string;
+  offerId: string;
+  cancelledByUserId: string;
+  reason?: string;
+}): Promise<void> {
+  const { requestId, offerId, cancelledByUserId, reason } = params;
+  const batch = writeBatch(db);
+
+  const requestRef = doc(db, 'rideRequests', requestId);
+  const offerRef = doc(db, 'rideOffers', offerId);
+
+  batch.update(requestRef, {
+    status: 'cancelled' as RideStatus,
+    matchedOfferId: null,
+    cancelledAt: serverTimestamp(),
+    cancelledBy: cancelledByUserId,
+    ...(reason ? { cancelReason: reason } : {}),
+  });
+
+  batch.update(offerRef, {
+    status: 'cancelled' as RideStatus,
+    matchedRequestId: null,
+    cancelledAt: serverTimestamp(),
+    cancelledBy: cancelledByUserId,
+    ...(reason ? { cancelReason: reason } : {}),
+  });
+
+  await batch.commit();
+}
+
+export type { UserRideBundle, FirestoreRideRecord };

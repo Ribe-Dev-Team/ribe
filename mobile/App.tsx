@@ -9,6 +9,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { useFonts, Marcellus_400Regular } from '@expo-google-fonts/marcellus';
 
 import { AuthProvider, useAuth } from './auth/useAuth';
@@ -28,12 +29,19 @@ import BookingPage from './pages/BookingPage';
 import {
   acceptMatch, cancelOffer, declineMatch, setOfferLocked, updateOfferSeats,
 } from './pages/schema/firebaseBookingMethods';
+import { deleteRideRequest } from './pages/schema/firebaseBookingMethods';
+import { db } from './firebaseConfig';
 
-// Adapts a rich Home/Dashboard ride card into the simpler shape RideDetailPage
-// (built for Calendar) expects, so both entry points share the same detail screen.
+export interface NotificationItem {
+  id: string;
+  text: string;
+  type: 'upcoming' | 'cancellation';
+}
+
 function toDetailRide(ride: RideCardProps): Ride {
   return {
     rideId: ride.rideId,
+    id: ride.id,
     kind: ride.kind,
     status: ride.status,
     ...rideTimeSummary(ride),
@@ -49,7 +57,7 @@ function toDetailRide(ride: RideCardProps): Ride {
 interface ActionableRide {
   rideId?: string;
   kind?: 'request' | 'offer';
-  status: 'confirmed' | 'awaiting' | 'pending';
+  status: 'confirmed' | 'awaiting' | 'pending' | 'cancelled';
 }
 
 function errorMessage(error: unknown): string {
@@ -146,15 +154,26 @@ function buildRideActions(
       },
     };
   }
-  // NOTE: a rider cancelling is still a local alert only — it has no Firestore
-  // write yet, so a cancelled ride reappears on the next fetch.
-  if (ride.status === 'confirmed') {
-    return {
-      onCancel: () => Alert.alert('Ride canceled', 'This ride has been canceled.'),
-    };
-  }
+  // A rider cancelling deletes their request. Drivers never reach this - an
+  // offer is removed through cancelOffer above, which the matcher relies on.
+  const confirmed = ride.status === 'confirmed';
   return {
-    onCancel: () => Alert.alert('Ride request canceled', 'This ride request has been canceled.'),
+    onCancel: async () => {
+      if (!ride.rideId) {
+        Alert.alert('Not available yet', 'Cancelling a ride from this view is not wired up.');
+        return;
+      }
+      try {
+        await deleteRideRequest(ride.rideId);
+        Alert.alert(
+          confirmed ? 'Ride canceled' : 'Ride request canceled',
+          confirmed ? 'This ride has been canceled.' : 'This ride request has been canceled.',
+        );
+        onChanged();
+      } catch (error) {
+        Alert.alert('Could not cancel ride', errorMessage(error));
+      }
+    },
   };
 }
 
@@ -177,9 +196,9 @@ export default function App() {
 }
 
 function AppContent() {
-  // Navigation State
   const [activeTab, setActiveTab] = useState<NavigationTab>('home');
   const [navHidden, setNavHidden] = useState(false);
+  const [notificationsList, setNotificationsList] = useState<NotificationItem[]>([]);
   const [selectedRide, setSelectedRide] = useState<{
     ride: Ride;
     date: Date;
@@ -201,6 +220,162 @@ function AppContent() {
   const lastScrollY = useRef(0);
   const wasLoggedIn = useRef(false);
 
+  const {
+    user,
+    loading,
+    submitting,
+    error,
+    clearError,
+    handleLogin,
+    handleSignup,
+    handleLogout,
+  } = useAuth();
+  
+  // Global persistent Firestore listeners for real-time notifications
+  useEffect(() => {
+    if (!user?.uid) {
+      setNotificationsList([]);
+      return;
+    }
+
+    const requestsQuery = query(collection(db, 'rideRequests'), where('userId', '==', user.uid));
+    const offersQuery = query(collection(db, 'rideOffers'), where('userId', '==', user.uid));
+
+    // Resolves destination address based on document fields
+    const getDestination = (data: any) =>
+      data.destinationAddress ||
+      data.destination ||
+      (data.toUni ? 'Monash University' : 'Home');
+
+    // Formats date into a clean string (e.g., "18 Sep")
+    const formatDate = (dateVal: any) => {
+      if (!dateVal) return 'today';
+      let d: Date;
+      if (dateVal?.toDate && typeof dateVal.toDate === 'function') {
+        d = dateVal.toDate();
+      } else if (dateVal instanceof Date) {
+        d = dateVal;
+      } else {
+        d = new Date(dateVal);
+      }
+      if (isNaN(d.getTime())) return 'today';
+      return d.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' });
+    };
+
+    // Checks if a given timestamp/date is today
+    const isToday = (dateVal: any) => {
+      if (!dateVal) return false;
+      let d: Date;
+      if (dateVal?.toDate && typeof dateVal.toDate === 'function') {
+        d = dateVal.toDate();
+      } else if (dateVal instanceof Date) {
+        d = dateVal;
+      } else {
+        d = new Date(dateVal);
+      }
+      if (isNaN(d.getTime())) return false;
+
+      const today = new Date();
+      return (
+        d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate()
+      );
+    };
+
+    // Sync helper to combine active day-of reminders with existing cancellations
+    const syncNotifications = (
+      reqDocs: any[],
+      offerDocs: any[],
+      cancellations: NotificationItem[]
+    ) => {
+      const upcomingNotifs: NotificationItem[] = [];
+
+      // Check active requests scheduled for today
+      reqDocs.forEach((doc) => {
+        const data = doc.data();
+        if (data.status !== 'cancelled' && isToday(data.date)) {
+          upcomingNotifs.push({
+            id: `upcoming-req-${doc.id}`,
+            text: `Upcoming ride to ${getDestination(data)} today at ${data.departureTime || 'scheduled time'}.`,
+            type: 'upcoming',
+          });
+        }
+      });
+
+      // Check active offers scheduled for today
+      offerDocs.forEach((doc) => {
+        const data = doc.data();
+        if (data.status !== 'cancelled' && isToday(data.date)) {
+          upcomingNotifs.push({
+            id: `upcoming-offer-${doc.id}`,
+            text: `Upcoming drive to ${getDestination(data)} today at ${data.departureTime || 'scheduled time'}.`,
+            type: 'upcoming',
+          });
+        }
+      });
+
+      // Combine upcoming day-of reminders with accumulated cancellations (deduplicated)
+      setNotificationsList((prev) => {
+        const existingCancels = prev.filter((n) => n.type === 'cancellation');
+        const allCancels = [...cancellations, ...existingCancels].filter(
+          (item, index, self) => index === self.findIndex((t) => t.id === item.id)
+        );
+        return [...upcomingNotifs, ...allCancels];
+      });
+    };
+
+    let currentReqDocs: any[] = [];
+    let currentOfferDocs: any[] = [];
+    let pendingCancellations: NotificationItem[] = [];
+
+    // Listener for Ride Requests
+    const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
+      currentReqDocs = snapshot.docs;
+
+      snapshot.docChanges().forEach((change) => {
+        if (
+          change.type === 'removed' ||
+          (change.type === 'modified' && change.doc.data()['status'] === 'cancelled')
+        ) {
+          const data = change.doc.data();
+          pendingCancellations.push({
+            id: `cancel-req-${change.doc.id}-${Date.now()}`,
+            text: `Ride request to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] || 'scheduled time'} was cancelled.`,
+            type: 'cancellation',
+          });
+        }
+      });
+
+      syncNotifications(currentReqDocs, currentOfferDocs, pendingCancellations);
+    });
+
+    // Listener for Ride Offers
+    const unsubOffers = onSnapshot(offersQuery, (snapshot) => {
+      currentOfferDocs = snapshot.docs;
+
+      snapshot.docChanges().forEach((change) => {
+        if (
+          change.type === 'removed' ||
+          (change.type === 'modified' && change.doc.data()['status'] === 'cancelled')
+        ) {
+          const data = change.doc.data();
+          pendingCancellations.push({
+            id: `cancel-offer-${change.doc.id}-${Date.now()}`,
+            text: `Drive offer to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] || 'scheduled time'} was cancelled.`,
+            type: 'cancellation',
+          });
+        }
+      });
+
+      syncNotifications(currentReqDocs, currentOfferDocs, pendingCancellations);
+    });
+
+    return () => {
+      unsubRequests();
+      unsubOffers();
+    };
+  }, [user?.uid]);
   const changeTab = (tab: NavigationTab) => {
     setActiveTab(tab);
     setNavHidden(false);
@@ -218,12 +393,13 @@ function AppContent() {
   // accepting from a Home or Dashboard card really writes, not just confirms on screen.
   const rideActionsFor = (ride: RideCardProps) => buildRideActions(ride, ride.driver.name, afterRideChange);
 
-  const openRideDetails = (ride: RideCardProps, backLabel: string) => {
+  const openRideDetails = (rideCard: RideCardProps, backLabel: string) => {
+    const detailRide = toDetailRide(rideCard);
     setSelectedRide({
-      ride: toDetailRide(ride),
-      date: ride.date,
+      ride: detailRide,
+      date: rideCard.date,
       backLabel,
-      ...rideActionsFor(ride),
+      ...rideActionsFor(rideCard),
     });
   };
 
@@ -236,16 +412,6 @@ function AppContent() {
     }
   };
 
-  const {
-    user,
-    loading,
-    submitting,
-    error,
-    clearError,
-    handleLogin,
-    handleSignup,
-    handleLogout,
-  } = useAuth();
 
   // Always land on the home tab right after a fresh login/signup, rather than
   // wherever the tab happened to be left (e.g. Profile, if that's where the user signed out).
@@ -321,6 +487,7 @@ function AppContent() {
         return (
           <HomePage
             key={dataVersion}
+            notificationsList={notificationsList}
             onScroll={handleScroll}
             onOpenProfile={() => changeTab('profile')}
             onNewRide={() => setShowBooking(true)}
@@ -332,7 +499,6 @@ function AppContent() {
     }
   };
 
-  // 1. Loading Screen
   if (loading) {
     return (
       <View style={styles.loadingScreen}>
@@ -341,7 +507,6 @@ function AppContent() {
     );
   }
 
-  // 2. Unauthenticated Screen (Login/Signup form)
   if (!user) {
     return (
       <AuthPage
@@ -358,7 +523,6 @@ function AppContent() {
   return (
     <SafeAreaView style={styles.appContainer}>
       <StatusBar barStyle="light-content" />
-
       <View style={styles.contentContainer}>{renderPage()}</View>
 
       {showDriverRegistration && (

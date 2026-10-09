@@ -41,6 +41,7 @@ const baseDriverBooking: Booking = {
   isDriving: true,
   detourTime: 15,
   capacity: 3,
+  userId: 'test-user-123',
 };
 
 describe('addRideRequest', () => {
@@ -49,11 +50,11 @@ describe('addRideRequest', () => {
 
     const snapshot = await getDoc(doc(db, 'rideRequests', id));
     expect(snapshot.exists()).toBe(true);
-    const data = snapshot.data();
-    expect(data.address).toBe('123 Main St');
-    expect(data.toUni).toBe(true);
-    expect(data.departureTime).toBe('08:00');
-    expect(data.arrivalTime).toBe('09:00');
+    const data = snapshot.data()!;
+    expect(data['address']).toBe('123 Main St');
+    expect(data['toUni']).toBe(true);
+    expect(data['departureTime']).toBe('08:00');
+    expect(data['arrivalTime']).toBe('09:00');
     // the doc is stamped with its own generated id after creation
     expect(data.requestID).toBe(id);
     expect(data.userId).toBe('test-user-123');
@@ -70,7 +71,7 @@ describe('addRideRequest', () => {
   test('trims whitespace from the address before saving', async () => {
     const id = await addRideRequest({ ...baseRiderBooking, address: '  123 Main St  ' });
     const snapshot = await getDoc(doc(db, 'rideRequests', id));
-    expect(snapshot.data().address).toBe('123 Main St');
+    expect(snapshot.data()!['address']).toBe('123 Main St');
   });
 
   test('rejects a past travel date', async () => {
