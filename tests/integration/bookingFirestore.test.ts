@@ -36,7 +36,7 @@ const baseDriverBooking: Booking = {
   isDriving: true,
   detourTime: 15,
   capacity: 3,
-  userId: 'mock-user-id',
+  userId: 'test-user-123',
 };
 
 describe('addRideRequest', () => {
