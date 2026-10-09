@@ -23,10 +23,10 @@ who loses tries their next option.
 Travel times: synthetic, no noise, except where a table sets exact minutes.
 */
 
-import { runMatchingProvisional } from '../src/deferredAcceptance';
-import { FixtureTravelTime, SyntheticTravelTime, legKey } from '../src/travelTime';
-import { DEFAULT_CONFIG } from '../src/types';
-import { CAMPUS, at, makeOffer, makeRequest } from './fixtures';
+import { runMatchingProvisional } from '../../matching/src/deferredAcceptance';
+import { FixtureTravelTime, SyntheticTravelTime, legKey } from '../../matching/src/travelTime';
+import { DEFAULT_CONFIG } from '../../matching/src/types';
+import { CAMPUS, at, makeOffer, makeRequest } from '../fixtures';
 
 const t = new SyntheticTravelTime({ jitter: 0, seed: 1 });
 
@@ -310,7 +310,7 @@ describe('runMatchingProvisional — each driver routed from their own departure
   const early = makeOffer({ offerId: 'early', start: north(12), travelWindow: { start: at(8), end: at(8, 40) } });
   // Nearly at the rider's door, but leaves 8:19: reaches campus about 8:41 - late.
   const late = makeOffer({ offerId: 'late', start: north(10.5), travelWindow: { start: at(8, 19), end: at(8, 50) } });
-  const ownDeparture = (o: { travelWindow: { start: Date } }) => o.travelWindow.start;
+  const ownDeparture = (o: { travelWindow: { start: Date; }; }) => o.travelWindow.start;
 
   it("never places a rider with a driver who leaves too late to get them there", () => {
     const res = runMatchingProvisional('b', [rider], [early, late], ownDeparture, at(0), t);

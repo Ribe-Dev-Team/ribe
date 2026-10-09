@@ -8,8 +8,8 @@ trips), junk input (0, negative, NaN, infinity), and that the shipped 40% / 5 mi
 can't change without a test failing.
 */
 
-import { deriveRiderMaxDetour } from '../src/riderPolicy';
-import { DEFAULT_CONFIG } from '../src/types';
+import { deriveRiderMaxDetour } from '../../matching/src/riderPolicy';
+import { DEFAULT_CONFIG } from '../../matching/src/types';
 
 const cfg = DEFAULT_CONFIG;
 

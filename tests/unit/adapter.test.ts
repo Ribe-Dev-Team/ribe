@@ -18,12 +18,12 @@ these exact checks impossible.
 
 import {
   batchPoints, groupIntoBatches, MONASH_CLAYTON as CAMPUS, OfferDoc, RequestDoc, toMatchInputs,
-} from '../src/adapter';
-import { zonedDateTime } from '../src/melbourneTime';
-import { deriveRiderMaxDetour } from '../src/riderPolicy';
-import { evaluateRoute } from '../src/route';
-import { SyntheticTravelTime } from '../src/travelTime';
-import { DEFAULT_CONFIG } from '../src/types';
+} from '../../matching/src/adapter';
+import { zonedDateTime } from '../../matching/src/melbourneTime';
+import { deriveRiderMaxDetour } from '../../matching/src/riderPolicy';
+import { evaluateRoute } from '../../matching/src/route';
+import { SyntheticTravelTime } from '../../matching/src/travelTime';
+import { DEFAULT_CONFIG } from '../../matching/src/types';
 
 // 60 km/h over straight lines, no noise: one minute per km, easy to reason about.
 const t = new SyntheticTravelTime({ roadFactor: 1, avgSpeedKmh: 60, jitter: 0 });
@@ -34,14 +34,14 @@ const NOW = new Date('2026-10-01T00:00:00Z');
 const stored = (day: number, month = 10) => zonedDateTime({ year: 2026, month, day }, '00:00');
 const melb = (day: number, hhmm: string) => zonedDateTime({ year: 2026, month: 10, day }, hhmm);
 
-function reqDoc(p: Partial<RequestDoc> & { id: string }): RequestDoc {
+function reqDoc(p: Partial<RequestDoc> & { id: string; }): RequestDoc {
   return {
     userId: 'rider-' + p.id, status: 'pending', toUni: true, coord: north(8),
     date: stored(5), departureTime: '08:00', arrivalTime: '09:00', ...p,
   };
 }
 
-function offerDoc(p: Partial<OfferDoc> & { id: string }): OfferDoc {
+function offerDoc(p: Partial<OfferDoc> & { id: string; }): OfferDoc {
   return {
     userId: 'driver-' + p.id, status: 'pending', toUni: true, coord: north(20),
     date: stored(5), departureTime: '08:00', arrivalTime: '09:00',

@@ -19,10 +19,10 @@ Travel times: synthetic, straight lines, 2.1 min per km, no noise, so the
 minutes quoted in comments can be checked by hand.
 */
 
-import { addPassenger, evaluateRoute, isAcceptingRiders, minSlackMinutes } from '../src/route';
-import { SyntheticTravelTime } from '../src/travelTime';
-import { DEFAULT_CONFIG } from '../src/types';
-import { CAMPUS, at, makeOffer, ring } from './fixtures';
+import { addPassenger, evaluateRoute, isAcceptingRiders, minSlackMinutes } from '../../matching/src/route';
+import { SyntheticTravelTime } from '../../matching/src/travelTime';
+import { DEFAULT_CONFIG } from '../../matching/src/types';
+import { CAMPUS, at, makeOffer, ring } from '../fixtures';
 
 const t = new SyntheticTravelTime({ jitter: 0, seed: 7 }); // noiseless for exact assertions
 const north = (km: number) => ({ lat: CAMPUS.lat + km / 110.57, lon: CAMPUS.lon });
@@ -80,9 +80,9 @@ describe('incremental feasibility', () => {
     // The existing rider is picked up FIRST and is far from campus, so they
     // cannot avoid riding through the newcomer's detour whichever order is
     // chosen. That is what makes their cap the binding constraint.
-    const origin   = { lat: CAMPUS.lat + 0.20, lon: CAMPUS.lon };
+    const origin = { lat: CAMPUS.lat + 0.20, lon: CAMPUS.lon };
     const existing = { lat: CAMPUS.lat + 0.18, lon: CAMPUS.lon };
-    const wayOff   = { lat: CAMPUS.lat + 0.09, lon: CAMPUS.lon + 0.20 };
+    const wayOff = { lat: CAMPUS.lat + 0.09, lon: CAMPUS.lon + 0.20 };
 
     const offer = makeOffer({
       offerId: 'o1', start: origin, maxDetour: 500,
@@ -103,9 +103,9 @@ describe('incremental feasibility', () => {
     // Same geometry as a naive "insert at the end" would break, but the
     // existing rider sits on the direct path, so putting the newcomer FIRST
     // leaves the existing rider untouched. Searching all positions finds it.
-    const origin   = { lat: CAMPUS.lat + 0.15, lon: CAMPUS.lon };
-    const onRoute  = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon };
-    const wayOff   = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon + 0.18 };
+    const origin = { lat: CAMPUS.lat + 0.15, lon: CAMPUS.lon };
+    const onRoute = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon };
+    const wayOff = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon + 0.18 };
 
     const offer = makeOffer({
       offerId: 'o1', start: origin, maxDetour: 500,
@@ -127,7 +127,7 @@ describe('incremental feasibility', () => {
   it('allows an insertion when everyone has budget for it', () => {
     const origin = { lat: CAMPUS.lat + 0.15, lon: CAMPUS.lon };
     const onRoute = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon };
-    const wayOff  = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon + 0.18 };
+    const wayOff = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon + 0.18 };
 
     const offer = makeOffer({
       offerId: 'o1', start: origin, maxDetour: 120,
@@ -244,9 +244,9 @@ describe("addPassenger — nobody is collected before they're ready (David's tim
 describe('addPassenger — says WHOSE limit blocked it', () => {
   it("reports the newcomer's own cap apart from a passenger already aboard", () => {
     // The existing rider can absorb anything; the newcomer will take half a minute.
-    const origin  = { lat: CAMPUS.lat + 0.15, lon: CAMPUS.lon };
+    const origin = { lat: CAMPUS.lat + 0.15, lon: CAMPUS.lon };
     const onRoute = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon };
-    const wayOff  = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon + 0.18 };
+    const wayOff = { lat: CAMPUS.lat + 0.07, lon: CAMPUS.lon + 0.18 };
     const offer = makeOffer({
       offerId: 'o1', start: origin, maxDetour: 500, seatsFilled: 1,
       onBoard: [{ reqId: 'r1', riderId: 'rider-1', waypoint: onRoute, arriveBy: at(23), maxDetour: 999, currentDetour: 0 }],
@@ -265,7 +265,7 @@ describe('addPassenger — trips to campus are planned from the deadline', () =>
   const toCampusMins = t.minutes(north(20), CAMPUS);
   const halfwayMins = t.minutes(north(20), north(10));
   const driver = (arriveBy?: Date) => makeOffer({ offerId: 'o', start: north(20), maxDetour: 30, arriveBy });
-  const rider = (p: { arriveBy?: Date; earliest?: Date } = {}) => ({
+  const rider = (p: { arriveBy?: Date; earliest?: Date; } = {}) => ({
     waypoint: north(10), maxDetour: 20, arriveBy: p.arriveBy ?? at(8, 50), earliest: p.earliest,
   });
   const leaveFor = (arrival: Date) => arrival.getTime() - toCampusMins * 60_000;

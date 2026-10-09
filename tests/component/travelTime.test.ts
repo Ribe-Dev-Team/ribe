@@ -16,8 +16,8 @@ Not tested here: SyntheticTravelTime itself, though most other test files use it
 
 import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, PrecomputedTravelTime, SyntheticTravelTime,
-} from '../src/travelTime';
-import { CAMPUS } from './fixtures';
+} from '../../matching/src/travelTime';
+import { CAMPUS } from '../fixtures';
 
 const A = CAMPUS;
 const B = { lat: CAMPUS.lat + 0.05, lon: CAMPUS.lon };
@@ -138,7 +138,7 @@ describe('buildGoogleTravelTimeMatrix', () => {
 /** Fakes computeRouteMatrix: a POSTed JSON body in, a flat element list out, in
  *  Google's documented shape (empty `status` on success, duration as "123s"). */
 function fakeRoutesFetch(seconds: (originIdx: number, destIdx: number) => number | null) {
-  const calls: Array<{ url: string; init: RequestInit; body: any }> = [];
+  const calls: Array<{ url: string; init: RequestInit; body: any; }> = [];
   const impl = (jest.fn(async (url: string, init: RequestInit) => {
     const body = JSON.parse(init.body as string);
     calls.push({ url, init, body });

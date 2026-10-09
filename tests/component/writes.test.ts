@@ -14,9 +14,9 @@ runner/firestore.ts makes these same decisions inside its transactions.
                    slot) if the rider didn't answer by the deadline
 */
 
-import { OFFER_SLOT_FIELDS, planMatchWrite, planScheduleWrite, planSettle, MatchWrite, REQUEST_MATCH_FIELDS, ScheduleWrite, settledOfferStatus, StoredOffer, StoredRequest, toMatchWrites } from '../src/writes';
-import { ProposedMatch } from '../src/types';
-import { makeOffer, CAMPUS } from './fixtures';
+import { OFFER_SLOT_FIELDS, planMatchWrite, planScheduleWrite, planSettle, MatchWrite, REQUEST_MATCH_FIELDS, ScheduleWrite, settledOfferStatus, StoredOffer, StoredRequest, toMatchWrites } from '../../matching/src/writes';
+import { ProposedMatch } from '../../matching/src/types';
+import { makeOffer, CAMPUS } from '../fixtures';
 
 const matchedAt = new Date('2026-10-04T20:00:00Z');
 const acceptDeadline = new Date('2026-10-04T21:00:00Z');

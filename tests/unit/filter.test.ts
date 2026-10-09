@@ -12,9 +12,9 @@ Not tested directly: hardFilter's SAME_PERSON, DIRECTION and BEARING
 rejections. The cutoff rejection is checked in deferredAcceptance.test.ts.
 */
 
-import { windowsOverlap, hardFilter, corridorDetourKm } from '../src/filter';
-import { DEFAULT_CONFIG } from '../src/types';
-import { CAMPUS, at, makeOffer, makeRequest, ring } from './fixtures';
+import { windowsOverlap, hardFilter, corridorDetourKm } from '../../matching/src/filter';
+import { DEFAULT_CONFIG } from '../../matching/src/types';
+import { CAMPUS, at, makeOffer, makeRequest, ring } from '../fixtures';
 
 const near = ring(1, 3)[0];
 
@@ -39,7 +39,7 @@ describe('time windows (KEY-133)', () => {
 describe('corridor test', () => {
   it('is near zero for a rider on the driver path', () => {
     const start = { lat: CAMPUS.lat + 0.1, lon: CAMPUS.lon };
-    const mid   = { lat: CAMPUS.lat + 0.05, lon: CAMPUS.lon };
+    const mid = { lat: CAMPUS.lat + 0.05, lon: CAMPUS.lon };
     const r = makeRequest({ reqId: 'r', start: mid });
     const o = makeOffer({ offerId: 'o', start });
     expect(corridorDetourKm(r, o)).toBeLessThan(0.05);

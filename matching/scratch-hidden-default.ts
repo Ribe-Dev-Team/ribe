@@ -19,7 +19,7 @@ resulting matches against the true tolerances that were never collected.
 import { runMatchingProvisional } from './src/deferredAcceptance';
 import { SyntheticTravelTime } from './src/travelTime';
 import { DEFAULT_CONFIG, MatchOffer, MatchRequest } from './src/types';
-import { at, makeOffer, makeRequest, ring } from './test/fixtures';
+import { at, makeOffer, makeRequest, ring } from '../tests/fixtures';
 
 const N_REQ = 100;
 const N_OFF = 30;

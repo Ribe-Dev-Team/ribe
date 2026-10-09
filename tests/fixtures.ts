@@ -8,14 +8,14 @@ Shared helpers for the tests - not tests themselves.
   ring          n points spread around campus, deterministic for a given seed
 */
 
-import { Coord, MatchOffer, MatchRequest } from '../src/types';
+import { Coord, MatchOffer, MatchRequest } from '../matching/src/types';
 
 export const CAMPUS: Coord = { lat: -37.9105, lon: 145.1362 }; // Monash Clayton
 
 export const at = (h: number, m = 0, day = 15) =>
   new Date(Date.UTC(2026, 8, day, h - 10, m)); // Melbourne (UTC+10)
 
-export function makeRequest(p: Partial<MatchRequest> & { reqId: string; start: Coord }): MatchRequest {
+export function makeRequest(p: Partial<MatchRequest> & { reqId: string; start: Coord; }): MatchRequest {
   return {
     riderId: 'rider-' + p.reqId,
     direction: 'TO_CAMPUS',
@@ -28,7 +28,7 @@ export function makeRequest(p: Partial<MatchRequest> & { reqId: string; start: C
   } as MatchRequest;
 }
 
-export function makeOffer(p: Partial<MatchOffer> & { offerId: string; start: Coord }): MatchOffer {
+export function makeOffer(p: Partial<MatchOffer> & { offerId: string; start: Coord; }): MatchOffer {
   return {
     driverId: 'driver-' + p.offerId,
     direction: 'TO_CAMPUS',

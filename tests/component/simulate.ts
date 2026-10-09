@@ -16,14 +16,14 @@
  *
  *   npx ts-node test/simulate.ts
  */
-import { runMatchingProvisional } from '../src/deferredAcceptance';
-import { waypointOf } from '../src/filter';
-import { evaluateRoute } from '../src/route';
-import { SyntheticTravelTime } from '../src/travelTime';
+import { runMatchingProvisional } from '../../matching/src/deferredAcceptance';
+import { waypointOf } from '../../matching/src/filter';
+import { evaluateRoute } from '../../matching/src/route';
+import { SyntheticTravelTime } from '../../matching/src/travelTime';
 import {
   DEFAULT_CONFIG, MatchOffer, MatchRequest, MatchingConfig, ProposedMatch, TravelTimeMatrix,
-} from '../src/types';
-import { at, makeOffer, makeRequest, ring } from './fixtures';
+} from '../../matching/src/types';
+import { at, makeOffer, makeRequest, ring } from '../fixtures';
 
 const DEPART = at(8);
 const NOW = at(0);
@@ -85,7 +85,7 @@ function run(label: string, cfg: MatchingConfig, nReq = 100, nOff = 30) {
 
   let rounds = 0;
   let last;
-  for (;;) {
+  for (; ;) {
     last = runMatchingProvisional('2026-09-18_TO_CAMPUS_0930', requests, offers, DEPART, NOW, t, cfg);
     if (last.matches.length === 0) break;
     rounds++;

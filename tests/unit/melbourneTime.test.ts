@@ -8,7 +8,7 @@ where an hour-out bug would otherwise hide. Also checks that malformed times
 are rejected rather than guessed at.
 */
 
-import { calendarDateIn, dateKey, isHhMm, zonedDateTime } from '../src/melbourneTime';
+import { calendarDateIn, dateKey, isHhMm, zonedDateTime } from '../../matching/src/melbourneTime';
 
 // Melbourne daylight saving starts 2:00 am Sunday 4 October 2026 (+10 -> +11).
 

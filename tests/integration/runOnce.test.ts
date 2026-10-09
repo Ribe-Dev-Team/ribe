@@ -18,12 +18,12 @@ everything except the SDK.
 Travel times: synthetic at exactly 1 minute per km.
 */
 
-import { MatchingStore, runOnce } from '../runner/runOnce';
-import { MONASH_CLAYTON as CAMPUS, OfferDoc, RequestDoc } from '../src/adapter';
-import { zonedDateTime } from '../src/melbourneTime';
-import { SyntheticTravelTime } from '../src/travelTime';
-import { Coord } from '../src/types';
-import { FieldUpdate, planMatchWrite, planScheduleWrite, planSettle, Settled } from '../src/writes';
+import { MatchingStore, runOnce } from '../../matching/runner/runOnce';
+import { MONASH_CLAYTON as CAMPUS, OfferDoc, RequestDoc } from '../../matching/src/adapter';
+import { zonedDateTime } from '../../matching/src/melbourneTime';
+import { SyntheticTravelTime } from '../../matching/src/travelTime';
+import { Coord } from '../../matching/src/types';
+import { FieldUpdate, planMatchWrite, planScheduleWrite, planSettle, Settled } from '../../matching/src/writes';
 
 type Doc = Record<string, any>;
 
@@ -55,7 +55,7 @@ class MemoryStore implements MatchingStore {
     // Like runner/firestore.ts: which riders the stored timetable lists.
     const offers = pending(this.offers).map((o) => ({
       ...o,
-      scheduledRiders: o.schedule?.stops?.map((s: { requestId: string }) => s.requestId),
+      scheduledRiders: o.schedule?.stops?.map((s: { requestId: string; }) => s.requestId),
     }));
     return { requests: pending(this.requests) as RequestDoc[], offers: offers as OfferDoc[] };
   }
@@ -78,7 +78,7 @@ class MemoryStore implements MatchingStore {
 
   async writeMatches(writes: Parameters<MatchingStore['writeMatches']>[0]) {
     const applied: string[] = [];
-    const skipped: Array<{ reqId: string; reason: any }> = [];
+    const skipped: Array<{ reqId: string; reason: any; }> = [];
     for (const m of writes) {
       const req = this.requests.get(m.reqId);
       const offer = this.offers.get(m.offerId);
@@ -281,7 +281,7 @@ describe('runOnce — confirmed cars missing a timetable', () => {
 
     expect(report.batches[0].timetablesFilled).toEqual(['d']);
     const { stops } = store.offers.get('d')!.schedule;
-    expect(stops.map((s: { requestId: string }) => s.requestId)).toEqual(['r1']);
+    expect(stops.map((s: { requestId: string; }) => s.requestId)).toEqual(['r1']);
     // Planned from the deadline like any match: in by 8:50 for a stated 9:00.
     expect(stops[0].arriveAt.getTime()).toBeLessThanOrEqual(zonedDateTime({ year: 2026, month: 10, day: 5 }, '08:50').getTime());
   });

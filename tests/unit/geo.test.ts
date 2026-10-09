@@ -9,8 +9,8 @@ Tests src/geo.ts - the straight-line maths the filters are built on.
 Pure maths: no travel times involved.
 */
 
-import { bearingDegrees, bearingDifference, haversineKm } from '../src/geo';
-import { CAMPUS } from './fixtures';
+import { bearingDegrees, bearingDifference, haversineKm } from '../../matching/src/geo';
+import { CAMPUS } from '../fixtures';
 
 describe('haversine', () => {
   it('is zero for identical points', () => {
