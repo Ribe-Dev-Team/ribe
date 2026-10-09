@@ -23,18 +23,18 @@ const dobForAge = (age: number, dayOffset = 0) => {
 
 describe('isValidEmail', () => {
   it.each([
-    'user@example.com',
-    'user.name+tag@sub.example.co',
-    '  user@example.com  ',
+    'user@student.monash.edu',
+    'user.name+tag@student.monash.edu',
+    '  user@student.monash.edu  ',
   ])('accepts %s', (value) => {
     expect(isValidEmail(value)).toBe(true);
   });
 
   it.each([
     ['missing @', 'userexample.com'],
-    ['missing domain dot', 'user@example'],
-    ['space before @', 'user @example.com'],
-    ['space in domain', 'user@ example.com'],
+    ['wrong domain', 'user@example.com'],
+    ['space before @', 'user @student.monash.edu'],
+    ['space in domain', 'user@ student.monash.edu'],
     ['empty string', ''],
   ])('rejects %s (%s)', (_label, value) => {
     expect(isValidEmail(value)).toBe(false);

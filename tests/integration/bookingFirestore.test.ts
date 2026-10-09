@@ -29,6 +29,7 @@ const baseRiderBooking: Booking = {
   travelDate: futureDateStr(7),
   depTime: '08:00',
   arrTime: '09:00',
+  userId: 'mock-user-id',
 };
 
 const baseDriverBooking: Booking = {
