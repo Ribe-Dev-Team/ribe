@@ -17,13 +17,16 @@ these exact checks impossible.
 */
 
 import {
-  batchPoints, groupIntoBatches, MONASH_CLAYTON as CAMPUS, OfferDoc, RequestDoc, toMatchInputs,
+  batchPoints, groupIntoBatches, OfferDoc, RequestDoc, toMatchInputs,
 } from '../../matching/src/adapter';
 import { zonedDateTime } from '../../matching/src/melbourneTime';
 import { deriveRiderMaxDetour } from '../../matching/src/riderPolicy';
 import { evaluateRoute } from '../../matching/src/route';
 import { SyntheticTravelTime } from '../travelTime';
 import { DEFAULT_CONFIG } from '../../matching/src/types';
+import { MONASH_CLAYTON_LOCATION } from '../../mobile/services/googlePlaces';
+
+const CAMPUS = { ...MONASH_CLAYTON_LOCATION, lon: MONASH_CLAYTON_LOCATION.lng };
 
 // 60 km/h over straight lines, no noise: one minute per km, easy to reason about.
 const t = new SyntheticTravelTime({ roadFactor: 1, avgSpeedKmh: 60, jitter: 0 });

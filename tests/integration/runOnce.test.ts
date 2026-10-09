@@ -19,13 +19,16 @@ Travel times: synthetic at exactly 1 minute per km.
 */
 
 import { MatchingStore, runOnce } from '../../matching/runner/runOnce';
-import { MONASH_CLAYTON as CAMPUS, OfferDoc, RequestDoc } from '../../matching/src/adapter';
+import { OfferDoc, RequestDoc } from '../../matching/src/adapter';
 import { zonedDateTime } from '../../matching/src/melbourneTime';
 import { SyntheticTravelTime } from '../travelTime';
-import { Coord } from '../../matching/src/types';
+import { Coord } from '../../backend/server/matching.schema';
 import { FieldUpdate, planMatchWrite, planScheduleWrite, planSettle, Settled } from '../../matching/src/writes';
+import { MONASH_CLAYTON_LOCATION } from '../../mobile/services/googlePlaces';
 
 type Doc = Record<string, any>;
+
+const CAMPUS = { ...MONASH_CLAYTON_LOCATION, lon: MONASH_CLAYTON_LOCATION.lng };
 
 class MemoryStore implements MatchingStore {
   requests = new Map<string, Doc>();

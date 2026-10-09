@@ -8,9 +8,11 @@ Shared helpers for the tests - not tests themselves.
   ring          n points spread around campus, deterministic for a given seed
 */
 
-import { Coord, MatchOffer, MatchRequest } from '../matching/src/types';
+import { MatchOffer, MatchRequest } from '../matching/src/types';
+import { Coord } from '../backend/server/matching.schema';
+import { MONASH_CLAYTON_LOCATION } from '../mobile/services/googlePlaces';
 
-export const CAMPUS: Coord = { lat: -37.9105, lon: 145.1362 }; // Monash Clayton
+export const CAMPUS: Coord = { ...MONASH_CLAYTON_LOCATION, lon: MONASH_CLAYTON_LOCATION.lng };
 
 export const at = (h: number, m = 0, day = 15) =>
   new Date(Date.UTC(2026, 8, day, h - 10, m)); // Melbourne (UTC+10)
