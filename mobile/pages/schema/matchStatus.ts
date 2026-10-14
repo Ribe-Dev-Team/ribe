@@ -1,7 +1,7 @@
 /*
 Translation between the app's booking status vocabulary (what Firestore stores
 and the UI renders) and the matching module's request status vocabulary
-(matching/src/types.ts).
+(backend/server/matching/types.ts).
 
 WHY THIS FILE EXISTS - the word `pending` means two different things:
 
@@ -27,7 +27,7 @@ rather than under mobile/. It is deliberately dependency-free so it can move.
 /** What Firestore stores on a rideRequest/rideOffer document. */
 export type BookingStatus = 'pending' | 'awaiting' | 'confirmed' | 'cancelled' | 'expired';
 
-/** matching/src/types.ts -> MatchRequest['status']. Duplicated rather than
+/** backend/server/matching/types.ts -> MatchRequest['status']. Duplicated rather than
  *  imported so this module stays free of a dependency on the matching package,
  *  which mobile does not (and should not) bundle. */
 export type MatchRequestStatus = 'unassigned' | 'pending' | 'confirmed' | 'cancelled' | 'expired';

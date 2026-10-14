@@ -1,5 +1,5 @@
 /*
-Runs one matching pass against Firestore. From matching/:
+Runs one matching pass against Firestore. From backend/:
 
     npm run match                  write matches and expiries
     npm run match -- --dry-run     compute and print only, write nothing
@@ -7,34 +7,36 @@ Runs one matching pass against Firestore. From matching/:
     npm run match -- --routes      Routes API instead of Distance Matrix, once
                                    the key's project has the Routes API enabled
 
-Configuration, from the environment, falling back to mobile/.env for the two
-values the app already has:
+Configuration, from the environment or backend/.env (gitignored - copy
+backend/.env.example), falling back to mobile/.env for the two values the app
+already has:
 
-    FIREBASE_SERVICE_ACCOUNT   path to a service-account JSON key (or set
-                               GOOGLE_APPLICATION_CREDENTIALS instead)
+    FIREBASE_SERVICE_ACCOUNT   path to your own service-account JSON key (or
+                               set GOOGLE_APPLICATION_CREDENTIALS instead).
+                               The key itself stays outside the repo.
     FIREBASE_PROJECT_ID        falls back to EXPO_PUBLIC_FIREBASE_PROJECT_ID
     GOOGLE_MAPS_API_KEY        falls back to EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
                                needs the Distance Matrix API enabled (or the
                                Routes API, with --routes). With no key, travel
                                times are synthetic estimates.
+    FIRESTORE_EMULATOR_HOST    run against the local emulator, no credentials
 
 Distance Matrix is the default because it is the one Ribe's Maps key has
 enabled (checked with `npm run test:live`). Google made it a legacy API in
 March 2025: projects that already use it keep it, new projects cannot turn it
 on. If the key ever moves to a newer project, switch to --routes.
-    FIRESTORE_EMULATOR_HOST    run against the local emulator, no credentials
 
 One run is one pass. How often to run it (every 15 minutes, hourly) is a
 scheduling choice - cron, Task Scheduler or a CI schedule all work - and more
 frequent runs fill cars faster, since each run offers a driver one new rider.
 */
 
-import { SkipReason } from '../src/adapter';
-import { RejectMap } from '../src/types';
-import { CAMPUS_TIME_ZONE } from '../src/melbourneTime';
+import { SkipReason } from '../adapter';
+import { RejectMap } from '../types';
+import { CAMPUS_TIME_ZONE } from '../melbourneTime';
 import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, SyntheticTravelTime,
-} from '../../tests/travelTime';
+} from '../travelTime';
 import { envValue } from './env';
 import { connect, settleMatched, loadPending, loadRequestsById, writeMatches, writeSchedules } from './firestore';
 import { MatchingStore, RunReport, runOnce } from './runOnce';
@@ -145,7 +147,8 @@ main().then(
       console.error(
         'No Firebase admin credentials. In the Firebase console: Project settings > Service accounts >\n' +
         'Generate new private key. Save it OUTSIDE the repo (it grants full database access) and set\n' +
-        'FIREBASE_SERVICE_ACCOUNT=<path to the .json>. Or set FIRESTORE_EMULATOR_HOST to use the emulator.',
+        'FIREBASE_SERVICE_ACCOUNT=<path to the .json> in backend/.env or your terminal.\n' +
+        'Or set FIRESTORE_EMULATOR_HOST to use the emulator.',
       );
     }
     process.exitCode = 1;

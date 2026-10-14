@@ -2,13 +2,13 @@ import {
   DEFAULT_CONFIG, Direction, MatchingConfig, MatchOffer, MatchRequest,
   OnBoardRider, TravelTimeMatrix,
 } from './types';
-import { Coord } from '../../backend/server/matching.schema';
+import { Coord } from '../matching.schema';
 import { evaluateRoute } from './route';
 import { deriveRiderMaxDetour } from './riderPolicy';
 import {
   CalendarDate, CAMPUS_TIME_ZONE, calendarDateIn, dateKey, isHhMm, zonedDateTime,
 } from './melbourneTime';
-import { MONASH_CLAYTON_LOCATION } from '../../mobile/services/googlePlaces';
+import { MONASH_CLAYTON_LOCATION } from '../../../mobile/services/googlePlaces';
 
 /**
  * Firestore bookings -> matcher inputs.
@@ -20,7 +20,8 @@ import { MONASH_CLAYTON_LOCATION } from '../../mobile/services/googlePlaces';
  * other. Everything here is pure; runner/firestore.ts does the reading.
  */
 
-const MONASH_CLAYTON = { ...MONASH_CLAYTON_LOCATION, lon: MONASH_CLAYTON_LOCATION.lng };
+/** Campus as the matcher's Coord (the app's MONASH_CLAYTON_LOCATION spells longitude `lng`). */
+export const MONASH_CLAYTON: Coord = { lat: MONASH_CLAYTON_LOCATION.lat, lon: MONASH_CLAYTON_LOCATION.lng };
 
 /** The only stored status the matcher may pick up. The app's 'pending' means
  *  "not matched yet" (the matcher's 'unassigned') - see matchStatus.ts. */

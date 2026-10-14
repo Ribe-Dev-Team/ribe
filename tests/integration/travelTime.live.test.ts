@@ -14,9 +14,9 @@ API Ribe's key has enabled; legacy, so only projects that used it before March
 enabled). One failing while the other passes says which API the key's project
 has enabled.
 */
-import { MONASH_CLAYTON } from '../../matching/src/adapter';
-import { buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix } from '../travelTime';
-import { envValue } from '../../matching/runner/env';
+import { MONASH_CLAYTON } from '../../backend/server/matching/adapter';
+import { buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix } from '../../backend/server/matching/travelTime';
+import { envValue } from '../../backend/server/matching/runner/env';
 
 const BOX_HILL = { lat: -37.8189, lon: 145.1218 }; // ~10 km north of campus
 

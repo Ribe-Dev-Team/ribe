@@ -128,7 +128,7 @@ describe('validateDetailsStep - rider (not driving)', () => {
   /*
   Riders are deliberately never asked for a detour tolerance - the matcher
   derives one from their own direct trip at match time
-  (matching/src/riderPolicy.ts). So detour and seats are both ignored here,
+  (backend/server/matching/riderPolicy.ts). So detour and seats are both ignored here,
   whatever the form state happens to hold.
   */
   test('ignores detour and seat values entirely for a rider', () => {

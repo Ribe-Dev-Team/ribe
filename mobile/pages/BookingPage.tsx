@@ -451,7 +451,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
             {/* Drivers only. Riders are not asked for a detour tolerance - the
                 matcher derives theirs from their own direct trip at match time
-                (matching/src/riderPolicy.ts). */}
+                (backend/server/matching/riderPolicy.ts). */}
             {isDriving && (
               <View style={localStyles.card}>
                 <Text style={localStyles.cardLabel}>Driver details</Text>

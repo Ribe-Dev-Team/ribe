@@ -1,44 +1,57 @@
 # Ribe matching (R5 / KEY-68)
 
-Two halves. `src/` is pure TypeScript — no Firebase, no network, no database: the
-algorithm takes arrays in and returns matches out, with travel time behind a
-one-method interface. `runner/` is the thin layer that runs it for real: it reads
-Firestore, builds Google travel times, calls `src/`, and writes the matches back.
+Part of the backend (`backend/server/matching/`), in two halves. The files here
+are pure TypeScript — no Firebase, no network, no database: the algorithm takes
+arrays in and returns matches out, with travel time behind a one-method
+interface. `runner/` is the thin layer that runs it for real: it reads
+Firestore, builds Google travel times, calls the algorithm, and writes the
+matches back.
+
+It shares the backend's types and constants rather than keeping its own:
+`Coord` and `RideMatch` come from `../matching.schema.ts`, and the scoring
+weights from `../scoringConst.ts`. It is not loaded by the Meteor server
+(`server/main.js` doesn't import it); the runner is its own Node process.
+
+From `backend/`:
 
 ```bash
 npm install
-npm test                          # offline; runs the whole repo suite (tests/ at the repo root)
-npm run test:live                 # the real Google APIs - billed, see "Testing"
 npm run match -- --dry-run        # one run against Firestore, printed, nothing written
 npm run match                     # one real run - see "Running it against Firestore"
 npm run simulate                  # SMART Goal 1 evidence run
+npm run typecheck                 # this folder under the same strict settings as mobile/
 ```
+
+The tests are in the repo-level `tests/` folder with the app's, so run them from
+the repo root: `npm test` (offline) and `npm run test:live` (the real Google
+APIs, billed — see "Testing").
 
 ## Files, and the tickets they close
 
 | File | Tickets |
 |---|---|
-| `src/types.ts` | KEY-132 — request/offer structures, matching status, and a run's results (`ProposedMatch`, `MatchRunResult`) |
-| `src/geo.ts` | KEY-135 — haversine, bearing, 0°/360° wraparound |
-| `src/filter.ts` | KEY-133, 134, 136, 137 — time, direction, bearing, corridor, pair list |
-| `src/route.ts` | KEY-138 — `addPassenger`: insertion positions and incremental feasibility, including David's pickup time-window check |
-| `src/score.ts` | KEY-139 — `offerScore` / `reqScore`, via David's `calcDriverScore` / `calcPassengerScore`, including his slack |
-| `src/deferredAcceptance.ts` | KEY-41 — **the default matching loop**: provisional assignment with bumping, one new rider per trip per run |
-| `src/riderPolicy.ts` | derives a rider's `maxDetour` — the app never asks for it |
-| `src/travelTime.ts` | the seam where Google Maps plugs in — Distance Matrix client (the runner's default) and the Routes API client that replaces it |
-| `src/adapter.ts` | stored bookings → matcher inputs; batching by date + direction (the `batchKey`) |
-| `src/melbourneTime.ts` | stored date + `"HH:mm"` → real instants, daylight saving included |
-| `src/writes.ts` | when a match may still be written, and how a matched request catches up with its offer (expiry, offer removed) — no SDK, so testable |
+| `types.ts` | KEY-132 — request/offer structures, matching status, and a run's results (`ProposedMatch`, a `RideMatch`; `MatchRunResult`) |
+| `geo.ts` | KEY-135 — haversine, bearing, 0°/360° wraparound |
+| `filter.ts` | KEY-133, 134, 136, 137 — time, direction, bearing, corridor, pair list |
+| `route.ts` | KEY-138 — `addPassenger`: insertion positions and incremental feasibility, including David's pickup time-window check |
+| `score.ts` | KEY-139 — `offerScore` / `reqScore`, via David's `calcDriverScore` / `calcPassengerScore`, including his slack |
+| `deferredAcceptance.ts` | KEY-41 — **the default matching loop**: Gale-Shapley within each run, one new rider per trip per run |
+| `riderPolicy.ts` | derives a rider's `maxDetour` — the app never asks for it |
+| `travelTime.ts` | the seam where Google Maps plugs in — Distance Matrix client (the runner's default) and the Routes API client that replaces it |
+| `adapter.ts` | stored bookings → matcher inputs; batching by date + direction (the `batchKey`) |
+| `melbourneTime.ts` | stored date + `"HH:mm"` → real instants, daylight saving included |
+| `writes.ts` | when a match may still be written, and how a matched request catches up with its offer (expiry, offer removed) — no SDK, so testable |
 | `runner/` | one matching run against Firestore (`npm run match`) |
 
 ## The algorithm, in one paragraph
 
-**Provisional assignment with bumping** — `runMatchingProvisional` in
-`src/deferredAcceptance.ts`. Riders propose to trips one at a time; a trip
-holding a rider hasn't committed to them, and if a cheaper insertion comes along
-later it drops the current holder back into the pool to try its next trip. It
-replaced a one-shot greedy matcher (place a rider, never revisit), since
-removed — see "Why bumping" below for the case greedy gets wrong.
+**Gale-Shapley, one run at a time** — `runMatchingProvisional` in
+`deferredAcceptance.ts`. Within a run this is the Gale-Shapley algorithm
+(deferred acceptance) with riders proposing: each rider asks their best trip
+first; a trip holds the best rider so far without committing to them; a rider
+who adds fewer minutes bumps the holder, and the bumped rider asks their next
+trip. It replaced a one-shot greedy matcher (place a rider, never revisit),
+since removed — see "Why bumping" below for the case greedy gets wrong.
 
 **One new rider per trip, per run.** Accepting a match is a human decision, so a
 driver is only ever offered a single new, unconfirmed rider per run however many
@@ -57,36 +70,46 @@ is exactly why it needed a search over combinations and pickup orderings. The
 practical consequence: a **precomputed score list is now correct**, not merely
 convenient, which is what the scoring handoff assumes.
 
-## Why not Gale–Shapley
+## Why it is Gale-Shapley, for one run
 
-Ribe drivers do not rank riders. They don't even approve them: only the rider
-accepts or declines a match, and a driver's only move is to **close** (set how
-many seats they'll take, or remove the trip altogether). They never say "I prefer rider A over rider B" — there is no
-driver-side preference list for Gale-Shapley to resolve.
+Gale-Shapley needs each side to rank the other, a capacity for each trip, and
+rankings that don't change while it runs. Within one run, Ribe has all three:
 
-That matters for stability, not just naming: a blocking pair requires **both**
-parties to strictly prefer each other over their current match. With drivers
-indifferent by construction, no driver ever strictly prefers one rider to
-another, so no blocking pair can exist — every feasible assignment is trivially
-stable. The guarantee is vacuous, not hard-won.
+- **Riders rank trips** by `reqScore`: how well the trip suits them — arriving
+  on time, and the slack the car keeps (see "How pairs are scored").
+- **Trips rank riders** by marginal driving minutes: the fewer minutes a rider
+  adds to the driver's route, the better. Drivers don't state this ranking —
+  only the rider accepts or declines a match — so the matcher ranks on the
+  driver's behalf, the way school-choice systems rank applicants by a priority
+  rule rather than asking each school. A tie keeps the rider already held.
+- **Each trip takes one new rider per run** (above).
+- **Neither ranking moves during the run.** Every rider is measured against the
+  trip's confirmed riders only, never against whoever holds the slot at the
+  moment, so a ranking computed once stays right for the whole run. The
+  one-new-rider rule is what makes that true.
 
-What survives from deferred acceptance is the **mechanism**, not the theory:
-provisional holds and bumping, used here as a search heuristic that avoids the
-trap one-shot greedy falls into (below), not as two-sided preference resolution. Do not
-call this Gale-Shapley in code, comments, or the report — call it provisional
-assignment, deferred assignment, or greedy with backtracking.
+So each run's result is **stable**: there is no rider and trip that would both
+rather have each other than what they got — no rider left wanting a trip that
+kept someone who adds more minutes than they would. And because riders propose,
+it is the stable result riders do best under (Gale and Shapley's theorem).
 
-`offerScore` is affected by this too. It used to read as "driver preference" —
-it no longer is one. Reinterpret it as the **cost of this insertion to the
-trip**: mostly marginal driving minutes, plus how much arrival slack the car
-loses (David's slack idea — see "How pairs are scored" below). There is no
-soft preference layered on top of it — gender and luggage were removed earlier
-as hard gates, and quiet-ride affinity was removed because it never influenced
-which rider a trip kept.
+It is **not** Gale-Shapley across runs. Riders confirmed in an earlier run are
+fixed and never bumped, so a later run cannot undo an earlier match even if a
+better pairing turns up; each run only rearranges riders who are still
+unconfirmed. Stability is a property of each run, not of the whole day.
+
+The trips' ranking is minutes alone, not `offerScore`. `offerScore` adds how
+much arrival slack the car loses (David's slack idea — see "How pairs are
+scored"), and ranking riders that way strands riders with tight deadlines, who
+have the fewest options: in the worked example below it turns two matches into
+one. So slack only shapes which trip a rider asks first. No soft preference is
+layered on top — gender and luggage were removed earlier as hard gates, and
+quiet-ride affinity was removed because it never influenced which rider a trip
+kept.
 
 ## How pairs are scored
 
-`src/score.ts`, structured and named after David's scoring
+`score.ts`, structured and named after David's scoring
 (`backend/server/scoring.ts`): `calcDriverScore` and `calcPassengerScore`, each
 a weighted blend of [0, 1] sub-scores.
 
@@ -124,7 +147,7 @@ with exact numbers): riders A and B, drivers D1 and D2 with one seat each. B can
 only reach D1; A can reach both, and D1 is also A's own best option. One-shot
 greedy — the matcher this replaced — sorts by combined score and takes the
 globally highest pair first — (A, D1) — locking D1 before B is ever considered.
-B has nowhere else to go: **one match**. Provisional assignment lets A propose
+B has nowhere else to go: **one match**. Gale-Shapley lets A propose
 to D1 first too, but when B proposes afterwards, D1 re-evaluates its best
 feasible occupant and finds B strictly cheaper (a smaller marginal detour) —
 so it bumps A back to the pool, where A lands on D2 on its next try:
@@ -153,7 +176,7 @@ riders shared the route. The comparison is now strictly two-way, which is why
 
 The booking form asks riders only for date, earliest departure and latest
 arrival — **not** for a detour tolerance. `MatchRequest.maxDetour` is still
-required, so `src/riderPolicy.ts` derives it as **40% of the rider's own direct
+required, so `riderPolicy.ts` derives it as **40% of the rider's own direct
 trip, floored at 5 minutes** (`riderDetourPercent` / `riderDetourFloorMinutes`
 in `MatchingConfig`).
 
@@ -317,7 +340,7 @@ on the first two, `'locked'` on the last. This module doesn't decide *how often*
 to run; that's a scheduling decision independent of the algorithm (any
 frequency works with bumping), and running more often only gives an
 already-open, under-full trip more chances to fill before its cutoff. The
-`batchKey` is derived by `src/adapter.ts`; how often to run is still up to
+`batchKey` is derived by `adapter.ts`; how often to run is still up to
 whatever schedules `npm run match`.
 
 ## Running it against Firestore
@@ -356,12 +379,13 @@ to a rider who adds fewer minutes", and so on. The reasons
 (`MatchRunResult.unmatchedReasons`) are worked out after the run, against the
 same baselines the run used, so they explain the result without changing it.
 
-**Configuration** — environment variables, falling back to `mobile/.env` for the
-two values the app already has:
+**Configuration** — environment variables or `backend/.env` (copy
+`backend/.env.example`; the real file is gitignored), falling back to
+`mobile/.env` for the two values the app already has:
 
 | Variable | |
 |---|---|
-| `FIREBASE_SERVICE_ACCOUNT` | path to a service-account key (Firebase console → Project settings → Service accounts → Generate new private key). **Keep it outside the repo** — it bypasses every security rule. `GOOGLE_APPLICATION_CREDENTIALS` works too. |
+| `FIREBASE_SERVICE_ACCOUNT` | path to your own service-account key (Firebase console → Project settings → Service accounts → Generate new private key). `backend/.env` holds the **path**; the key file itself stays **outside the repo** — it bypasses every security rule. Files named `*-firebase-adminsdk-*.json` are gitignored as a backstop. `GOOGLE_APPLICATION_CREDENTIALS` works too. |
 | `FIREBASE_PROJECT_ID` | falls back to `EXPO_PUBLIC_FIREBASE_PROJECT_ID` |
 | `GOOGLE_MAPS_API_KEY` | falls back to `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`; the key's project needs the **Distance Matrix API** enabled, or the Routes API with `--routes`. Without a key, travel times are synthetic estimates and the run says so. |
 | `FIRESTORE_EMULATOR_HOST` | run against the local emulator; no credentials needed |
@@ -373,7 +397,7 @@ before its cutoff.
 
 ### What the runner writes, and why
 
-- **A match** (`src/writes.ts` → `planMatchWrite`): request → `awaiting` with
+- **A match** (`writes.ts` → `planMatchWrite`): request → `awaiting` with
   `matchedOfferId`, `matchedDriverId`, `matchedAt`, `acceptDeadline`,
   `riderDetourMinutes`, `routeIndex`, `pickupAt` and `arriveAt`; offer →
   `awaiting` with `pendingRequestId`, `matchedRiderId` (what lets the rider's
@@ -450,9 +474,9 @@ which is why the matrix is built per batch rather than across days.
 
 ### Automated suite
 
-The tests live in the repo-level `tests/` folder alongside the app's, and `npm test` here just
-runs that whole suite from the repo root (`jest --config mobile/jest.config.js`, no separate build
-step — TypeScript is compiled in-memory per test run). Each source file has a companion test file
+The tests live in the repo-level `tests/` folder alongside the app's. Run them from the repo
+root with `npm test` (`jest --config mobile/jest.config.js`, no separate build step —
+TypeScript is compiled in-memory per test run). Each source file has a companion test file
 that exercises it directly:
 
 | Test file | Exercises |
@@ -477,7 +501,7 @@ the jest-expo preset, because that preset stubs out `fetch`. One API passing whi
 project has enabled.
 
 The runner's Firestore layer (`runner/firestore.ts`) is the one piece these tests
-don't reach: it is a thin transaction wrapper around the `src/writes.ts` rules,
+don't reach: it is a thin transaction wrapper around the `writes.ts` rules,
 which are tested. Try it first with `npm run match -- --dry-run`.
 
 The app's side of the round trip — `acceptMatch` / `declineMatch` / `cancelOffer` — is covered by
@@ -503,11 +527,11 @@ Two ways to poke at the algorithm without writing a Jest test:
    the test fixtures directly to inspect a single pair or a handful of riders:
 
    ```ts
-   // scratch.ts — not committed, just for a one-off check
-   import { runMatchingProvisional } from './src/deferredAcceptance';
-   import { SyntheticTravelTime } from './src/travelTime';
-   import { DEFAULT_CONFIG } from './src/types';
-   import { makeRequest, makeOffer, at, CAMPUS } from '../tests/fixtures';
+   // backend/server/matching/scratch.ts — not committed, just for a one-off check
+   import { runMatchingProvisional } from './deferredAcceptance';
+   import { SyntheticTravelTime } from './travelTime';
+   import { DEFAULT_CONFIG } from './types';
+   import { makeRequest, makeOffer, at, CAMPUS } from '../../../tests/fixtures';
 
    const req = makeRequest({ reqId: 'r1', start: { lat: CAMPUS.lat + 0.05, lon: CAMPUS.lon } });
    const offer = makeOffer({ offerId: 'o1', start: { lat: CAMPUS.lat + 0.1, lon: CAMPUS.lon } });
@@ -520,10 +544,10 @@ Two ways to poke at the algorithm without writing a Jest test:
    ```
 
    ```bash
-   npx ts-node scratch.ts
+   npx ts-node server/matching/scratch.ts     # from backend/
    ```
 
-   Run it the same way `simulate.ts` is run. Delete the scratch file when
+   Delete the scratch file when
    done — it is not part of the suite, and `fixtures.ts` is under `tests/`
    precisely so throwaway scripts and real tests can share the same builders.
 
@@ -532,12 +556,10 @@ Two ways to poke at the algorithm without writing a Jest test:
 - **A single run cannot exceed one match per driver.** That is the rule working
   as intended, not a defect, but it means the 80% Goal 1 target depends on run
   frequency before departure, which nothing in this module controls.
-- Provisional assignment is a heuristic, not an exhaustive search: a trip
-  found infeasible for a rider (or a rider it's already tried) is crossed off
-  for that rider for the rest of the run, even though it could in principle
-  loosen up later if the trip bumps its holder first. This bounds runtime
-  and gives the algorithm's termination argument, at the cost of occasionally
-  missing an arrangement an exhaustive search would find.
+- **Stable within a run, not across runs.** Confirmed riders are never moved,
+  so a match accepted this morning can keep out a pairing a later run would
+  have preferred. Reopening accepted matches would mean un-confirming a ride a
+  rider already said yes to, which is worse than a slightly better pairing.
 - Within a trip, fixed (confirmed) riders keep their original relative pickup
   order; only where the one new rider slots in among them is searched.
   Reordering confirmed riders relative to each other is deliberately out of

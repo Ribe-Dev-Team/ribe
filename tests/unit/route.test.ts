@@ -19,9 +19,9 @@ Travel times: synthetic, straight lines, 2.1 min per km, no noise, so the
 minutes quoted in comments can be checked by hand.
 */
 
-import { addPassenger, evaluateRoute, isAcceptingRiders, minSlackMinutes } from '../../matching/src/route';
-import { SyntheticTravelTime } from '../travelTime';
-import { DEFAULT_CONFIG } from '../../matching/src/types';
+import { addPassenger, evaluateRoute, isAcceptingRiders, minSlackMinutes } from '../../backend/server/matching/route';
+import { SyntheticTravelTime } from '../../backend/server/matching/travelTime';
+import { DEFAULT_CONFIG } from '../../backend/server/matching/types';
 import { CAMPUS, at, makeOffer, ring } from '../fixtures';
 
 const t = new SyntheticTravelTime({ jitter: 0, seed: 7 }); // noiseless for exact assertions

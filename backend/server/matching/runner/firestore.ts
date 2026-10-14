@@ -1,11 +1,11 @@
 import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { DocumentSnapshot, FieldValue, Firestore, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { readFileSync } from 'fs';
-import { MATCHABLE_APP_STATUS, OfferDoc, RequestDoc } from '../src/adapter';
+import { MATCHABLE_APP_STATUS, OfferDoc, RequestDoc } from '../adapter';
 import {
   FieldUpdate, MatchWrite, MatchWriteSkip, planMatchWrite, planScheduleWrite, planSettle, ScheduleWrite, Settled,
   StoredOffer, StoredRequest,
-} from '../src/writes';
+} from '../writes';
 
 /**
  * The runner's only contact with Firestore. It uses the Admin SDK, not the app's
@@ -13,7 +13,7 @@ import {
  * firebaseConfig.ts pulls in React Native storage that plain Node can't load.
  *
  * Every write re-reads its documents inside a transaction and asks
- * src/writes.ts what to do, because the run works from a snapshot.
+ * writes.ts what to do, because the run works from a snapshot.
  */
 
 const REQUESTS = 'rideRequests';
@@ -29,7 +29,7 @@ export interface ConnectOptions {
 
 export function connect(opts: ConnectOptions): Firestore {
   if (getApps().length === 0) {
-    if (process.env.FIRESTORE_EMULATOR_HOST) {
+    if (process.env['FIRESTORE_EMULATOR_HOST']) {
       initializeApp({ projectId: opts.projectId ?? 'demo-ribe' });
     } else if (opts.serviceAccountPath) {
       const account = JSON.parse(readFileSync(opts.serviceAccountPath, 'utf8'));
@@ -52,14 +52,14 @@ function toRequestDoc(snap: DocumentSnapshot): RequestDoc {
   const d = snap.data() ?? {};
   return {
     id: snap.id,
-    userId: d.userId,
-    status: d.status,
-    toUni: d.toUni,
-    coord: d.coord,
+    userId: d['userId'],
+    status: d['status'],
+    toUni: d['toUni'],
+    coord: d['coord'],
     // An invalid Date, not a throw: the adapter reports it as BAD_TIME.
-    date: toDate(d.date) ?? new Date(NaN),
-    departureTime: d.departureTime,
-    arrivalTime: d.arrivalTime,
+    date: toDate(d['date']) ?? new Date(NaN),
+    departureTime: d['departureTime'],
+    arrivalTime: d['arrivalTime'],
   };
 }
 
@@ -67,13 +67,13 @@ function toOfferDoc(snap: DocumentSnapshot): OfferDoc {
   const d = snap.data() ?? {};
   return {
     ...toRequestDoc(snap),
-    maxDetourTime: d.maxDetourTime,
-    seatCapacity: d.seatCapacity,
-    pendingRequestId: d.pendingRequestId ?? null,
-    confirmedRequestIds: d.confirmedRequestIds ?? [],
-    acceptingMore: d.acceptingMore !== false,
-    scheduledRiders: Array.isArray(d.schedule?.stops)
-      ? d.schedule.stops.map((s: { requestId: string }) => s.requestId)
+    maxDetourTime: d['maxDetourTime'],
+    seatCapacity: d['seatCapacity'],
+    pendingRequestId: d['pendingRequestId'] ?? null,
+    confirmedRequestIds: d['confirmedRequestIds'] ?? [],
+    acceptingMore: d['acceptingMore'] !== false,
+    scheduledRiders: Array.isArray(d['schedule']?.stops)
+      ? d['schedule'].stops.map((s: { requestId: string }) => s.requestId)
       : undefined,
   };
 }
@@ -81,18 +81,18 @@ function toOfferDoc(snap: DocumentSnapshot): OfferDoc {
 function toStoredRequest(snap: DocumentSnapshot): StoredRequest | undefined {
   if (!snap.exists) return undefined;
   const d = snap.data()!;
-  return { status: d.status, matchedOfferId: d.matchedOfferId, acceptDeadline: toDate(d.acceptDeadline) };
+  return { status: d['status'], matchedOfferId: d['matchedOfferId'], acceptDeadline: toDate(d['acceptDeadline']) };
 }
 
 function toStoredOffer(snap: DocumentSnapshot): StoredOffer | undefined {
   if (!snap.exists) return undefined;
   const d = snap.data()!;
   return {
-    status: d.status,
-    seatCapacity: d.seatCapacity,
-    pendingRequestId: d.pendingRequestId ?? null,
-    confirmedRequestIds: d.confirmedRequestIds ?? [],
-    acceptingMore: d.acceptingMore !== false,
+    status: d['status'],
+    seatCapacity: d['seatCapacity'],
+    pendingRequestId: d['pendingRequestId'] ?? null,
+    confirmedRequestIds: d['confirmedRequestIds'] ?? [],
+    acceptingMore: d['acceptingMore'] !== false,
   };
 }
 
@@ -120,7 +120,7 @@ export async function loadRequestsById(db: Firestore, ids: string[]): Promise<Ma
 }
 
 /**
- * Settle every matched request against its offer (src/writes.ts → planSettle):
+ * Settle every matched request against its offer (writes.ts → planSettle):
  * expire the matches past their deadline, and return riders to the pool when
  * their driver removed the offer. Runs before matching so a freed driver or
  * rider can be matched again in the same run.
@@ -182,7 +182,7 @@ export async function writeMatches(
 }
 
 /**
- * Fill in confirmed cars' timetables (src/writes.ts → planScheduleWrite), one
+ * Fill in confirmed cars' timetables (writes.ts → planScheduleWrite), one
  * transaction each, re-checking the car's riders haven't changed since they
  * were read. Returns the offers written.
  */

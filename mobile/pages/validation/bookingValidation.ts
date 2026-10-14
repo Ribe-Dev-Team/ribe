@@ -78,7 +78,7 @@ function validateDetailsStep(input: DetailsStepInput): DetailsStepErrors {
   Detour and seats are driver-only. Riders are deliberately NOT asked for a
   detour tolerance: the matcher still needs one (MatchRequest.maxDetour), but
   derives it from the rider's own direct trip at match time - see
-  matching/src/riderPolicy.ts for the measurements behind that choice.
+  backend/server/matching/riderPolicy.ts for the measurements behind that choice.
   */
   let detourTimeErr = '';
   let numSeatsErr = '';

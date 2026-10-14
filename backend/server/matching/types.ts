@@ -1,11 +1,11 @@
 /**
  * Ribe matching types.
  *
- * Names follow backend/server/matching.schema.ts where they overlap, so this
- * module drops into the team's existing vocabulary rather than competing with it.
+ * Built on backend/server/matching.schema.ts: `Coord` and `RideMatch` come from
+ * there, and other names follow it where they overlap.
  */
 
-import { Coord } from '../../backend/server/matching.schema';
+import { Coord, RideMatch } from '../matching.schema';
 
 export type Direction = 'TO_CAMPUS' | 'FROM_CAMPUS';
 
@@ -16,16 +16,6 @@ export type OfferStatus =
   | 'closed'    // not searching; reversible while there is still time
   | 'locked'    // departure imminent, no further change
   | 'cancelled';
-
-export type RideStatus =
-  | 'unassigned'
-  | 'driver_pending'
-  | 'passenger_pending'
-  | 'confirmed'
-  | 'driver_cancelled'
-  | 'passenger_cancelled'
-  | 'driver_expired'
-  | 'passenger_expired';
 
 export interface TravelWindow {
   /** Earliest the trip may depart. */
@@ -165,10 +155,11 @@ export interface TripStop {
   arriveAt: Date;
 }
 
-/** One rider offered to one driver by a matching run. */
-export interface ProposedMatch {
-  offerId: string;
-  reqId: string;
+/** One rider offered to one driver by a matching run: the backend's
+ *  `RideMatch` (`rideId` is the rider's request), waiting on the rider - only
+ *  riders approve a match - plus the route and timetable it was made on. */
+export interface ProposedMatch extends RideMatch {
+  status: 'passenger_pending';
   riderId: string;
   driverId: string;
   insertionIndex: number;

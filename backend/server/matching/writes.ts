@@ -92,7 +92,7 @@ export interface MatchWrite {
 export function toMatchWrites(matches: ProposedMatch[], offers: MatchOffer[]): MatchWrite[] {
   const baselineByOffer = new Map(offers.map((o) => [o.offerId, o.onBoard.map((r) => r.reqId)]));
   return matches.map((m) => ({
-    reqId: m.reqId,
+    reqId: m.rideId,
     offerId: m.offerId,
     riderId: m.riderId,
     driverId: m.driverId,

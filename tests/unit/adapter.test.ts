@@ -17,16 +17,15 @@ these exact checks impossible.
 */
 
 import {
-  batchPoints, groupIntoBatches, OfferDoc, RequestDoc, toMatchInputs,
-} from '../../matching/src/adapter';
-import { zonedDateTime } from '../../matching/src/melbourneTime';
-import { deriveRiderMaxDetour } from '../../matching/src/riderPolicy';
-import { evaluateRoute } from '../../matching/src/route';
-import { SyntheticTravelTime } from '../travelTime';
-import { DEFAULT_CONFIG } from '../../matching/src/types';
-import { MONASH_CLAYTON_LOCATION } from '../../mobile/services/googlePlaces';
+  batchPoints, groupIntoBatches, MONASH_CLAYTON, OfferDoc, RequestDoc, toMatchInputs,
+} from '../../backend/server/matching/adapter';
+import { zonedDateTime } from '../../backend/server/matching/melbourneTime';
+import { deriveRiderMaxDetour } from '../../backend/server/matching/riderPolicy';
+import { evaluateRoute } from '../../backend/server/matching/route';
+import { SyntheticTravelTime } from '../../backend/server/matching/travelTime';
+import { DEFAULT_CONFIG } from '../../backend/server/matching/types';
 
-const CAMPUS = { ...MONASH_CLAYTON_LOCATION, lon: MONASH_CLAYTON_LOCATION.lng };
+const CAMPUS = MONASH_CLAYTON;
 
 // 60 km/h over straight lines, no noise: one minute per km, easy to reason about.
 const t = new SyntheticTravelTime({ roadFactor: 1, avgSpeedKmh: 60, jitter: 0 });

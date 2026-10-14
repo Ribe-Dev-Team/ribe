@@ -29,6 +29,11 @@ jobs:
       - name: Run TypeScript check
         run: npx tsc --noEmit -p mobile
 
+      # The matching runner isn't reached by the tests' imports in full (they
+      # skip its Firestore layer), so check backend/server on its own.
+      - name: Run TypeScript check (backend, including the matcher)
+        run: npx tsc --noEmit -p backend
+
       - name: Run tests (with coverage)
         run: npm test -- --coverage --ci
 

@@ -17,17 +17,16 @@ export function computeAcceptDeadline(now: Date, departAt: Date, cfg: MatchingCo
 }
 
 /**
- * Provisional assignment with bumping (KEY-41) — see README "Why not
- * Gale-Shapley".
+ * Gale-Shapley (deferred acceptance), riders proposing, one run at a time
+ * (KEY-41) — see README "Why it is Gale-Shapley, for one run".
  *
- * NOT Gale-Shapley. Drivers do not rank riders — they are allocated riders
- * and may only veto or close. With one-sided preferences no blocking pair
- * can exist (a blocking pair needs BOTH parties to strictly prefer each
- * other), so every feasible assignment is trivially stable and the
- * stability guarantee is vacuous. What survives from deferred acceptance is
- * the MECHANISM — provisional holds and bumping — used as a search
- * heuristic, not preference resolution. Do not call this Gale-Shapley in
- * code, comments, or the report.
+ * Within a run: riders rank trips by reqScore; trips rank riders by marginal
+ * driver minutes (the matcher ranks on the driver's behalf - drivers never
+ * state a preference); each trip has a capacity of one new rider; and both
+ * rankings are fixed for the whole run, because every rider is measured
+ * against the trip's confirmed baseline only. So each run's result is stable,
+ * and the rider-optimal stable result. Across runs it is not: riders confirmed
+ * in an earlier run are fixed and never bumped.
  *
  * ONE NEW RIDER PER TRIP PER RUN. Accepting a match is a human decision, so a
  * driver is only ever offered a single new, unconfirmed rider per run however
@@ -58,16 +57,13 @@ export function computeAcceptDeadline(now: Date, departAt: Date, cfg: MatchingCo
  *      returns to the pool and tries its next untried trip.
  *   5. Repeat until no rider has an untried trip left.
  *
- * Terminates because each (rider, trip) pair is inspected at most once: a
- * trip found not currently accepting, or not currently feasible for a
- * rider, is crossed off for that rider for the rest of THIS run, even
- * though it could in principle loosen up later if the trip bumps someone
- * else first. That is a real, accepted imprecision — this is a heuristic,
- * not an exhaustive search — and it is what keeps the algorithm bounded and
- * simple to reason about.
+ * Terminates because each rider proposes to each trip at most once. A trip
+ * that is closed, locked, past its cutoff or infeasible against its confirmed
+ * baseline stays that way for the whole run - none of those depend on who
+ * holds the slot - so crossing it off for a rider loses nothing.
  *
  * One run says little about match rate on its own: it matches at most one
- * rider per driver. `test/simulate.ts` measures it the way the app uses it,
+ * rider per driver. `tests/component/simulate.ts` measures it the way the app uses it,
  * over repeated runs with each run's matches accepted in between.
  *
  * `departAt` is either one time for the whole batch or a per-offer lookup (see
@@ -198,7 +194,7 @@ export function runMatchingProvisional(
     //
     // Deliberately NOT offerScore, even though that now includes slack. Slack
     // penalises a rider with a tight deadline, and those are the hardest riders
-    // to place: in the worked example (test/deferredAcceptance.test.ts) B costs
+    // to place: in the worked example (tests/unit/deferredAcceptance.test.ts) B costs
     // D1 half a minute but must be on campus 30 s after the car arrives, so a
     // slack-aware D1 keeps A instead and B - who can reach no other trip - is
     // stranded. Two matches become one. Match rate is the binding constraint, so
@@ -276,8 +272,9 @@ export function runMatchingProvisional(
       }, weights);
 
       matches.push({
+        rideId: req.reqId,
         offerId: offer.offerId,
-        reqId: req.reqId,
+        status: 'passenger_pending',
         riderId: req.riderId,
         driverId: offer.driverId,
         insertionIndex: i,
@@ -300,7 +297,7 @@ export function runMatchingProvisional(
   // --- reporting ------------------------------------------------------------
   const requestsIn = requests.filter((r) => r.status === 'unassigned').length;
   const matchesMade = matches.length;
-  const matchedIds = new Set(matches.map((m) => m.reqId));
+  const matchedIds = new Set(matches.map((m) => m.rideId));
   const unmatchedRequestIds = requests
     .filter((r) => r.status === 'unassigned' && !matchedIds.has(r.reqId))
     .map((r) => r.reqId);

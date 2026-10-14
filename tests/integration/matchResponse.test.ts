@@ -2,7 +2,7 @@
 // mobile/pages/schema/firebaseBookingMethods.ts) and a driver removes an offer
 // (cancelOffer), against the shared in-memory
 // Firestore mock. Matches themselves are written by the matching runner
-// (matching/runner/); these cover the app's half of the round trip.
+// (backend/server/matching/runner/); these cover the app's half of the round trip.
 
 import {
   acceptMatch, cancelOffer, declineMatch, setOfferLocked, updateOfferSeats,

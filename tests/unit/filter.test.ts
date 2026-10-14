@@ -12,8 +12,8 @@ Not tested directly: hardFilter's SAME_PERSON, DIRECTION and BEARING
 rejections. The cutoff rejection is checked in deferredAcceptance.test.ts.
 */
 
-import { windowsOverlap, hardFilter, corridorDetourKm } from '../../matching/src/filter';
-import { DEFAULT_CONFIG } from '../../matching/src/types';
+import { windowsOverlap, hardFilter, corridorDetourKm } from '../../backend/server/matching/filter';
+import { DEFAULT_CONFIG } from '../../backend/server/matching/types';
 import { CAMPUS, at, makeOffer, makeRequest, ring } from '../fixtures';
 
 const near = ring(1, 3)[0];

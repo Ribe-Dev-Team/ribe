@@ -16,7 +16,7 @@ Not tested here: SyntheticTravelTime itself, though most other test files use it
 
 import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, PrecomputedTravelTime, SyntheticTravelTime,
-} from '../travelTime';
+} from '../../backend/server/matching/travelTime';
 import { CAMPUS } from '../fixtures';
 
 const A = CAMPUS;

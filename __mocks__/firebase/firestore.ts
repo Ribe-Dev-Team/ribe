@@ -88,7 +88,13 @@ export const setDoc = async (docRef: any, data: any) => {
     mockDb[docRef.collectionName][docRef.id] = data;
 };
 
-// deleteField - a sentinel that updates remove the field for, as Firestore does
+// deleteField - Firestore's way to remove a field in an update:
+// `updateDoc(ref, { matchedRiderId: deleteField() })` deletes `matchedRiderId`
+// from the document, where `undefined` would be rejected and `null` would leave
+// the field there holding null. The app uses it to clear a match's fields when a
+// rider accepts, declines or a driver cancels (firebaseBookingMethods.ts). The
+// mock returns a unique marker that updateDoc (and transaction.update) below
+// recognise and delete, so tests can check the field is really gone.
 const DELETE_FIELD = Symbol("deleteField");
 export const deleteField = () => DELETE_FIELD;
 

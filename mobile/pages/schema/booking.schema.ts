@@ -4,7 +4,7 @@ export type { BookingStatus };
 
 /*
 Geographic point, stored alongside the free-text address so the matching module
-(matching/src/types.ts) can consume a booking without re-geocoding it.
+(backend/server/matching/types.ts) can consume a booking without re-geocoding it.
 
 Deliberately `lon`, not Google's `lng`: this shape is read directly by the
 matcher's own Coord, so the conversion happens once here at the boundary rather

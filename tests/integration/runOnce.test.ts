@@ -18,12 +18,12 @@ everything except the SDK.
 Travel times: synthetic at exactly 1 minute per km.
 */
 
-import { MatchingStore, runOnce } from '../../matching/runner/runOnce';
-import { OfferDoc, RequestDoc } from '../../matching/src/adapter';
-import { zonedDateTime } from '../../matching/src/melbourneTime';
-import { SyntheticTravelTime } from '../travelTime';
+import { MatchingStore, runOnce } from '../../backend/server/matching/runner/runOnce';
+import { OfferDoc, RequestDoc } from '../../backend/server/matching/adapter';
+import { zonedDateTime } from '../../backend/server/matching/melbourneTime';
+import { SyntheticTravelTime } from '../../backend/server/matching/travelTime';
 import { Coord } from '../../backend/server/matching.schema';
-import { FieldUpdate, planMatchWrite, planScheduleWrite, planSettle, Settled } from '../../matching/src/writes';
+import { FieldUpdate, planMatchWrite, planScheduleWrite, planSettle, Settled } from '../../backend/server/matching/writes';
 import { MONASH_CLAYTON_LOCATION } from '../../mobile/services/googlePlaces';
 
 type Doc = Record<string, any>;

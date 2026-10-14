@@ -220,7 +220,7 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
 /* ---------------------------------------------------------------------------
 Match responses.
 
-Matches are WRITTEN by the matching runner (matching/runner/), a server-side
+Matches are WRITTEN by the matching runner (backend/server/matching/runner/), a server-side
 process using the Admin SDK - never by the app. What the app does is resolve
 them: the rider accepts or declines here. Unanswered matches are expired by the
 runner once their acceptDeadline passes.
@@ -349,7 +349,7 @@ export async function declineMatch(requestID: string): Promise<void> {
  *
  * The riders' own bookings are NOT touched here: the driver's phone can't write
  * them. The matching runner returns each of them to the pool on its next run
- * (matching/src/writes.ts → planSettle), and until then rideData.ts already
+ * (backend/server/matching/writes.ts → planSettle), and until then rideData.ts already
  * shows them as searching again.
  */
 export async function cancelOffer(offerID: string): Promise<void> {
@@ -375,7 +375,7 @@ export async function cancelOffer(offerID: string): Promise<void> {
  * slot. A car is done ('confirmed') when it's full, or when the driver has
  * locked it with at least one passenger aboard; otherwise it's back in the
  * matcher's pool ('pending'). The runner applies the same rule
- * (matching/src/writes.ts → settledOfferStatus).
+ * (backend/server/matching/writes.ts → settledOfferStatus).
  */
 function settledOfferStatus(offer: Pick<RideOffer, 'seatCapacity' | 'confirmedRequestIds' | 'acceptingMore'>): BookingStatus {
   const filled = (offer.confirmedRequestIds ?? []).length;

@@ -14,8 +14,8 @@ runner/firestore.ts makes these same decisions inside its transactions.
                    slot) if the rider didn't answer by the deadline
 */
 
-import { OFFER_SLOT_FIELDS, planMatchWrite, planScheduleWrite, planSettle, MatchWrite, REQUEST_MATCH_FIELDS, ScheduleWrite, settledOfferStatus, StoredOffer, StoredRequest, toMatchWrites } from '../../matching/src/writes';
-import { ProposedMatch } from '../../matching/src/types';
+import { OFFER_SLOT_FIELDS, planMatchWrite, planScheduleWrite, planSettle, MatchWrite, REQUEST_MATCH_FIELDS, ScheduleWrite, settledOfferStatus, StoredOffer, StoredRequest, toMatchWrites } from '../../backend/server/matching/writes';
+import { ProposedMatch } from '../../backend/server/matching/types';
 import { makeOffer, CAMPUS } from '../fixtures';
 
 const matchedAt = new Date('2026-10-04T20:00:00Z');
@@ -87,7 +87,7 @@ describe('toMatchWrites', () => {
       ],
     });
     const m = {
-      offerId: 'o', reqId: 'r', riderId: 'rider', driverId: 'd', insertionIndex: 1, riderDetour: 3.5,
+      rideId: 'r', offerId: 'o', status: 'passenger_pending' as const, riderId: 'rider', driverId: 'd', insertionIndex: 1, riderDetour: 3.5,
       driverAddedMinutes: 2, offerScore: 1, reqScore: 1, departAt, finalArrival: at(30), totalTripMinutes: 30,
       pickupAt: at(15), arriveAt: at(30),
       schedule: [
@@ -164,7 +164,7 @@ describe('settledOfferStatus — a driver locking their trip', () => {
       car({ status: 'awaiting', pendingRequestId: 'r', confirmedRequestIds: ['a'], acceptingMore: false }),
       new Date(acceptDeadline.getTime() + 1),
     );
-    expect(plan?.offer?.set.status).toBe('confirmed');
+    expect(plan?.offer?.set['status']).toBe('confirmed');
   });
 });
 

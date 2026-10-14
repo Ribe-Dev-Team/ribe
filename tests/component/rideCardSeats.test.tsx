@@ -25,7 +25,7 @@ const base: RideCardProps = {
 };
 
 /** A bar segment's flex share. */
-const flexOf = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props.style).flex;
+const flexOf = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props['style']).flex;
 
 /** The buttons of the most recent Alert.alert call. */
 function lastAlertButtons(spy: jest.SpyInstance) {

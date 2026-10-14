@@ -1,4 +1,4 @@
-import { Coord } from './types';
+import { Coord } from '../matching.schema';
 
 const EARTH_RADIUS_KM = 6371;
 const toRad = (d: number) => (d * Math.PI) / 180;

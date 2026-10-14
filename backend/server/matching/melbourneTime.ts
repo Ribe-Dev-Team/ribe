@@ -26,16 +26,18 @@ export function isHhMm(value: unknown): value is string {
   return typeof value === 'string' && HHMM.test(value.trim());
 }
 
-function partsIn(instant: Date, timeZone: string): Record<string, number> {
+type ClockParts = Record<'year' | 'month' | 'day' | 'hour' | 'minute' | 'second', number>;
+
+function partsIn(instant: Date, timeZone: string): ClockParts {
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone,
     hourCycle: 'h23',
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
-  const out: Record<string, number> = {};
+  const out: ClockParts = { year: 0, month: 0, day: 0, hour: 0, minute: 0, second: 0 };
   for (const p of fmt.formatToParts(instant)) {
-    if (p.type !== 'literal') out[p.type] = Number(p.value);
+    if (p.type in out) out[p.type as keyof ClockParts] = Number(p.value);
   }
   return out;
 }

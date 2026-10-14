@@ -7,7 +7,7 @@ import {
   DR_SLACK_TIME_FACTOR,
   P_SLACK_TIME_FACTOR,
   PUNCTUALITY_FACTOR,
-} from '../../backend/server/scoringConst';
+} from '../scoringConst';
 
 /**
  * KEY-139. Two-sided scoring, mirroring matchPairing { offerScore, reqScore }.

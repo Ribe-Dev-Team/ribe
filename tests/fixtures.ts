@@ -8,7 +8,7 @@ Shared helpers for the tests - not tests themselves.
   ring          n points spread around campus, deterministic for a given seed
 */
 
-import { MatchOffer, MatchRequest } from '../matching/src/types';
+import { MatchOffer, MatchRequest } from '../backend/server/matching/types';
 import { Coord } from '../backend/server/matching.schema';
 import { MONASH_CLAYTON_LOCATION } from '../mobile/services/googlePlaces';
 

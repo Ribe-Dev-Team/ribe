@@ -1,13 +1,14 @@
-import { Coord, MatchOffer, MatchRunResult, TravelTimeMatrix } from '../src/types';
+import { Coord } from '../../matching.schema';
+import { MatchOffer, MatchRunResult, TravelTimeMatrix } from '../types';
 import {
   batchPoints, groupIntoBatches, MONASH_CLAYTON, offerDeparture, OfferDoc, RequestDoc,
   Skipped, toMatchInputs,
-} from '../src/adapter';
-import { runMatchingProvisional } from '../src/deferredAcceptance';
-import { evaluateRoute, timetableFor } from '../src/route';
+} from '../adapter';
+import { runMatchingProvisional } from '../deferredAcceptance';
+import { evaluateRoute, timetableFor } from '../route';
 import {
   MatchWrite, MatchWriteSkip, ScheduleWrite, Settled, toMatchWrites, toStoredSchedule,
-} from '../src/writes';
+} from '../writes';
 
 /**
  * One matching run, start to finish:
@@ -129,7 +130,7 @@ export async function runOnce(store: MatchingStore, opts: RunOptions): Promise<R
         batch.batchKey, inputs.requests, inputs.offers, offerDeparture, opts.now, t,
       );
       report.matches = result.matches.map((m) => ({
-        reqId: m.reqId,
+        reqId: m.rideId,
         offerId: m.offerId,
         riderDetour: m.riderDetour,
         driverAddedMinutes: m.driverAddedMinutes,

@@ -23,9 +23,9 @@ who loses tries their next option.
 Travel times: synthetic, no noise, except where a table sets exact minutes.
 */
 
-import { runMatchingProvisional } from '../../matching/src/deferredAcceptance';
-import { FixtureTravelTime, SyntheticTravelTime, legKey } from '../travelTime';
-import { DEFAULT_CONFIG } from '../../matching/src/types';
+import { runMatchingProvisional } from '../../backend/server/matching/deferredAcceptance';
+import { FixtureTravelTime, SyntheticTravelTime, legKey } from '../../backend/server/matching/travelTime';
+import { DEFAULT_CONFIG } from '../../backend/server/matching/types';
 import { CAMPUS, at, makeOffer, makeRequest } from '../fixtures';
 
 const t = new SyntheticTravelTime({ jitter: 0, seed: 1 });
@@ -67,7 +67,7 @@ describe('runMatchingProvisional — worked example from the brief', () => {
   it('provisional bumping matches both riders by relocating the displaced one', () => {
     const res = runMatchingProvisional('b', [A, B], [D1, D2], at(8), at(0), fixture, cfg);
     expect(res.matches).toHaveLength(2);
-    const byRider = new Map(res.matches.map((m) => [m.reqId, m.offerId]));
+    const byRider = new Map(res.matches.map((m) => [m.rideId, m.offerId]));
     expect(byRider.get('B')).toBe('D1');
     expect(byRider.get('A')).toBe('D2');
     expect(res.unmatchedRequestIds).toEqual([]);
@@ -125,9 +125,9 @@ describe('runMatchingProvisional — confirmed riders are immovable', () => {
 
     const res = runMatchingProvisional('b', [newRider], [partiallyFilled], at(8), at(0), t);
     expect(res.matches).toHaveLength(1);
-    expect(res.matches[0].reqId).toBe('new');
+    expect(res.matches[0].rideId).toBe('new');
     // The confirmed rider is a fixed input, not a new match this run.
-    expect(res.matches.some((m) => m.reqId === 'confirmed-rider')).toBe(false);
+    expect(res.matches.some((m) => m.rideId === 'confirmed-rider')).toBe(false);
   });
 
   it("records the car's timetable with every rider in it, confirmed ones included", () => {
@@ -258,7 +258,7 @@ describe('one new rider per trip per run', () => {
     expect(res.matches).toHaveLength(1);
     expect(res.unmatchedRequestIds).toHaveLength(1);
     // Whoever won, the two lists must partition the batch — no rider lost.
-    expect([...res.matches.map((m) => m.reqId), ...res.unmatchedRequestIds].sort())
+    expect([...res.matches.map((m) => m.rideId), ...res.unmatchedRequestIds].sort())
       .toEqual(['cheap', 'dear']);
   });
 
@@ -278,7 +278,7 @@ describe('one new rider per trip per run', () => {
 
     const res = runMatchingProvisional('b', [fresh], [offer], at(8), at(0), t);
     // The confirmed rider is never re-reported as a new match...
-    expect(res.matches.map((m) => m.reqId)).toEqual(['new']);
+    expect(res.matches.map((m) => m.rideId)).toEqual(['new']);
     // ...but is still aboard, so the trip now carries two.
     expect(res.matches[0].insertionIndex).toBeGreaterThanOrEqual(0);
   });
@@ -340,7 +340,7 @@ describe('runMatchingProvisional — explains every rider it leaves out', () => 
   const res = runMatchingProvisional('b', [offRoute, onRoute, south], [offer], at(8), at(0), t);
 
   it('matches the cheaper rider', () => {
-    expect(res.matches.map((m) => m.reqId)).toEqual(['onRoute']);
+    expect(res.matches.map((m) => m.rideId)).toEqual(['onRoute']);
   });
 
   it('gives each unmatched rider a reason per driver', () => {

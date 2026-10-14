@@ -73,9 +73,11 @@ interface MatchPairing {
 };
 
 // the pending status of a match
+// ids are strings: they are Firestore document ids (rideId = the rider's
+// rideRequests doc, offerId = the driver's rideOffers doc)
 interface RideMatch {
-  rideId: number,
-  offerId: number,
+  rideId: string,
+  offerId: string,
   /* status definitions
     unassigned: no drive matched
     driver_pending: waiting for driver approval
@@ -86,5 +88,5 @@ interface RideMatch {
     driver_expired: the driver failed to confirm in time
     passenger_expired: the passenger failed to confirm in time
   */
-  status: 'unassigned' | 'driver_pending' | 'passenger_pending' | 'confirmed' | 'driver_cancelled' | 'passenger_cancelled' | 'driver_expired' | 'passenger_cancelled';
+  status: 'unassigned' | 'driver_pending' | 'passenger_pending' | 'confirmed' | 'driver_cancelled' | 'passenger_cancelled' | 'driver_expired' | 'passenger_expired';
 };

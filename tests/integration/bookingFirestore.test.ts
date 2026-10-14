@@ -165,7 +165,7 @@ describe('addRideOffer', () => {
 });
 
 /*
-Coordinates are what make a booking matchable (matching/src/types.ts consumes
+Coordinates are what make a booking matchable (backend/server/matching/types.ts consumes
 { lat, lon } directly). They are optional by design: Places/Geocoding can be
 unavailable, and a booking without a point is still accepted - it just can't be
 matched until backfilled. Anything present but malformed is rejected.

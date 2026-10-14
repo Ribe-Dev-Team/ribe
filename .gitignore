@@ -76,7 +76,9 @@ mup.json
 mup.js
 
 # TypeScript build info
-*.tsbuildinfo# Node modules
+*.tsbuildinfo
+
+# Node modules
 node_modules/
 
 _build

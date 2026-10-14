@@ -1,7 +1,8 @@
 import {
-  Coord, MatchOffer, MatchRequest, MatchingConfig,
+  MatchOffer, MatchRequest, MatchingConfig,
   RejectedPairing, RejectReason,
 } from './types';
+import { Coord } from '../matching.schema';
 import { bearingDegrees, bearingDifference, haversineKm } from './geo';
 import { DepartureTime, departureOf, isAcceptingRiders, minutesToDeparture, NewPassenger } from './route';
 

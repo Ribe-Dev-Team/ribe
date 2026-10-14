@@ -16,13 +16,13 @@
  *
  *   npx ts-node test/simulate.ts
  */
-import { runMatchingProvisional } from '../../matching/src/deferredAcceptance';
-import { waypointOf } from '../../matching/src/filter';
-import { evaluateRoute } from '../../matching/src/route';
-import { SyntheticTravelTime } from '../travelTime';
+import { runMatchingProvisional } from '../../backend/server/matching/deferredAcceptance';
+import { waypointOf } from '../../backend/server/matching/filter';
+import { evaluateRoute } from '../../backend/server/matching/route';
+import { SyntheticTravelTime } from '../../backend/server/matching/travelTime';
 import {
   DEFAULT_CONFIG, MatchOffer, MatchRequest, MatchingConfig, ProposedMatch, TravelTimeMatrix,
-} from '../../matching/src/types';
+} from '../../backend/server/matching/types';
 import { at, makeOffer, makeRequest, ring } from '../fixtures';
 
 const DEPART = at(8);
@@ -89,7 +89,7 @@ function run(label: string, cfg: MatchingConfig, nReq = 100, nOff = 30) {
     last = runMatchingProvisional('2026-09-18_TO_CAMPUS_0930', requests, offers, DEPART, NOW, t, cfg);
     if (last.matches.length === 0) break;
     rounds++;
-    for (const m of last.matches) accept(m, reqById.get(m.reqId)!, offerById.get(m.offerId)!, t);
+    for (const m of last.matches) accept(m, reqById.get(m.rideId)!, offerById.get(m.offerId)!, t);
   }
 
   // Every matched rider's detour on their car's final route, in minutes and

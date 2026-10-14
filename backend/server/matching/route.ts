@@ -1,4 +1,5 @@
-import { Coord, Direction, MatchOffer, MatchingConfig, OnBoardRider, TravelTimeMatrix, TripStop } from './types';
+import { Coord } from '../matching.schema';
+import { Direction, MatchOffer, MatchingConfig, TravelTimeMatrix, TripStop } from './types';
 
 export interface RouteEvaluation {
   /** Total driving time, origin to final destination, in minutes. */
