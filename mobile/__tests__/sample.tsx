@@ -38,8 +38,8 @@ test('examples of some things', async () => {
   await render(<Example />);
 
   // perform actions related to the thing being tested (in this case, changing the username)
-  fireEvent.changeText(screen.getByTestId('input'), expectedUsername);
-  fireEvent.press(screen.getByText('Print Username'));
+  await fireEvent.changeText(screen.getByTestId('input'), expectedUsername);
+  await fireEvent.press(screen.getByText('Print Username'));
 
   // Using `findBy` query to wait for asynchronous operation to finish
   const usernameOutput = await screen.findByTestId('printed-username');

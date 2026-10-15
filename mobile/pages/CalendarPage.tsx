@@ -10,7 +10,7 @@ import { useAuth } from '../auth/useAuth';
 import { RideCardProps } from '../components/RideCard';
 import { fetchUserRides } from '../services/rideData';
 
-export type RideStatus = 'pending' | 'awaiting' | 'confirmed';
+export type RideStatus = 'pending' | 'awaiting' | 'confirmed' | 'cancelled';
 
 //TODO: link to real data
 //TODO: make the +New Ride button hover over the whole page
@@ -27,6 +27,8 @@ export interface Ride {
   driver: string;
   driverUid?: string;
   vehicle: string;
+  id?: string;
+  kind?: 'request' | 'offer';
 }
 
 const monthNames = [
@@ -51,6 +53,7 @@ const statusDetails: Record<RideStatus, { label: string; color: string }> = {
   pending: { label: 'Pending Ride', color: colors.pending },
   awaiting: { label: 'Awaiting Confirmation', color: colors.awaiting },
   confirmed: { label: 'Confirmed Ride', color: colors.confirmed },
+  cancelled: { label: 'Cancelled Ride', color: '#888' },
 };
 
 interface CalendarPageProps {
@@ -94,6 +97,8 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             driver: ride.driver.name,
             driverUid: ride.driver.uid,
             vehicle: ride.driver.vehicle,
+            id: ride.id,
+            kind: ride.kind,
           })),
           ...offers.map((ride: RideCardProps) => ({
             status: ride.status,
@@ -105,6 +110,8 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             driver: ride.driver.name,
             driverUid: ride.driver.uid,
             vehicle: ride.driver.vehicle,
+            id: ride.id,
+            kind: ride.kind,
           })),
         ];
 

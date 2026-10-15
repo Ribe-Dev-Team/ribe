@@ -56,12 +56,13 @@ function formatPhone(phone: string) {
   return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 10)}`;
 }
 
-export type RideStatus = 'confirmed' | 'awaiting' | 'pending';
+export type RideStatus = 'confirmed' | 'awaiting' | 'pending' | 'cancelled';
 
 const statusAccent: Record<RideStatus, string> = {
   confirmed: colors.confirmed,
   awaiting: colors.awaiting,
   pending: colors.pending,
+  cancelled: colors.cancelled,
 };
 
 const ordinalSuffix = (day: number) => {
@@ -83,6 +84,8 @@ export function formatRideDate(date: Date) {
 export interface RideCardProps {
   status: RideStatus;
   date: Date;
+  id?: string;
+  kind?: 'request' | 'offer';
   pickup: { address: string; time: string };
   destination: { address: string; eta: string };
   etaMinutes: number;
