@@ -247,8 +247,19 @@ export default function RideCard({
     }
   };
 
+  // The whole card opens the details, as "See more information" does. The
+  // buttons inside it still take their own presses - the innermost one wins.
+  const openDetails = () => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true));
+
   return (
-    <View style={[styles.card, { borderLeftColor: accent }]}>
+    <Pressable
+      testID="ride-card"
+      onPress={openDetails}
+      // Not one accessible element: that would hide every button inside from
+      // screen readers. Their way to the details is the "See more information" link.
+      accessible={false}
+      style={({ pressed }) => [styles.card, { borderLeftColor: accent }, pressed && styles.cardPressed]}
+    >
       <View style={styles.topRow}>
         <View style={styles.statusRow}>
           <View style={[styles.statusDot, { backgroundColor: accent }]} />
@@ -332,10 +343,7 @@ export default function RideCard({
 
       {status === 'awaiting' ? (
         <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.seeDetailsButton}
-            onPress={() => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true))}
-          >
+          <TouchableOpacity style={styles.seeDetailsButton} onPress={openDetails}>
             <Ionicons name="eye-outline" size={16} color={colors.white} />
             <Text style={styles.seeDetailsText}>See Details</Text>
           </TouchableOpacity>
@@ -384,7 +392,7 @@ export default function RideCard({
               </TouchableOpacity>
             </View>
           </View>
-          <TouchableOpacity style={styles.seeMoreLink} onPress={onSeeDetails}>
+          <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
             <Text style={styles.seeMoreLinkText}>See more information</Text>
             <Ionicons name="chevron-forward" size={13} color={colors.white} />
           </TouchableOpacity>
@@ -476,10 +484,7 @@ export default function RideCard({
       )}
 
       {status === 'confirmed' && (
-        <TouchableOpacity
-          style={styles.seeMoreLink}
-          onPress={() => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true))}
-        >
+        <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
           <Text style={styles.seeMoreLinkText}>See more information</Text>
           <Ionicons name="chevron-forward" size={13} color={colors.white} />
         </TouchableOpacity>
@@ -609,7 +614,7 @@ export default function RideCard({
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </Pressable>
   );
 }
 
@@ -620,6 +625,9 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
     backgroundColor: colors.mediumBlue,
+  },
+  cardPressed: {
+    opacity: 0.85,
   },
   topRow: {
     flexDirection: 'row',
