@@ -43,6 +43,7 @@ interface FirestoreRideRecord {
   cancelledBy?: string;
   cancelReason?: string;
   emissionsSavedKg?: number;
+  driverEmissionsKg?: number;
 }
 
 type StoredTime = Timestamp | Date | string;
@@ -182,6 +183,7 @@ function plannedTimes(
 interface StopPerson {
   name?: string;
   address?: string;
+  emissionsSavedKg?: number;
 }
 
 /**
@@ -247,7 +249,11 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
       } catch (error) {
         console.warn('Failed to load a passenger name', id, error);
       }
-      out.set(id, { name, address: request.address || undefined });
+      out.set(id, {
+        name,
+        address: request.address || undefined,
+        emissionsSavedKg: request.emissionsSavedKg,
+      });
     } catch (error) {
       console.warn('Failed to load a passenger on this trip', id, error);
     }
@@ -454,11 +460,28 @@ function buildRideCard(
     // told they'll still arrive by it.
     arriveBy: arrivalTime,
     stops: middleStops(record, kind, docId, offer, stopPeople),
-    // PLACEHOLDER: there is no fare model and no distance-to-CO2 calculation in
-    // the codebase yet, so these two are constants rather than data. They are
-    // NOT derived from the match.
+    // PLACEHOLDER: there is no fare model in the codebase yet.
     cost: '$8.50',
-    co2SavedKg: record.emissionsSavedKg ?? 0,
+    // From the driver's point of view when he gets riders, the amount of emission saved
+    // is the total distance (driver's trip emission) plus each rider's emission.
+    // When there are no riders aboard, driver's emission saved is 0.
+    co2SavedKg: (() => {
+      if (kind === 'request') {
+        return record.emissionsSavedKg ?? 0;
+      }
+      const confirmedIds = record.confirmedRequestIds ?? [];
+      if (confirmedIds.length === 0) {
+        return 0;
+      }
+      const driverEmission = record.driverEmissionsKg ?? record.emissionsSavedKg ?? 0;
+      const totalRiderEmissions = confirmedIds.reduce(
+        (sum, id) => sum + (stopPeople?.get(id)?.emissionsSavedKg ?? 0),
+        0,
+      );
+      return totalRiderEmissions > 0
+        ? Math.round((driverEmission + totalRiderEmissions) * 10) / 10
+        : (record.emissionsSavedKg ?? 0);
+    })(),
     driver: {
       uid: kind === 'request' ? record.matchedDriverId : record.userId,
       name: resolved.name,
@@ -526,9 +549,10 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
     ),
     fetchStopPeople(
       offerRows
-        .filter((row) => row.data.toUni)
-        .flatMap((row) => scheduleFor(row.data, 'offer', row.id)?.stops ?? [])
-        .map((stop) => stop.requestId),
+        .flatMap((row) => [
+          ...(row.data.confirmedRequestIds ?? []),
+          ...(scheduleFor(row.data, 'offer', row.id)?.stops.map((stop) => stop.requestId) ?? []),
+        ]),
     ),
   ]);
 

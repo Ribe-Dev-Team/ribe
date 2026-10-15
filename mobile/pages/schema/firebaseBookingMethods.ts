@@ -215,9 +215,11 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
   }
 
   try {
-    const emissions = await estimateEmissionsSaved(offer.address, offer.seatCapacity);
-    if (emissions !== null) {
-      offer.emissionsSavedKg = emissions;
+    const driverEmission = await estimateEmissionsSaved(offer.address, 1);
+    if (driverEmission !== null) {
+      offer.driverEmissionsKg = driverEmission;
+      // Driver has not got any riders yet: emissions saved starts at 0
+      offer.emissionsSavedKg = 0;
     }
   } catch (e) {
     console.warn('Failed to estimate emissions:', e);
@@ -291,6 +293,20 @@ export async function acceptMatch(requestID: string): Promise<void> {
     const at = Math.min(Math.max(request.routeIndex ?? confirmed.length, 0), confirmed.length);
     const ordered = [...confirmed.slice(0, at), requestID, ...confirmed.slice(at)];
 
+    // Read other confirmed requests inside the transaction to sum each rider's emissions
+    const otherConfirmedSnaps = await Promise.all(
+      confirmed.map((id) => tx.get(doc(db, 'rideRequests', id)))
+    );
+    const otherRiderEmissions = otherConfirmedSnaps
+      .filter((s) => s.exists())
+      .map((s) => (s.data() as RideRequest).emissionsSavedKg ?? 0);
+    const currentRiderEmission = request.emissionsSavedKg ?? 0;
+    const allRiderEmissions = [...otherRiderEmissions, currentRiderEmission];
+
+    // Driver's trip emission (total distance * 0.17 kg CO2/km) + each rider's individual emission
+    const driverEmission = offer.driverEmissionsKg ?? offer.emissionsSavedKg ?? 0;
+    const emissionsSavedKg = Math.round((driverEmission + allRiderEmissions.reduce((a, b) => a + b, 0)) * 10) / 10;
+
     tx.update(requestRef, { status: 'confirmed' });
     // Allowed by the Firestore rules only because the runner set
     // `matchedRiderId` to this rider's uid. Removed in the same write, so the
@@ -305,6 +321,7 @@ export async function acceptMatch(requestID: string): Promise<void> {
       schedule: offer.pendingSchedule ?? deleteField(),
       pendingSchedule: deleteField(),
       status: settledOfferStatus({ ...offer, confirmedRequestIds: ordered }),
+      emissionsSavedKg,
     });
   });
 }

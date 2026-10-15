@@ -43,6 +43,7 @@ jest.mock('../../mobile/utility/emissions', () => ({
 // hang these awaits forever.
 jest.useRealTimers();
 
+const TEST_USER_ID = 'test-user-id';
 const BOOKING_DRAFT_KEY = 'ribe:bookingDraftV1';
 
 function futureDateStr(daysFromNow: number): string {

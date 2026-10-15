@@ -39,6 +39,7 @@ export interface RideRequest {
   acceptDeadline?: Timestamp; // matcher's own clamped deadline; drives the approval countdown
   riderDetourMinutes?: number; // this rider's own detour on the shared route
   routeIndex?: number;       // pickup position among the offer's confirmed riders; used by acceptMatch
+  emissionsSavedKg?: number; // this rider's estimated shared-trip emissions savings
   /*
   This rider's estimated pickup and arrival AS OF THE MATCH. The offer's
   `schedule` is the live version (it is re-timed when later riders join); these
@@ -60,7 +61,6 @@ export interface TripSchedule {
   departAt: Timestamp; // the driver sets off
   arriveAt: Timestamp; // the driver reaches their own destination
   stops: TripStop[];   // every rider, in pickup order
-  emissionsSavedKg?: number;
 }
 
 export interface RideOffer {
@@ -113,4 +113,5 @@ export interface RideOffer {
   schedule?: TripSchedule;
   pendingSchedule?: TripSchedule;
   emissionsSavedKg?: number;
+  driverEmissionsKg?: number;
 }
