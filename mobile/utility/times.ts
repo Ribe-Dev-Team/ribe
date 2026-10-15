@@ -3,14 +3,22 @@ Utility file to handle generic time types, masks and functions.
 */
 
 export {
+  MS_PER_MIN,
   sepTime12h,
   timePattern,
   isValid24Time,
   toMinutes,
+  subMins,
+  addMins,
   decomposeTime12h,
   formatTime12h,
   convert12hTo24h,
+  formatTimeToStr,
+  formatSep12ToStr,
 };
+
+// CONVERTSION CONSTANT
+const MS_PER_MIN = 60000;
 
 /* type for decomposed 12-hours time */
 interface sepTime12h {
@@ -33,6 +41,16 @@ function isValid24Time(time: string): boolean {
 function toMinutes(time: string): number {
   const [hours, mins] = time.split(':').map(Number);
   return hours * 60 + mins;
+}
+
+/* subtract some number of minutes from a Date object */
+function subMins(t: Date, m: number): Date {
+  return new Date(t.getTime() - m * MS_PER_MIN);
+}
+
+/* add some number of minutes from a Date object */
+function addMins(t: Date, m: number): Date {
+  return new Date(t.getTime() + m * MS_PER_MIN);
 }
 
 /* take a 24-hr string and break it down into components of a 12-hr time */
@@ -60,4 +78,21 @@ function convert12hTo24h(t12: sepTime12h): string {
     ? t12.hrs % 12 + 12   // +12 for 12-23 range
     : t12.hrs % 12;       // +0 for 0-11 range
   return `${String(hh).padStart(2, '0')}:${String(t12.mins).padStart(2, '0')}`;
+}
+
+function formatTimeToStr(t: Date): string {
+  const hr = t.getHours(); // 0->23
+  const min = t.getMinutes(); // 0->59
+  const sec = t.getSeconds(); // 0->59
+  const str = [hr, min, sec].map(v => `${String(v).padStart(2, '0')}`, '').join(':');
+  return str;
+}
+
+function formatSep12ToStr(t: sepTime12h): string {
+  const hh = (t.period === 'PM')
+    ? t.hrs % 12 + 12   // +12 for 12-23 range
+    : t.hrs % 12;       // +0 for 0-11 range
+  const min = t.mins;
+  const str = [hh, min].map(v => `${String(v).padStart(2, '0')}`, '').join(':');
+  return str;
 }

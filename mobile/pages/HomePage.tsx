@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
@@ -15,8 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import { useAuth } from '../auth/useAuth';
 import RideCard, { RideCardProps } from '../components/RideCard';
-import { buildRideCard, FirestoreRideRecord } from '../services/rideData';
-import { deleteRideRequest, deleteRideOffer } from './schema/firebaseBookingMethods';
+import { fetchUserRides } from '../services/rideData';
 import { NotificationItem } from '../App';
 import { db } from '../firebaseConfig';
 
@@ -27,6 +25,8 @@ interface HomePageProps {
   onNewRide: () => void;
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
+  /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
 }
 
 function ridesDescription(count: number, noun: 'ride' | 'drive') {
@@ -42,6 +42,7 @@ export default function HomePage({
   onNewRide,
   onSeeRideDetails,
   onOpenDriverProfile,
+  rideActions,
 }: HomePageProps) {
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'there';
@@ -59,6 +60,7 @@ export default function HomePage({
     }
 
     setLoading(true);
+    let isMounted = true;
 
     const today = new Date();
     const isToday = (d: Date) =>
@@ -66,75 +68,36 @@ export default function HomePage({
       d.getMonth() === today.getMonth() &&
       d.getDate() === today.getDate();
 
-    const requestsQuery = query(
-      collection(db, 'rideRequests'),
-      where('userId', '==', user.uid)
-    );
-
-    const offersQuery = query(
-      collection(db, 'rideOffers'),
-      where('userId', '==', user.uid)
-    );
-
-    // Real-time listener for Requests
-    const unsubscribeRequests = onSnapshot(requestsQuery, (snapshot) => {
-      const fetchedRequests: RideCardProps[] = [];
-      snapshot.docs.forEach((docSnap) => {
-        const data = docSnap.data() as FirestoreRideRecord;
-        if (data.status === 'cancelled') return;
-
-        const rideCard = buildRideCard(data, 'request', docSnap.id);
-        if (isToday(rideCard.date)) {
-          fetchedRequests.push(rideCard);
+    // Cards are built by fetchUserRides, which also reads each match's driver and
+    // timetable. The listeners below only say WHEN to rebuild them, so Home stays live.
+    const loadRides = async () => {
+      try {
+        const { requests, offers } = await fetchUserRides(user.uid);
+        if (!isMounted) return;
+        setTodaysRides(requests.filter((ride: RideCardProps) => isToday(ride.date)));
+        setTodaysDrives(offers.filter((drive: RideCardProps) => isToday(drive.date)));
+      } catch (error) {
+        console.warn('Failed to load rides:', error);
+        if (isMounted) {
+          setTodaysRides([]);
+          setTodaysDrives([]);
         }
-      });
-      setTodaysRides(fetchedRequests);
-      setLoading(false);
-    });
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
 
-    // Real-time listener for Offers
-    const unsubscribeOffers = onSnapshot(offersQuery, (snapshot) => {
-      const fetchedOffers: RideCardProps[] = [];
-      snapshot.docs.forEach((docSnap) => {
-        const data = docSnap.data() as FirestoreRideRecord;
-        if (data.status === 'cancelled') return;
-
-        const driveCard = buildRideCard(data, 'offer', docSnap.id);
-        if (isToday(driveCard.date)) {
-          fetchedOffers.push(driveCard);
-        }
-      });
-      setTodaysDrives(fetchedOffers);
-      setLoading(false);
-    });
+    const requestsQuery = query(collection(db, 'rideRequests'), where('userId', '==', user.uid));
+    const offersQuery = query(collection(db, 'rideOffers'), where('userId', '==', user.uid));
+    const unsubscribeRequests = onSnapshot(requestsQuery, () => { loadRides(); });
+    const unsubscribeOffers = onSnapshot(offersQuery, () => { loadRides(); });
 
     return () => {
+      isMounted = false;
       unsubscribeRequests();
       unsubscribeOffers();
     };
   }, [user?.uid]);
-
-  const handleCancelRequest = async (ride: RideCardProps) => {
-    try {
-      console.log('HomePage: cancel ride request - attempting', ride.id);
-      await deleteRideRequest(ride.id ?? '');
-      console.log('HomePage: cancel ride request - success', ride.id);
-      Alert.alert('Canceled', 'Ride request canceled.');
-    } catch (err) {
-      console.warn('Failed to cancel ride request:', err);
-    }
-  };
-
-  const handleCancelOffer = async (drive: RideCardProps) => {
-    try {
-      console.log('HomePage: cancel ride offer - attempting', drive.id);
-      await deleteRideOffer(drive.id ?? '');
-      console.log('HomePage: cancel ride offer - success', drive.id);
-      Alert.alert('Canceled', 'Ride offer canceled.');
-    } catch (err) {
-      console.warn('Failed to cancel ride offer:', err);
-    }
-  };
 
   return (
     <ScrollView
@@ -205,9 +168,9 @@ export default function HomePage({
           <RideCard
             key={`${ride.date.toISOString()}-${index}`}
             {...ride}
+            {...rideActions(ride)}
             onSeeDetails={() => onSeeRideDetails(ride)}
             onOpenDriverProfile={() => onOpenDriverProfile(ride)}
-            onCancel={() => handleCancelRequest(ride)}
           />
         ))
       )}
@@ -228,9 +191,9 @@ export default function HomePage({
           <RideCard
             key={`${drive.date.toISOString()}-${index}`}
             {...drive}
+            {...rideActions(drive)}
             onSeeDetails={() => onSeeRideDetails(drive)}
             onOpenDriverProfile={() => onOpenDriverProfile(drive)}
-            onCancel={() => handleCancelOffer(drive)}
           />
         ))
       )}

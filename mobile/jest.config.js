@@ -6,12 +6,18 @@ module.exports = {
     "<rootDir>/../tests",
     "<rootDir>"
   ],
+  // *.live.test.ts calls real, billed external APIs - run those with `npm run test:live`.
+  testPathIgnorePatterns: ["/node_modules/", "\\.live\\.test\\.ts$"],
   setupFilesAfterEnv: [
     "<rootDir>/jest.setup.js"
   ],
   transform: {
     "^.+\\.(js|jsx|ts|tsx)$": "babel-jest"
   },
+  // Tests live in ../tests, outside this package, so Node-style lookup from a test file never
+  // reaches mobile/node_modules. CI installs mobile's deps there (not hoisted to the repo root),
+  // so also search it explicitly or e.g. '@expo/vector-icons' can't be resolved.
+  moduleDirectories: ["node_modules", "<rootDir>/node_modules"],
   moduleFileExtensions: [
     "ts",
     "tsx",
