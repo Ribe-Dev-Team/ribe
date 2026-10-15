@@ -35,9 +35,10 @@ import {
  * apart. (Not to be confused with `minSlackMinutes` in route.ts, which is detour
  * room left, not time.)
  *
- * The detour term on the rider's side is NOT in David's version. It stays
- * because SMART Goal 1 is measured in detour, so the rider's ranking should
- * still prefer less of it.
+ * The detour term on the rider's side is NOT in David's version, and its
+ * default weight is 0 (see DEFAULT_WEIGHTS), so by default a rider ranks
+ * drivers on punctuality and slack alone. Detour still limits which trips are
+ * feasible at all, through each rider's cap in `addPassenger`.
  *
  * Both scores are in [0, 1], higher is better. `reqScore` decides which driver
  * each rider asks first. `offerScore` is reported with every match, but the
@@ -65,10 +66,13 @@ export interface ScoreWeights {
 }
 
 /**
- * Driver side: David's values exactly (0.8 / 0.2). Rider side: a judgement
- * call - detour keeps the largest share because Goal 1 is measured in it, and
- * the rest is split evenly between the rider's own arrival buffer and the whole
- * car's slack. Sweepable; the sensitivity sweep is still outstanding.
+ * Driver side: David's values exactly (0.8 driving time / 0.2 slack).
+ *
+ * Rider side: 0 detour, 0.6 punctuality, 0.4 slack. These are David's two
+ * passenger constants paired the other way round from his calcPassengerScore
+ * (backend/server/scoring.ts), which weights punctuality by PUNCTUALITY_FACTOR
+ * (0.4) and slack by P_SLACK_TIME_FACTOR (0.6). Sweepable; the sensitivity
+ * sweep is still outstanding.
  */
 export const DEFAULT_WEIGHTS: ScoreWeights = {
   drivingTimeFactor: DRIVING_TIME_FACTOR,

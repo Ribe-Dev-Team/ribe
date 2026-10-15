@@ -117,9 +117,9 @@ a weighted blend of [0, 1] sub-scores.
 offerScore = 0.8 x driving time   how little of the driver's remaining detour this rider uses
            + 0.2 x slack          share of the car's arrival slack left afterwards
 
-reqScore   = 0.6 x detour         how little of their own detour cap the rider uses
-           + 0.2 x punctuality    spare minutes before their own arrival time (full at 30)
-           + 0.2 x slack
+reqScore   = 0   x detour         how little of their own detour cap the rider uses
+           + 0.6 x punctuality    spare minutes before their own arrival time (full at 30)
+           + 0.4 x slack
 ```
 
 **Slack** is David's contribution: minutes to spare before the *tightest*
@@ -128,8 +128,12 @@ as a share of what it was before. Two riders can cost the driver the same
 minutes while one of them has to be on campus 30 seconds after the car arrives;
 slack is what tells them apart. The driving-time score was already this
 module's `offerScore` — David's formula for it is the same quantity. The
-rider's detour term is ours, kept because SMART Goal 1 is measured in detour.
-Driver weights are David's (0.8 / 0.2); the rider split is a judgement call.
+rider's detour term is ours, but its default weight is 0. A rider therefore
+ranks drivers on punctuality and slack alone, and detour only limits which
+trips are feasible, through each rider's cap. Driver weights are David's
+(0.8 / 0.2). The rider weights use his two passenger constants paired the other
+way round from his `calcPassengerScore`, which gives punctuality 0.4 and slack
+0.6.
 
 **Where each score is used.** `reqScore` decides which driver a rider asks
 first. `offerScore` is reported with every match — but the keep-or-bump choice

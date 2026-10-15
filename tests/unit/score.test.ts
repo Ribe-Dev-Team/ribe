@@ -4,8 +4,8 @@ David's calcDriverScore / calcPassengerScore. Scores run 0 to 1, higher is bette
 
   sub-scores     each ingredient on its own: share of the driver's detour left,
                  slack left (minutes to spare before the tightest deadline in
-                 the car, each person measured where they get out), and that
-                 each side's weights add up to 1
+                 the car, each person measured where they get out), the
+                 default weights, and that each side's add up to 1
   scorePairing   the full score for a real pairing: two riders who cost the
                  driver the same minutes are told apart by slack
 
@@ -13,7 +13,7 @@ Travel times: synthetic, straight lines, 2.1 min per km, no noise.
 */
 
 import {
-  arrivalSlackMinutes, calcDrivingTimeScore, calcSlackScore, DEFAULT_WEIGHTS, scorePairing,
+  arrivalSlackMinutes, calcDrivingTimeScore, calcSlackScore, DEFAULT_WEIGHTS, scoreFromMetrics, scorePairing,
 } from '../../backend/server/matching/score';
 import { SyntheticTravelTime } from '../../backend/server/matching/travelTime';
 import { CAMPUS, at, makeOffer, makeRequest } from '../fixtures';
@@ -52,6 +52,38 @@ describe('sub-scores', () => {
     const w = DEFAULT_WEIGHTS;
     expect(w.drivingTimeFactor + w.driverSlackFactor).toBeCloseTo(1);
     expect(w.detourFactor + w.punctualityFactor + w.passengerSlackFactor).toBeCloseTo(1);
+  });
+
+  it('defaults to 0.8 / 0.2 for drivers and 0 / 0.6 / 0.4 for riders', () => {
+    expect(DEFAULT_WEIGHTS).toEqual({
+      drivingTimeFactor: 0.8,
+      driverSlackFactor: 0.2,
+      detourFactor: 0,
+      punctualityFactor: 0.6,
+      passengerSlackFactor: 0.4,
+    });
+  });
+});
+
+describe('scoreFromMetrics — the rider side', () => {
+  const metrics = {
+    riderDetour: 0,
+    riderMaxDetour: 10,
+    riderBuffer: 15, // half of the 30 minutes that earn full punctuality
+    marginalDriverMinutes: 0,
+    driverRemainingDetour: 20,
+    slackBefore: 20,
+    slackAfter: 5, // a quarter of the car's slack left
+  };
+
+  it('scores the rider side as 0.6 punctuality + 0.4 slack', () => {
+    const { reqScore } = scoreFromMetrics(metrics, DEFAULT_WEIGHTS);
+    expect(reqScore).toBeCloseTo(0.6 * 0.5 + 0.4 * 0.25);
+  });
+
+  it("ignores the rider's own detour by default", () => {
+    const longDetour = scoreFromMetrics({ ...metrics, riderDetour: 10 }, DEFAULT_WEIGHTS);
+    expect(longDetour.reqScore).toBeCloseTo(scoreFromMetrics(metrics, DEFAULT_WEIGHTS).reqScore);
   });
 });
 
