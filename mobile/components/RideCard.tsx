@@ -3,6 +3,7 @@ import { Alert, Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, Vie
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import NumberStepper from './NumberStepper';
+import { RideCostSplit } from '../utility/costDisplay';
 
 const APPROVAL_WINDOW_MS = 12 * 60 * 60 * 1000;
 
@@ -128,7 +129,11 @@ export interface RideCardProps {
   /** Pickups the car makes between this card's first row and campus, in
    *  order, each with its estimated time. Only shown once the trip is planned. */
   stops?: RideStop[];
+  /** The suggested contribution - a rider's own, or a driver's passengers'
+   *  in total - formatted, or 'TBC' until the runner has priced the car. */
   cost: string;
+  /** The breakdown behind `cost`, read from Firestore; see RideCostSplit. */
+  costSplit?: RideCostSplit;
   co2SavedKg: number;
   driver: { uid?: string; name: string; vehicle: string; avatarUri?: string };
   plate: string;
@@ -327,7 +332,9 @@ export default function RideCard({
       {showCostInfo && (
         <View style={styles.infoNote}>
           <Text style={styles.infoNoteText}>
-            This is the recommended fee to pay, including parking. See the FAQ for more information.
+            {isDriver
+              ? 'What your passengers are suggested to contribute towards fuel, excluding parking. See the FAQ for more information.'
+              : 'This is the recommended fee to pay towards fuel, excluding parking. See the FAQ for more information.'}
           </Text>
         </View>
       )}

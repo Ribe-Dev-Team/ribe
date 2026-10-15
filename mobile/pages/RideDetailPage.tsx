@@ -136,7 +136,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			{isConfirmed && <Section title="Other riders"><View style={styles.personRow}><View style={styles.avatar}><Text style={styles.avatarText}>EP</Text></View><View><Text style={styles.personName}>Elena Park</Text><Text style={styles.personBio}>Monash student, studying design.</Text></View></View></Section>}
 
 			<View style={styles.savingsPanel}><Text style={styles.savingsKicker}>CO2 SAVINGS</Text><Text style={styles.savingsValue}>2.4 kg saved</Text><Text style={styles.savingsText}>Sharing this ride keeps another car off the road.</Text></View>
-			<CostSplitPanel pickupAddress={ride.start} destinationAddress={ride.destination} />
+			<CostSplitPanel costSplit={ride.costSplit} />
 
 			{ride.status === 'awaiting' && (onAccept || onDecline) && (
 				<View style={[styles.editActionsRow, { marginTop: 14 }]}>

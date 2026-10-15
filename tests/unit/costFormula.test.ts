@@ -5,8 +5,7 @@ import {
   calcDetourCost,
   calcPassengerContribution,
   calcCostSplit,
-  formatDollars,
-} from '../../mobile/utility/costSplitting';
+} from '../../backend/server/costSplitting/formula';
 
 // 200 c/L, 10 L/100km -> $0.20 per km, which keeps the expected values easy to check by hand.
 const base = { medianFuelPrice: 200, vehicleEconomy: 10, tripDistanceKm: 30, tripParticipants: 3 };
@@ -41,16 +40,8 @@ describe('calcBaseTripContribution', () => {
     expect(calcBaseTripContribution(base)).toBeCloseTo(2);
   });
 
-  it('splits parking evenly across participants', () => {
-    expect(calcBaseTripContribution({ ...base, parkingCost: 9 })).toBeCloseTo(5);
-  });
-
   it.each([0, -1, 1.5])('rejects %p participants', (tripParticipants) => {
     expect(() => calcBaseTripContribution({ ...base, tripParticipants })).toThrow();
-  });
-
-  it('rejects negative parking', () => {
-    expect(() => calcBaseTripContribution({ ...base, parkingCost: -5 })).toThrow();
   });
 });
 
@@ -66,23 +57,18 @@ describe('calcDetourCost', () => {
 
 describe('calcPassengerContribution', () => {
   it('is detour cost plus base trip contribution', () => {
-    expect(calcPassengerContribution({ ...base, detourDistanceKm: 5, parkingCost: 3 })).toBeCloseTo(1 + 3);
+    expect(calcPassengerContribution({ ...base, detourDistanceKm: 5 })).toBeCloseTo(1 + 2);
   });
 });
 
 describe('calcCostSplit', () => {
   it('returns a consistent breakdown', () => {
-    const split = calcCostSplit({ ...base, detourDistanceKm: 5, parkingCost: 3 });
-    expect(split.fuelCost).toBeCloseTo(6);
-    expect(split.parkingCost).toBe(3);
-    expect(split.baseTripContribution).toBeCloseTo(3);
-    expect(split.detourCost).toBeCloseTo(1);
-    expect(split.passengerContribution).toBeCloseTo(4);
-  });
-});
-
-describe('formatDollars', () => {
-  it('rounds to cents', () => {
-    expect(formatDollars(4.256)).toBe('$4.26');
+    const split = calcCostSplit({ ...base, detourDistanceKm: 5 });
+    expect(split).toEqual({
+      fuelCost: expect.closeTo(6),
+      baseTripContribution: expect.closeTo(2),
+      detourCost: expect.closeTo(1),
+      passengerContribution: expect.closeTo(3),
+    });
   });
 });

@@ -5,6 +5,8 @@ import { RideCardProps, RideStatus, RideStop } from '../components/RideCard';
 import { db } from '../firebaseConfig';
 import { Coord } from '../pages/schema/booking.schema';
 import { BookingStatus, DisplayableBookingStatus, isDisplayable } from '../pages/schema/matchStatus';
+import { RiderCost, TripCosts } from '../pages/schema/firebaseBooking.schema';
+import { formatDollars, headlineAmount, RideCostSplit } from '../utility/costDisplay';
 
 interface FirestoreRideRecord {
   userId: string;
@@ -46,11 +48,13 @@ interface FirestoreRideRecord {
 
 type StoredTime = Timestamp | Date | string;
 
-/** A car's timetable as the matcher stored it on the offer. */
+/** A car's timetable as the matcher stored it on the offer, with the car's
+ *  cost split once the runner has priced it. */
 interface StoredSchedule {
   departAt: StoredTime;
   arriveAt: StoredTime;
-  stops: { requestId: string; pickupAt: StoredTime; arriveAt: StoredTime }[];
+  stops: { requestId: string; pickupAt: StoredTime; arriveAt: StoredTime; cost?: RiderCost }[];
+  costs?: Omit<TripCosts, 'calculatedAt'>;
 }
 
 /** The parts of a rider's matched offer their card needs, read on their behalf. */
@@ -175,6 +179,49 @@ function plannedTimes(
   if (stop) return { startAt: toDate(stop.pickupAt), endAt: toDate(stop.arriveAt) };
   if (record.pickupAt && record.arriveAt) return { startAt: toDate(record.pickupAt), endAt: toDate(record.arriveAt) };
   return undefined;
+}
+
+/**
+ * The cost split this card shows, read from the same timetable as its times -
+ * so a rider deciding on a match sees the split with them in the car. Worked
+ * out by the matching runner; undefined until it has priced the car, and for a
+ * rider still searching.
+ */
+function costSplitFor(
+  record: DisplayableRideRecord,
+  kind: 'request' | 'offer',
+  docId: string,
+  offer?: OfferView,
+): RideCostSplit | undefined {
+  if (kind === 'request' && record.status === 'pending') return undefined;
+  const schedule = scheduleFor(record, kind, docId, offer);
+  const trip = schedule?.costs;
+  if (!schedule || !trip) return undefined;
+
+  const shared = {
+    medianFuelPrice: trip.medianFuelPrice,
+    fuelType: trip.fuelType,
+    fuelSource: trip.fuelSource,
+    vehicleEconomy: trip.vehicleEconomy,
+    tripDistanceKm: trip.tripDistanceKm,
+    tripParticipants: trip.tripParticipants,
+    fuelCost: trip.fuelCost,
+    baseTripContribution: trip.baseTripContribution,
+  };
+
+  if (kind === 'offer') {
+    const contributions = schedule.stops.map((s) => s.cost?.passengerContribution);
+    if (contributions.some((c) => c === undefined)) return undefined;
+    return {
+      viewer: 'driver',
+      ...shared,
+      passengersTotal: (contributions as number[]).reduce((a, b) => a + b, 0),
+    };
+  }
+
+  const own = schedule.stops.find((s) => s.requestId === docId)?.cost;
+  if (!own) return undefined;
+  return { viewer: 'rider', ...shared, ...own };
 }
 
 /** A passenger the driver picks up, as their card names them. */
@@ -392,6 +439,7 @@ function buildRideCard(
   // and the time actually spent in the car. Until then all there is is the
   // user's own booking window, so show that.
   const planned = plannedTimes(record, kind, docId, offer);
+  const costSplit = costSplitFor(record, kind, docId, offer);
   const durationMinutes = planned
     ? Math.max(1, Math.round((planned.endAt.getTime() - planned.startAt.getTime()) / 60_000))
     : Math.max(15, Math.abs(toMinutes(arrivalTime) - toMinutes(departureTime)) || 30);
@@ -453,10 +501,10 @@ function buildRideCard(
     // told they'll still arrive by it.
     arriveBy: arrivalTime,
     stops: middleStops(record, kind, docId, offer, stopPeople),
-    // PLACEHOLDER: there is no fare model and no distance-to-CO2 calculation in
-    // the codebase yet, so these two are constants rather than data. They are
-    // NOT derived from the match.
-    cost: '$8.50',
+    cost: costLabel(costSplit),
+    costSplit,
+    // PLACEHOLDER: there is no distance-to-CO2 calculation in the codebase
+    // yet, so this is a constant rather than data. It is NOT derived from the match.
     co2SavedKg: 2.4,
     driver: {
       uid: kind === 'request' ? record.matchedDriverId : record.userId,
@@ -472,6 +520,12 @@ function buildRideCard(
     acceptDeadline: toDateOrUndefined(record.acceptDeadline),
     pickupDateTime: planned?.startAt ?? date,
   };
+}
+
+/** The amount on a ride card, or 'TBC' until the runner has priced the car. */
+function costLabel(split?: RideCostSplit): string {
+  const amount = headlineAmount(split);
+  return amount === undefined ? 'TBC' : formatDollars(amount);
 }
 
 /**

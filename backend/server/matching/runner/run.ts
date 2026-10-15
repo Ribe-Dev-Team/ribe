@@ -20,6 +20,9 @@ already has:
                                Routes API, with --routes). With no key, travel
                                times are synthetic estimates.
     FIRESTORE_EMULATOR_HOST    run against the local emulator, no credentials
+    SERVO_SAVER_API_KEY        falls back to EXPO_PUBLIC_SERVO_SAVER_API_KEY. The
+                               fuel price every car's cost split uses; without
+                               a key, an estimated Melbourne median.
 
 Distance Matrix is the default because it is the one Ribe's Maps key has
 enabled (checked with `npm run test:live`). Google made it a legacy API in
@@ -34,6 +37,8 @@ frequent runs fill cars faster, since each run offers a driver one new rider.
 import { SkipReason } from '../adapter';
 import { RejectMap } from '../types';
 import { CAMPUS_TIME_ZONE } from '../melbourneTime';
+import { DEFAULT_VEHICLE_ECONOMY } from '../../costSplitting/formula';
+import { fetchMedianFuelPrice } from '../../costSplitting/fuelPrices';
 import {
   buildGoogleTravelTimeMatrix, buildRoutesTravelTimeMatrix, SyntheticTravelTime,
 } from '../travelTime';
@@ -83,6 +88,7 @@ function printReport(report: RunReport, dryRun: boolean): void {
       const added = `${m.driverAddedMinutes >= 0 ? '+' : ''}${m.driverAddedMinutes.toFixed(1)}`;
       console.log(`  ${m.reqId} -> ${m.offerId}   rider detour ${m.riderDetour.toFixed(1)} min, driver ${added} min`);
       console.log(`      driver leaves ${clock(m.departAt)}, pickup ~${clock(m.pickupAt)}, arrives ~${clock(m.arriveAt)}`);
+      if (m.contribution !== undefined) console.log(`      suggested contribution $${m.contribution.toFixed(2)}`);
     }
     for (const s of b.writeSkips) console.log(`  not written: ${s.reqId} (${s.reason})`);
     for (const u of b.unmatched) {
@@ -128,9 +134,15 @@ async function main(): Promise<number> {
       ? 'Travel times: Google Routes API (Route Matrix), one matrix per batch'
       : 'Travel times: Google Distance Matrix API, one matrix per batch');
 
+  const fuel = await fetchMedianFuelPrice({
+    apiKey: envValue('SERVO_SAVER_API_KEY', 'EXPO_PUBLIC_SERVO_SAVER_API_KEY'),
+  });
+  console.log(`Fuel: ${fuel.price.toFixed(1)}c/L ${fuel.fuelType} (${fuel.source === 'servo-saver' ? 'Servo Saver median' : 'estimate - no Servo Saver key or lookup failed'})`);
+
   const report = await runOnce(store, {
     now,
     dryRun,
+    pricing: { fuel, vehicleEconomy: DEFAULT_VEHICLE_ECONOMY },
     travelTimes: async (points) => apiKey
       // Synthetic fallback only for a leg Google can't route at all.
       ? buildMatrix(points, { apiKey, fallback: new SyntheticTravelTime() })

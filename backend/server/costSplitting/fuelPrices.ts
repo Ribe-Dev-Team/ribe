@@ -1,19 +1,15 @@
 // Median fuel price lookup via the Victorian Government's Servo Saver public API.
-// The key isn't issued yet, so without EXPO_PUBLIC_SERVO_SAVER_API_KEY every call returns
-// FALLBACK_FUEL_PRICE and cost splitting still works end to end.
+// The key isn't issued yet, so without one every call returns FALLBACK_FUEL_PRICE
+// and cost splitting still works end to end. The runner looks the price up once
+// per run (runner/run.ts) and prices every car in that run with it.
 //
 // TODO: once the key arrives, check the endpoint, headers and response shape below against the
 // Servo Saver API docs - they're written from the published spec but haven't been exercised yet.
-
-export const SERVO_SAVER_API_KEY = process.env['EXPO_PUBLIC_SERVO_SAVER_API_KEY'] ?? '';
 
 const SERVO_SAVER_PRICES_URL = 'https://api.fuel.service.vic.gov.au/open-data/v1/fuel/prices';
 
 // Rough Melbourne median for unleaded 91 (c/L). Only used when the API is unavailable.
 export const FALLBACK_FUEL_PRICE = 190;
-
-// Servo Saver data is refreshed on a delay anyway, so there's no point refetching more often.
-const CACHE_TTL_MS = 60 * 60 * 1000;
 
 export type FuelType = 'U91' | 'P95' | 'P98' | 'E10' | 'DSL';
 
@@ -33,10 +29,12 @@ interface ServoSaverStation {
   fuelPrices?: ServoSaverPrice[];
 }
 
-const cache = new Map<FuelType, { value: MedianFuelPrice; fetchedAt: number }>();
-
-export function isFuelPricesConfigured(): boolean {
-  return SERVO_SAVER_API_KEY.length > 0;
+export interface FuelPriceOptions {
+  /** Servo Saver consumer id. Absent or empty: the fallback price, no call made. */
+  apiKey?: string;
+  fuelType?: FuelType;
+  /** Injectable for tests. Defaults to global fetch. */
+  fetchImpl?: typeof fetch;
 }
 
 export function median(values: number[]): number | null {
@@ -57,7 +55,7 @@ export function extractPrices(json: unknown, fuelType: FuelType): number[] {
   );
 }
 
-function fallback(fuelType: FuelType): MedianFuelPrice {
+export function fallbackFuelPrice(fuelType: FuelType = 'U91'): MedianFuelPrice {
   return { price: FALLBACK_FUEL_PRICE, fuelType, source: 'fallback' };
 }
 
@@ -65,34 +63,25 @@ function transactionId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-export async function fetchMedianFuelPrice(fuelType: FuelType = 'U91'): Promise<MedianFuelPrice> {
-  if (!isFuelPricesConfigured()) return fallback(fuelType);
-
-  const cached = cache.get(fuelType);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.value;
+/** Never throws: any failure is logged and priced at the fallback, so a fuel
+ *  API outage never stops a matching run. */
+export async function fetchMedianFuelPrice(opts: FuelPriceOptions = {}): Promise<MedianFuelPrice> {
+  const fuelType = opts.fuelType ?? 'U91';
+  if (!opts.apiKey) return fallbackFuelPrice(fuelType);
 
   try {
-    const response = await fetch(SERVO_SAVER_PRICES_URL, {
+    const response = await (opts.fetchImpl ?? fetch)(SERVO_SAVER_PRICES_URL, {
       headers: {
-        'x-consumer-id': SERVO_SAVER_API_KEY,
+        'x-consumer-id': opts.apiKey,
         'x-transactionid': transactionId(),
       },
     });
     if (!response.ok) throw new Error(`Servo Saver responded with ${response.status}`);
 
     const price = median(extractPrices(await response.json(), fuelType));
-    if (price === null) return fallback(fuelType);
-
-    const value: MedianFuelPrice = { price, fuelType, source: 'servo-saver' };
-    cache.set(fuelType, { value, fetchedAt: Date.now() });
-    return value;
+    return price === null ? fallbackFuelPrice(fuelType) : { price, fuelType, source: 'servo-saver' };
   } catch (err) {
     console.warn('Fuel price lookup failed:', err);
-    return fallback(fuelType);
+    return fallbackFuelPrice(fuelType);
   }
-}
-
-// Test hook - the cache is module-level so it otherwise leaks between tests.
-export function clearFuelPriceCache() {
-  cache.clear();
 }

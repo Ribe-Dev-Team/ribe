@@ -99,6 +99,22 @@ describe('groupIntoBatches', () => {
       { kind: 'offer', id: 'gone', reason: 'DEPARTED' },
     ]);
   });
+
+  it("keeps done cars apart from the matcher's, locked ones included, so only their timetables are kept up to date", () => {
+    const { batches, skipped } = groupIntoBatches(
+      [],
+      [
+        offerDoc({ id: 'open' }),
+        offerDoc({ id: 'full', status: 'confirmed' }),
+        offerDoc({ id: 'locked', status: 'confirmed', acceptingMore: false }),
+        offerDoc({ id: 'over', status: 'confirmed', date: stored(1), departureTime: '08:00' }),
+      ],
+      NOW,
+    );
+    expect(batches[0].offers.map((o) => o.id)).toEqual(['open']);
+    expect(batches[0].settledOffers.map((o) => o.id)).toEqual(['full', 'locked']);
+    expect(skipped).toEqual([{ kind: 'offer', id: 'over', reason: 'DEPARTED' }]);
+  });
 });
 
 describe('toMatchInputs', () => {
