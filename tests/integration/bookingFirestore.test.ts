@@ -8,10 +8,6 @@ import { db } from '../../mobile/firebaseConfig';
 import { collection, doc, getDoc, getDocs, query } from 'firebase/firestore';
 import { Booking, Coord } from '../../mobile/pages/schema/booking.schema';
 
-jest.mock('../../mobile/utility/emissions', () => ({
-  estimateEmissionsSaved: async () => 2.4,
-}));
-
 // The mocked Firestore/AsyncStorage use real setTimeout delays internally;
 // jest.setup.js switches the suite to fake timers by default, which would
 // hang these awaits forever.

@@ -1,5 +1,15 @@
 import {
-  collection, doc, DocumentData, getDoc, getDocs, query, serverTimestamp, Timestamp, updateDoc, where, writeBatch,
+  collection,
+  doc,
+  DocumentData,
+  getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+  where,
+  writeBatch,
 } from 'firebase/firestore';
 import { RideCardProps, RideStatus, RideStop } from '../components/RideCard';
 import { db } from '../firebaseConfig';
@@ -8,12 +18,9 @@ import { BookingStatus, DisplayableBookingStatus, isDisplayable } from '../pages
 
 interface FirestoreRideRecord {
   userId: string;
-  // Stored status, which is a superset of what RideCard can render: it also
-  // carries the terminal 'cancelled'/'expired' states the matcher can produce.
   status: BookingStatus;
   toUni: boolean;
   address: string;
-  // Optional: documents written before coordinates were captured have none.
   coord?: Coord;
   date: Timestamp | Date | string;
   departureTime: string;
@@ -22,7 +29,6 @@ interface FirestoreRideRecord {
   seatCapacity?: number;
   requestID?: string;
   offerID?: string;
-  // Written by the matching runner; all absent while still unmatched.
   matchedOfferId?: string;
   matchedDriverId?: string;
   matchedAt?: Timestamp | Date | string;
@@ -30,14 +36,11 @@ interface FirestoreRideRecord {
   riderDetourMinutes?: number;
   pendingRequestId?: string | null;
   confirmedRequestIds?: string[];
-  acceptingMore?: boolean; // false once the driver locks the trip
-  // A request's own estimated times, as of its match.
+  acceptingMore?: boolean;
   pickupAt?: StoredTime;
   arriveAt?: StoredTime;
-  // An offer's timetables (see firebaseBooking.schema.ts).
   schedule?: StoredSchedule;
   pendingSchedule?: StoredSchedule;
-  // Cancellation metadata (cancelRideRequest / cancelRideOffer / cancelConfirmedRide).
   matchedRequestId?: string;
   cancelledAt?: Timestamp | Date | string;
   cancelledBy?: string;
@@ -48,22 +51,17 @@ interface FirestoreRideRecord {
 
 type StoredTime = Timestamp | Date | string;
 
-/** A car's timetable as the matcher stored it on the offer. */
 interface StoredSchedule {
   departAt: StoredTime;
   arriveAt: StoredTime;
   stops: { requestId: string; pickupAt: StoredTime; arriveAt: StoredTime }[];
 }
 
-/** The parts of a rider's matched offer their card needs, read on their behalf. */
 type OfferView = Pick<
   FirestoreRideRecord,
-  'status' | 'schedule' | 'pendingSchedule' | 'pendingRequestId' | 'confirmedRequestIds'
-  | 'seatCapacity' | 'acceptingMore'
+  'status' | 'schedule' | 'pendingSchedule' | 'pendingRequestId' | 'confirmedRequestIds' | 'seatCapacity' | 'acceptingMore'
 >;
 
-/** A car's seats as a card shows them. `open`: still being offered new
- *  riders. `locked`: the driver stopped that, as opposed to the car being full. */
 interface SeatState {
   filled: number;
   total: number;
@@ -71,22 +69,6 @@ interface SeatState {
   locked: boolean;
 }
 
-/** A driver's car from their offer (theirs, or the one a rider is matched to). */
-function seatStateOf(offer: OfferView): SeatState | undefined {
-  if (!offer.seatCapacity) return undefined;
-  const filled = (offer.confirmedRequestIds ?? []).length;
-  const locked = offer.acceptingMore === false;
-  return { filled, total: offer.seatCapacity, open: !locked && filled < offer.seatCapacity, locked };
-}
-
-/** How long before the estimated pickup a rider is told to be ready. Covers
- *  the drive times not including traffic, and a driver running early. */
-const READY_BUFFER_MINUTES = 10;
-
-/** A stored ride that is still in play, so its status is one RideCard renders. */
-type DisplayableRideRecord = FirestoreRideRecord & { status: DisplayableBookingStatus };
-
-/** The slice of drivers/{uid} the ride cards need. */
 interface DriverSummary {
   name: string;
   vehicle: string;
@@ -99,6 +81,9 @@ interface UserRideBundle {
   offers: RideCardProps[];
 }
 
+const READY_BUFFER_MINUTES = 10;
+type DisplayableRideRecord = FirestoreRideRecord & { status: DisplayableBookingStatus };
+
 function toDate(value: Timestamp | Date | string | undefined): Date {
   if (!value) return new Date();
   if (value instanceof Date) return value;
@@ -106,11 +91,6 @@ function toDate(value: Timestamp | Date | string | undefined): Date {
   return value.toDate();
 }
 
-/**
- * Like toDate, but preserves "absent" instead of defaulting to now. An absent
- * matchedAt means "not matched", and defaulting it would start RideCard's
- * 12-hour approval countdown on a card that has no match behind it.
- */
 function toDateOrUndefined(value: Timestamp | Date | string | undefined): Date | undefined {
   return value === undefined || value === null ? undefined : toDate(value);
 }
@@ -120,30 +100,28 @@ function toMinutes(time: string) {
   return hours * 60 + minutes;
 }
 
-/** "HH:mm", the format the stored booking times use, on this device's clock. */
 function formatClock(date: Date): string {
   const rounded = new Date(Math.round(date.getTime() / 60_000) * 60_000);
   return `${String(rounded.getHours()).padStart(2, '0')}:${String(rounded.getMinutes()).padStart(2, '0')}`;
 }
 
-/** Minutes since midnight back to "HH:mm", clamped to the day. */
 function fromMinutes(total: number): string {
   const m = Math.max(0, Math.min(total, 24 * 60 - 1));
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }
 
-/** The matcher's estimate for one card: when the trip starts and ends for
- *  this user. */
 interface TripTimes {
   startAt: Date;
   endAt: Date;
 }
 
-/**
- * The car timetable this card reads. A driver's: the proposal while a rider is
- * being asked (it includes them), else the confirmed one. A rider's: the
- * proposal while they're the one being asked, the confirmed one after.
- */
+function seatStateOf(offer: OfferView): SeatState | undefined {
+  if (!offer.seatCapacity) return undefined;
+  const filled = (offer.confirmedRequestIds ?? []).length;
+  const locked = offer.acceptingMore === false;
+  return { filled, total: offer.seatCapacity, open: !locked && filled < offer.seatCapacity, locked };
+}
+
 function scheduleFor(
   record: DisplayableRideRecord,
   kind: 'request' | 'offer',
@@ -156,12 +134,6 @@ function scheduleFor(
   return offer?.pendingRequestId === docId ? offer.pendingSchedule : offer?.schedule;
 }
 
-/**
- * The times the matcher actually planned, or undefined while there are none
- * (unmatched, or matched before timetables were stored). A rider's come from
- * their stop on the car's timetable, falling back to the snapshot on their own
- * request. A driver's are their departure and arrival.
- */
 function plannedTimes(
   record: DisplayableRideRecord,
   kind: 'request' | 'offer',
@@ -179,22 +151,12 @@ function plannedTimes(
   return undefined;
 }
 
-/** A passenger the driver picks up, as their card names them. */
 interface StopPerson {
   name?: string;
   address?: string;
   emissionsSavedKg?: number;
 }
 
-/**
- * The pickups between where this card's trip starts and campus, in route
- * order, each at its estimated time. A driver's card lists every passenger,
- * by first name and address - they have to go there. A rider's lists only the
- * pickups after their own, and never another rider's name or address.
- *
- * Trips to campus only: on a trip home the stops are drop-offs, and the card
- * doesn't lay that direction out yet.
- */
 function middleStops(
   record: DisplayableRideRecord,
   kind: 'request' | 'offer',
@@ -216,7 +178,6 @@ function middleStops(
 
   return schedule.stops.map((s, index) => {
     const person = people?.get(s.requestId);
-    // The rider still deciding on this drive is on the proposal, not yet aboard.
     const name = person?.name && s.requestId === record.pendingRequestId
       ? `${person.name} (awaiting)`
       : person?.name;
@@ -227,11 +188,6 @@ function middleStops(
   });
 }
 
-/**
- * The passengers at a driver's stops: first name from users/{uid}, pickup
- * address from their request. Once per request; one that can't be read is
- * left out, and the card labels that stop "Passenger N" instead.
- */
 async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPerson>> {
   const unique = [...new Set(requestIds)];
   const out = new Map<string, StopPerson>();
@@ -262,15 +218,6 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
   return out;
 }
 
-/**
- * Everything known about a driver, from both places it lives: drivers/{uid}
- * (written by driver registration - car and plate) and users/{uid} (the
- * account - name, bio, degree, phone, and often the car too). Anyone can offer
- * a ride without finishing driver registration, so drivers/{uid} may not exist,
- * and it never holds a phone, bio or degree. Each field comes from drivers/{uid}
- * when it has a value, else users/{uid}. `{}` when neither can be read - an
- * unreadable profile must never fail the screen showing it.
- */
 export async function fetchDriverProfile(uid: string): Promise<DocumentData> {
   const read = async (collectionName: string): Promise<DocumentData> => {
     try {
@@ -290,14 +237,6 @@ export async function fetchDriverProfile(uid: string): Promise<DocumentData> {
   return merged;
 }
 
-/**
- * Fetch each matched driver's profile once, keyed by uid.
- *
- * Batched here rather than fetched per card: several of a user's requests can be
- * matched to the same driver. Details come from fetchDriverProfile (driver
- * registration and account merged). A driver neither describes yields no
- * entry, and the caller shows a placeholder rather than failing the screen.
- */
 async function fetchDrivers(uids: string[]): Promise<Map<string, DriverSummary>> {
   const unique = [...new Set(uids)];
   const out = new Map<string, DriverSummary>();
@@ -322,11 +261,6 @@ async function fetchDrivers(uids: string[]): Promise<Map<string, DriverSummary>>
   return out;
 }
 
-/**
- * Fetch the offers matched riders are on, for their timetables and to notice a
- * removed offer. Same rules as fetchDrivers: once per offer, and an unreadable
- * one just means that card falls back to what is stored on the request.
- */
 async function fetchOfferViews(offerIds: string[]): Promise<Map<string, OfferView>> {
   const unique = [...new Set(offerIds)];
   const out = new Map<string, OfferView>();
@@ -353,12 +287,6 @@ async function fetchOfferViews(offerIds: string[]): Promise<Map<string, OfferVie
   return out;
 }
 
-/**
- * A rider whose driver removed the offer is searching again. The runner makes
- * that true in Firestore on its next run (the driver's phone can't write the
- * rider's booking), so until then the card is shown as it is about to be,
- * rather than as a match that no longer exists.
- */
 function asSearchingIfDropped(
   record: DisplayableRideRecord,
   docId: string,
@@ -369,6 +297,7 @@ function asSearchingIfDropped(
     ? offer.pendingRequestId === docId
     : (offer.confirmedRequestIds ?? []).includes(docId));
   if (kept) return record;
+
   return {
     ...record,
     status: 'pending',
@@ -381,8 +310,6 @@ function asSearchingIfDropped(
   };
 }
 
-/** Takes the narrowed record: terminal statuses are filtered out before this
- *  runs, because RideCard has no rendering for them. */
 function buildRideCard(
   record: DisplayableRideRecord,
   kind: 'request' | 'offer',
@@ -395,17 +322,11 @@ function buildRideCard(
   const departureTime = record.departureTime ?? '09:00';
   const arrivalTime = record.arrivalTime ?? '10:00';
 
-  // Once matched, show the trip the matcher planned: real pickup and arrival,
-  // and the time actually spent in the car. Until then all there is is the
-  // user's own booking window, so show that.
   const planned = plannedTimes(record, kind, docId, offer);
   const durationMinutes = planned
     ? Math.max(1, Math.round((planned.endAt.getTime() - planned.startAt.getTime()) / 60_000))
     : Math.max(15, Math.abs(toMinutes(arrivalTime) - toMinutes(departureTime)) || 30);
-  // A driver leaves at the time they chose; a rider's pickup is an estimate.
   const estimated = (d: Date) => (kind === 'request' ? '~' : '') + formatClock(d);
-  // Ready a little before the car is due - but never asked to be ready before
-  // the earliest time they said they could leave.
   const readyBy = planned && kind === 'request'
     ? fromMinutes(Math.max(
       toMinutes(formatClock(planned.startAt)) - READY_BUFFER_MINUTES,
@@ -413,24 +334,16 @@ function buildRideCard(
     ))
     : undefined;
 
-  // On an offer the viewer IS the driver, so their own details belong on the
-  // card. On a request the driver's profile comes from fetchDrivers. A matched
-  // ride whose driver profile can't be read still HAS a driver - only an
-  // unmatched one is searching.
   const resolved: DriverSummary = kind === 'offer'
     ? { name: 'Your driving offer', vehicle: 'Your vehicle', plate: 'Your plate' }
     : driver ?? (record.matchedDriverId
       ? { name: 'Your driver', vehicle: 'Vehicle details coming soon', plate: 'Plate not shared' }
       : { name: 'Searching for a driver', vehicle: 'Vehicle pending', plate: 'Pending' });
 
-  // The car's seats. A rider sees them once they're confirmed in it; a driver
-  // always sees their own (0 of 3 while still searching).
   const seats = kind === 'offer'
     ? seatStateOf(record)
     : record.status === 'confirmed' && offer ? seatStateOf(offer) : undefined;
-  // A driver's trip with a passenger aboard is an upcoming drive even while it
-  // still takes more. Firestore keeps it 'pending' so the matcher can offer it
-  // more riders, but on the driver's screen it belongs with confirmed trips.
+
   const status = kind === 'offer' && record.status === 'pending' && (seats?.filled ?? 0) > 0
     ? 'confirmed'
     : record.status;
@@ -451,20 +364,12 @@ function buildRideCard(
     },
     etaMinutes: durationMinutes,
     readyBy,
-    // Nothing planned yet: show the window they gave, not times that read as
-    // a real pickup and arrival.
     timeWindow: planned ? undefined : { from: departureTime, to: arrivalTime },
     bookingWindow: { from: departureTime, to: arrivalTime },
     seats,
-    // What they asked for, so a rider in a car still taking passengers can be
-    // told they'll still arrive by it.
     arriveBy: arrivalTime,
     stops: middleStops(record, kind, docId, offer, stopPeople),
-    // PLACEHOLDER: there is no fare model in the codebase yet.
     cost: '$8.50',
-    // From the driver's point of view when he gets riders, the amount of emission saved
-    // is the total distance (driver's trip emission) plus each rider's emission.
-    // When there are no riders aboard, driver's emission saved is 0.
     co2SavedKg: (() => {
       if (kind === 'request') {
         return record.emissionsSavedKg ?? 0;
@@ -489,20 +394,12 @@ function buildRideCard(
     },
     plate: resolved.plate,
     driverPhone: resolved.phone,
-    // The matcher's own timestamp, not the time of this fetch.
     matchedAt: toDateOrUndefined(record.matchedAt),
-    // The deadline the runner actually enforces - often well under 12h, since
-    // it is clamped to the matching cutoff before departure.
     acceptDeadline: toDateOrUndefined(record.acceptDeadline),
     pickupDateTime: planned?.startAt ?? date,
   };
 }
 
-/**
- * A ride's times on one line, for the calendar and the details page: the
- * planned pickup and minutes in the car once matched, or the person's own
- * window ("07:30–09:00") while still searching - the same rule RideCard uses.
- */
 export function rideTimeSummary(
   ride: Pick<RideCardProps, 'pickup' | 'etaMinutes' | 'timeWindow'>,
 ): { time: string; duration?: string } {
@@ -520,22 +417,15 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
     getDocs(offersQuery),
   ]);
 
-  // Cancelled and expired rides are dropped rather than rendered: RideCard has
-  // no presentation for them, and they are no longer part of a user's plans.
-  // The doc id is carried alongside, because the accept/decline handlers need it
-  // to write back and it is not reliably stored inside the document.
   const narrow = (docs: { id: string; data: () => unknown }[]) =>
     docs
       .map((docSnap) => ({ id: docSnap.id, data: docSnap.data() as FirestoreRideRecord }))
       .map(({ id, data }) => ({ id, data: { ...data, status: data.status ?? 'pending' } }))
-      .filter((row): row is { id: string; data: DisplayableRideRecord } =>
-        isDisplayable(row.data.status));
+      .filter((row): row is { id: string; data: DisplayableRideRecord } => isDisplayable(row.data.status));
 
   const requestRows = narrow(requestsSnap.docs);
   const offerRows = narrow(offersSnap.docs);
 
-  // One round of driver, trip and passenger lookups covering every matched
-  // request and every planned drive on this screen.
   const [drivers, offers, stopPeople] = await Promise.all([
     fetchDrivers(
       requestRows
@@ -572,13 +462,6 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
   };
 }
 
-// ==========================================
-// CANCELLATION FUNCTIONS
-// ==========================================
-
-/**
- * Cancels an unmatched pending ride request.
- */
 export async function cancelRideRequest(requestId: string, userId: string, reason?: string): Promise<void> {
   const requestRef = doc(db, 'rideRequests', requestId);
   await updateDoc(requestRef, {
@@ -589,9 +472,6 @@ export async function cancelRideRequest(requestId: string, userId: string, reaso
   });
 }
 
-/**
- * Cancels an unmatched pending ride offer.
- */
 export async function cancelRideOffer(offerId: string, userId: string, reason?: string): Promise<void> {
   const offerRef = doc(db, 'rideOffers', offerId);
   await updateDoc(offerRef, {
@@ -602,9 +482,6 @@ export async function cancelRideOffer(offerId: string, userId: string, reason?: 
   });
 }
 
-/**
- * Cancels a confirmed ride by atomically updating both the request and offer.
- */
 export async function cancelConfirmedRide(params: {
   requestId: string;
   offerId: string;

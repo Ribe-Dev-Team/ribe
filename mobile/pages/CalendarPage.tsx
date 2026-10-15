@@ -12,13 +12,12 @@ import { fetchUserRides, rideTimeSummary } from '../services/rideData';
 
 export type RideStatus = 'pending' | 'awaiting' | 'confirmed' | 'cancelled';
 
-//TODO: link to real data
-//TODO: make the +New Ride button hover over the whole page
-//TODO: update calendar dot colours
-//TODO: make past days greyed out.
+// TODO: link to real data
+// TODO: make the +New Ride button hover over the whole page
+// TODO: update calendar dot colours
+// TODO: make past days greyed out.
 
 export interface Ride {
-  /** Firestore doc id, carried through so Accept/Decline can write back. */
   rideId?: string;
   kind?: 'request' | 'offer';
   status: RideStatus;
@@ -178,7 +177,15 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
         </View>
       ) : selectedRides.length ? selectedRides.map((ride) => {
         const detail = statusDetails[ride.status];
-        return <CalendarRideRow key={`${ride.status}-${ride.start}-${ride.time}`} onPress={() => onOpenRide(ride, selectedDate)} ride={ride} statusColor={detail.color} statusLabel={detail.label} />;
+        return (
+          <CalendarRideRow
+            key={`${ride.status}-${ride.start}-${ride.time}`}
+            onPress={() => onOpenRide(ride, selectedDate)}
+            ride={ride}
+            statusColor={detail.color}
+            statusLabel={detail.label}
+          />
+        );
       }) : <Text style={styles.emptyRides}>No rides scheduled for this day.</Text>}
     </ScrollView>
   );
