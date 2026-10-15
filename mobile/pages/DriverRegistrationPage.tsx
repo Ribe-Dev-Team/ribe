@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../auth/useAuth';
 import styles, { colors } from '../styles';
 import PressableScale from '../components/PressableScale';
-import { getDriverValidationError } from './schema/user.validation';
+import { getDriverValidationError, MAX_PLATE_LENGTH } from './schema/user.validation';
 
 interface DriverRegistrationPageProps {
   onDone: () => void;
@@ -131,6 +131,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
               <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>License plate</Text>
               <TextInput
                 autoCapitalize="characters"
+                maxLength={MAX_PLATE_LENGTH}
                 onChangeText={setLicensePlate}
                 placeholder="1ABC234"
                 placeholderTextColor={colors.whiteA40}

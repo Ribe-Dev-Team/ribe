@@ -109,6 +109,9 @@ export const getFormValidationError = ({
   return null;
 };
 
+/** The longest number plate allowed: up to 7 letters and numbers, "1ABC234". */
+export const MAX_PLATE_LENGTH = 7;
+
 export interface DriverFormValues {
   isDriver: boolean;
   vehicleMake: string;
@@ -132,6 +135,10 @@ export const getDriverValidationError = ({
 
   if (!vehicleMake.trim() || !vehicleModel.trim() || !vehicleColor.trim() || !licensePlate.trim()) {
     return 'Please fill in all vehicle details.';
+  }
+
+  if (!new RegExp(`^[A-Za-z0-9]{1,${MAX_PLATE_LENGTH}}$`).test(licensePlate.trim())) {
+    return `License plate must be up to ${MAX_PLATE_LENGTH} letters and numbers, with no spaces.`;
   }
 
   if (!Number.isInteger(Number(seatsAvailable)) || Number(seatsAvailable) < 1) {
