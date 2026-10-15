@@ -442,7 +442,8 @@ export async function setOfferLocked(offerID: string, locked: boolean): Promise<
  * The driver changes how many passengers they'll take. Never below the riders
  * already confirmed plus one deciding on a match, and within the same 1-12 the
  * booking form allows. Fewer seats than before can fill the car (it's done);
- * more can reopen a full one (back in the pool), unless it's locked.
+ * more can reopen a full one (back in the pool). Not while the drive is
+ * locked: unlock it first.
  */
 export async function updateOfferSeats(offerID: string, seats: number): Promise<void> {
   if (!Number.isInteger(seats) || seats < 1 || seats > 12) {
@@ -456,6 +457,9 @@ export async function updateOfferSeats(offerID: string, seats: number): Promise<
 
     const offer = offerSnap.data() as RideOffer;
     if (offer.status === 'cancelled') throw new Error('This offer has been removed.');
+    // A locked drive takes nobody new, so its seats change nothing - the card
+    // hides the control, and this keeps it that way.
+    if (offer.acceptingMore === false) throw new Error('Unlock this drive to change its seats.');
 
     const taken = (offer.confirmedRequestIds ?? []).length + (offer.pendingRequestId ? 1 : 0);
     if (seats < taken) {

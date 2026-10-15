@@ -124,7 +124,9 @@ export interface RideCardProps {
   /** The breakdown behind `cost`, read from Firestore; see RideCostSplit. */
   costSplit?: RideCostSplit;
   co2SavedKg: number;
-  driver: { uid?: string; name: string; vehicle: string; avatarUri?: string };
+  /** Who's driving: a rider's matched driver, or on a driver's own card,
+   *  themselves. `vehicle` is make and model; `avatarUri` their profile photo. */
+  driver: { uid?: string; name: string; vehicle: string; colour?: string; avatarUri?: string };
   plate: string;
   /** When a driver match was found - only used for 'awaiting' cards to show a 12h approval countdown */
   matchedAt?: Date;
@@ -214,9 +216,10 @@ export default function RideCard({
   // Locked, the car is as full as it's going to get: it reads 1/1, not 1/3,
   // because the empty seats aren't on offer any more.
   const seatTotal = seats && seats.locked && seats.filled > 0 ? seats.filled : seats?.total ?? 0;
-  // The driver's own controls: seats any time, lock/unlock once someone's
-  // aboard (a full car that isn't locked has nothing to lock).
-  const canEditSeats = isDriver && Boolean(onChangeSeats);
+  // The driver's own controls: seats until the drive is locked (a locked car
+  // takes nobody new, so its seat count would change nothing), lock/unlock
+  // once someone's aboard (a full car that isn't locked has nothing to lock).
+  const canEditSeats = isDriver && Boolean(onChangeSeats) && !seats?.locked;
   const canToggleLock = isDriver && Boolean(onSetLocked) && (seats?.filled ?? 0) > 0
     && Boolean(seats?.open || seats?.locked);
   const seatLabel = !seats ? '' : seats.open
@@ -250,6 +253,8 @@ export default function RideCard({
   // The whole card opens the details, as "See more information" does. The
   // buttons inside it still take their own presses - the innermost one wins.
   const openDetails = () => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true));
+  // "Toyota Corolla · Blue" - colour is left off when the driver hasn't added it.
+  const vehicleLine = [driver.vehicle, driver.colour].filter(Boolean).join(' · ');
 
   return (
     <Pressable
@@ -400,13 +405,15 @@ export default function RideCard({
       ) : (
         <>
           <View style={styles.footerRow}>
+            {/* A rider's driver opens their profile; on a driver's own card
+                the row is them, so it opens the drive's details instead. */}
             <TouchableOpacity
               style={styles.driverRow}
-              accessibilityLabel="View driver profile"
-              onPress={() => (onOpenDriverProfile ? onOpenDriverProfile() : setDetailsVisible(true))}
+              accessibilityLabel={isDriver ? 'Your car' : 'View driver profile'}
+              onPress={() => (!isDriver && onOpenDriverProfile ? onOpenDriverProfile() : openDetails())}
             >
               {driver.avatarUri ? (
-                <Image source={{ uri: driver.avatarUri }} style={styles.avatar} />
+                <Image source={{ uri: driver.avatarUri }} style={styles.avatar} accessibilityLabel={`${driver.name}'s profile photo`} />
               ) : (
                 <View style={styles.avatarFallback}>
                   <Ionicons name="person" size={16} color={colors.white} />
@@ -414,7 +421,7 @@ export default function RideCard({
               )}
               <View>
                 <Text style={styles.driverName}>{driver.name}</Text>
-                <Text style={styles.vehicleText}>{driver.vehicle}</Text>
+                <Text style={styles.vehicleText}>{vehicleLine}</Text>
               </View>
             </TouchableOpacity>
             <Text style={styles.plateBadge}>{plate}</Text>
@@ -538,14 +545,14 @@ export default function RideCard({
         <Pressable style={styles.modalBackdrop} onPress={() => setDetailsVisible(false)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             {driver.avatarUri ? (
-              <Image source={{ uri: driver.avatarUri }} style={styles.modalAvatar} />
+              <Image source={{ uri: driver.avatarUri }} style={styles.modalAvatar} accessibilityLabel={`${driver.name}'s profile photo`} />
             ) : (
               <View style={styles.modalAvatarFallback}>
                 <Ionicons name="person" size={28} color={colors.white} />
               </View>
             )}
             <Text style={styles.modalDriverName}>{driver.name}</Text>
-            <Text style={styles.modalVehicleText}>{driver.vehicle}</Text>
+            <Text style={styles.modalVehicleText}>{vehicleLine}</Text>
             {plate !== '—' && <Text style={styles.modalPlateText}>Plate: {plate}</Text>}
             {driverPhone && (
               <View style={styles.modalPhoneRow}>

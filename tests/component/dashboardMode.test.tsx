@@ -11,6 +11,8 @@ jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('../../mobile/auth/useAuth', () => ({ useAuth: () => ({ user: { uid: 'u' } }) }));
 jest.mock('../../mobile/services/rideData', () => ({
   fetchUserRides: async () => ({ requests: [], offers: [] }),
+  // Loads once, as the real one does when its listeners start.
+  watchUserRides: (_uid: string, onChange: () => void) => { onChange(); return () => {}; },
 }));
 
 const props = {

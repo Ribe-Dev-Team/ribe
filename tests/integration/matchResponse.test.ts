@@ -290,6 +290,14 @@ describe('changing seats (updateOfferSeats)', () => {
     expect((await read('rideOffers', offerId)).seatCapacity).toBe(4);
   });
 
+  it("refuses on a locked drive - it takes nobody new, so seats would change nothing", async () => {
+    const { offerId } = await seedMatch({ confirmed: ['a'], seatCapacity: 3 });
+    await setDoc(doc(db, 'rideOffers', offerId), { ...(await read('rideOffers', offerId)), pendingRequestId: null, acceptingMore: false, status: 'confirmed' });
+
+    await expect(updateOfferSeats(offerId, 4)).rejects.toThrow('Unlock this drive to change its seats.');
+    expect((await read('rideOffers', offerId)).seatCapacity).toBe(3);
+  });
+
   it('stays within the 1-12 the booking form allows', async () => {
     const { offerId } = await seedMatch();
     await expect(updateOfferSeats(offerId, 13)).rejects.toThrow(/1 to 12/);

@@ -1,5 +1,5 @@
 import {
-  collection, doc, DocumentData, getDoc, getDocs, query, serverTimestamp, Timestamp, updateDoc, where, writeBatch,
+  collection, doc, DocumentData, getDoc, getDocs, onSnapshot, query, serverTimestamp, Timestamp, updateDoc, where, writeBatch,
 } from 'firebase/firestore';
 import { RideCardProps, RideStatus, RideStop } from '../components/RideCard';
 import { db } from '../firebaseConfig';
@@ -92,10 +92,18 @@ type DisplayableRideRecord = FirestoreRideRecord & { status: DisplayableBookingS
 /** The slice of drivers/{uid} the ride cards need. */
 interface DriverSummary {
   name: string;
+  /** Make and model, "Toyota Corolla". */
   vehicle: string;
+  colour?: string;
   plate: string;
   phone?: string;
+  /** users/{uid}.profilePhotoUrl (or drivers/{uid}'s) - a data: URI. */
+  photoUrl?: string;
 }
+
+/** A driver's profile as stored, before a card fills in what's missing - a
+ *  rider's card and a driver's own card word a missing car differently. */
+type StoredDriver = Partial<Omit<DriverSummary, 'name'>> & { name?: string };
 
 interface UserRideBundle {
   requests: RideCardProps[];
@@ -352,9 +360,9 @@ export async function fetchDriverProfile(uid: string): Promise<DocumentData> {
  * registration and account merged). A driver neither describes yields no
  * entry, and the caller shows a placeholder rather than failing the screen.
  */
-async function fetchDrivers(uids: string[]): Promise<Map<string, DriverSummary>> {
+async function fetchDrivers(uids: string[]): Promise<Map<string, StoredDriver>> {
   const unique = [...new Set(uids)];
-  const out = new Map<string, DriverSummary>();
+  const out = new Map<string, StoredDriver>();
 
   await Promise.all(unique.map(async (uid) => {
     const profile = await fetchDriverProfile(uid);
@@ -366,10 +374,12 @@ async function fetchDrivers(uids: string[]): Promise<Map<string, DriverSummary>>
     if (!name && !vehicle && !plate) return;
 
     out.set(uid, {
-      name: name || 'Your driver',
-      vehicle: vehicle || 'Vehicle details coming soon',
-      plate: plate || 'Plate not shared',
+      name,
+      vehicle: vehicle || undefined,
+      colour: field('vehicleColor'),
+      plate,
       phone: field('phoneNumber'),
+      photoUrl: field('profilePhotoUrl'),
     });
   }));
 
@@ -441,7 +451,7 @@ function buildRideCard(
   record: DisplayableRideRecord,
   kind: 'request' | 'offer',
   docId: string,
-  driver?: DriverSummary,
+  driver?: StoredDriver,
   offer?: OfferView,
   stopPeople?: Map<string, StopPerson>,
 ): RideCardProps {
@@ -468,13 +478,24 @@ function buildRideCard(
     ))
     : undefined;
 
-  // On an offer the viewer IS the driver, so their own details belong on the
-  // card. On a request the driver's profile comes from fetchDrivers. A matched
-  // ride whose driver profile can't be read still HAS a driver - only an
-  // unmatched one is searching.
+  // On an offer the viewer IS the driver: their own photo, car and plate, from
+  // the same profile lookup. On a request the matched driver's. A matched ride
+  // whose driver profile can't be read still HAS a driver - only an unmatched
+  // one is searching.
   const resolved: DriverSummary = kind === 'offer'
-    ? { name: 'Your driving offer', vehicle: 'Your vehicle', plate: 'Your plate' }
-    : driver ?? (record.matchedDriverId
+    ? {
+      name: "You're driving",
+      vehicle: driver?.vehicle ?? 'Add your vehicle in your profile',
+      colour: driver?.colour,
+      plate: driver?.plate ?? 'No plate',
+      photoUrl: driver?.photoUrl,
+    }
+    : driver ? {
+      ...driver,
+      name: driver.name ?? 'Your driver',
+      vehicle: driver.vehicle ?? 'Vehicle details coming soon',
+      plate: driver.plate ?? 'Plate not shared',
+    } : (record.matchedDriverId
       ? { name: 'Your driver', vehicle: 'Vehicle details coming soon', plate: 'Plate not shared' }
       : { name: 'Searching for a driver', vehicle: 'Vehicle pending', plate: 'Pending' });
 
@@ -524,6 +545,8 @@ function buildRideCard(
       uid: kind === 'request' ? record.matchedDriverId : record.userId,
       name: resolved.name,
       vehicle: resolved.vehicle,
+      colour: resolved.colour,
+      avatarUri: resolved.photoUrl,
     },
     plate: resolved.plate,
     driverPhone: resolved.phone,
@@ -555,6 +578,36 @@ export function rideTimeSummary(
     : { time: ride.pickup.time, duration: `${ride.etaMinutes} min` };
 }
 
+/**
+ * Call `onChange` whenever this user's ride requests or offers change, and
+ * once each as the listeners start. Pages showing the user's rides rebuild
+ * their cards from it, so they stay current without being remounted.
+ *
+ * It matters most after the app's own writes. Those are transactions
+ * (setOfferLocked, acceptMatch...), which Firestore doesn't apply to its local
+ * view straight away, and while a live listener is open on a query - App
+ * keeps one on these two for notifications - a one-off read of the same query
+ * is answered from that listener's view. A fetchUserRides right after a write
+ * can therefore still see the old documents; the listener firing here is the
+ * moment the change has really arrived.
+ *
+ * Returns the unsubscribe.
+ */
+export function watchUserRides(userId: string, onChange: () => void): () => void {
+  const unsubscribeRequests = onSnapshot(
+    query(collection(db, 'rideRequests'), where('userId', '==', userId)),
+    () => onChange(),
+  );
+  const unsubscribeOffers = onSnapshot(
+    query(collection(db, 'rideOffers'), where('userId', '==', userId)),
+    () => onChange(),
+  );
+  return () => {
+    unsubscribeRequests();
+    unsubscribeOffers();
+  };
+}
+
 export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
   const requestsQuery = query(collection(db, 'rideRequests'), where('userId', '==', userId));
   const offersQuery = query(collection(db, 'rideOffers'), where('userId', '==', userId));
@@ -581,11 +634,13 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
   // One round of driver, trip and passenger lookups covering every matched
   // request and every planned drive on this screen.
   const [drivers, offers, stopPeople] = await Promise.all([
-    fetchDrivers(
-      requestRows
+    // Every matched driver, and the user themselves for their own drives' cards.
+    fetchDrivers([
+      ...requestRows
         .map((row) => row.data.matchedDriverId)
         .filter((uid): uid is string => Boolean(uid)),
-    ),
+      ...(offerRows.length > 0 ? [userId] : []),
+    ]),
     fetchOfferViews(
       requestRows
         .map((row) => row.data.matchedOfferId)
@@ -611,7 +666,7 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
         offer,
       );
     }),
-    offers: offerRows.map(({ id, data }) => buildRideCard(data, 'offer', id, undefined, undefined, stopPeople)),
+    offers: offerRows.map(({ id, data }) => buildRideCard(data, 'offer', id, drivers.get(userId), undefined, stopPeople)),
   };
 }
 

@@ -14,7 +14,7 @@ import {
 import { colors } from '../styles';
 import RideCard, { RideCardProps, RideStatus } from '../components/RideCard';
 import { useAuth } from '../auth/useAuth';
-import { fetchUserRides } from '../services/rideData';
+import { fetchUserRides, watchUserRides } from '../services/rideData';
 import { ridesForLane } from '../services/dashboardLanes';
 
 interface DashboardPageProps {
@@ -110,28 +110,35 @@ export default function DashboardPage({
     }
 
     let isMounted = true;
+    // Loads can overlap when the listeners fire close together; only the
+    // latest one may set the cards, or a slow older read could undo a newer.
+    let latestLoad = 0;
 
     const loadRides = async () => {
+      const thisLoad = ++latestLoad;
       try {
         const { requests, offers } = await fetchUserRides(user.uid);
-        if (!isMounted) return;
+        if (!isMounted || thisLoad !== latestLoad) return;
         setRiderRides(requests);
         setDriverDrives(offers);
       } catch (error) {
         console.warn('Failed to load dashboard rides:', error);
-        if (isMounted) {
+        if (isMounted && thisLoad === latestLoad) {
           setRiderRides([]);
           setDriverDrives([]);
         }
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted && thisLoad === latestLoad) setLoading(false);
       }
     };
 
-    loadRides();
+    // Rebuilt whenever the user's rides change - after locking a drive or
+    // changing its seats, say - not only when the page mounts.
+    const stopWatching = watchUserRides(user.uid, loadRides);
 
     return () => {
       isMounted = false;
+      stopWatching();
     };
   }, [user?.uid]);
 
