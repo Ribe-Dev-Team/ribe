@@ -9,24 +9,25 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import { useAuth } from '../auth/useAuth';
 import RideCard, { RideCardProps } from '../components/RideCard';
 import { fetchUserRides } from '../services/rideData';
+import { NotificationItem } from '../App';
+import { db } from '../firebaseConfig';
 
 interface HomePageProps {
+  notificationsList: NotificationItem[];
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onOpenProfile: () => void;
   onNewRide: () => void;
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
+  /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
 }
-
-const notifications = [
-  { id: '1', text: 'Your ride with Marcus Vance is confirmed for 10:30 AM.' },
-  { id: '2', text: 'A driver has been matched for your 1:15 PM request.' },
-];
 
 function ridesDescription(count: number, noun: 'ride' | 'drive') {
   if (count === 0) return `No ${noun}s scheduled for today.`;
@@ -35,11 +36,13 @@ function ridesDescription(count: number, noun: 'ride' | 'drive') {
 }
 
 export default function HomePage({
+  notificationsList,
   onScroll,
   onOpenProfile,
   onNewRide,
   onSeeRideDetails,
   onOpenDriverProfile,
+  rideActions,
 }: HomePageProps) {
   const { user } = useAuth();
   const firstName = user?.displayName?.split(' ')[0] || 'there';
@@ -56,26 +59,23 @@ export default function HomePage({
       return;
     }
 
+    setLoading(true);
     let isMounted = true;
 
+    const today = new Date();
+    const isToday = (d: Date) =>
+      d.getFullYear() === today.getFullYear() &&
+      d.getMonth() === today.getMonth() &&
+      d.getDate() === today.getDate();
+
+    // Cards are built by fetchUserRides, which also reads each match's driver and
+    // timetable. The listeners below only say WHEN to rebuild them, so Home stays live.
     const loadRides = async () => {
       try {
         const { requests, offers } = await fetchUserRides(user.uid);
         if (!isMounted) return;
-
-        // Helper function to check if a date matches today's date
-        const today = new Date();
-        const isToday = (d: Date) =>
-          d.getFullYear() === today.getFullYear() &&
-          d.getMonth() === today.getMonth() &&
-          d.getDate() === today.getDate();
-
-        // Filter requests and offers for today only
-        const todayRequests: RideCardProps[] = requests.filter((ride: RideCardProps) => isToday(ride.date));
-        const todayDrives: RideCardProps[] = offers.filter((drive: RideCardProps) => isToday(drive.date));
-
-        setTodaysRides(todayRequests);
-        setTodaysDrives(todayDrives);
+        setTodaysRides(requests.filter((ride: RideCardProps) => isToday(ride.date)));
+        setTodaysDrives(offers.filter((drive: RideCardProps) => isToday(drive.date)));
       } catch (error) {
         console.warn('Failed to load rides:', error);
         if (isMounted) {
@@ -87,9 +87,15 @@ export default function HomePage({
       }
     };
 
-    loadRides();
+    const requestsQuery = query(collection(db, 'rideRequests'), where('userId', '==', user.uid));
+    const offersQuery = query(collection(db, 'rideOffers'), where('userId', '==', user.uid));
+    const unsubscribeRequests = onSnapshot(requestsQuery, () => { loadRides(); });
+    const unsubscribeOffers = onSnapshot(offersQuery, () => { loadRides(); });
+
     return () => {
       isMounted = false;
+      unsubscribeRequests();
+      unsubscribeOffers();
     };
   }, [user?.uid]);
 
@@ -110,15 +116,25 @@ export default function HomePage({
               onPress={() => setNotificationsOpen((v) => !v)}
             >
               <Ionicons name="notifications-outline" size={22} color={colors.white} />
+              {notificationsList.length > 0 && <View style={localStyles.badgeDot} />}
             </TouchableOpacity>
             {notificationsOpen && (
               <View style={localStyles.notificationsDropdown}>
-                {notifications.map((item) => (
-                  <View key={item.id} style={localStyles.notificationRow}>
-                    <Ionicons name="ellipse" size={6} color={colors.mediumBlue} style={{ marginTop: 5 }} />
-                    <Text style={localStyles.notificationText}>{item.text}</Text>
-                  </View>
-                ))}
+                {notificationsList.length === 0 ? (
+                  <Text style={localStyles.emptyNotificationText}>No new notifications.</Text>
+                ) : (
+                  notificationsList.map((item) => (
+                    <View key={item.id} style={localStyles.notificationRow}>
+                      <Ionicons
+                        name={item.type === 'cancellation' ? 'alert-circle' : 'ellipse'}
+                        size={item.type === 'cancellation' ? 12 : 6}
+                        color={item.type === 'cancellation' ? '#E53E3E' : colors.mediumBlue}
+                        style={{ marginTop: item.type === 'cancellation' ? 2 : 5 }}
+                      />
+                      <Text style={localStyles.notificationText}>{item.text}</Text>
+                    </View>
+                  ))
+                )}
               </View>
             )}
           </View>
@@ -152,6 +168,7 @@ export default function HomePage({
           <RideCard
             key={`${ride.date.toISOString()}-${index}`}
             {...ride}
+            {...rideActions(ride)}
             onSeeDetails={() => onSeeRideDetails(ride)}
             onOpenDriverProfile={() => onOpenDriverProfile(ride)}
           />
@@ -174,6 +191,7 @@ export default function HomePage({
           <RideCard
             key={`${drive.date.toISOString()}-${index}`}
             {...drive}
+            {...rideActions(drive)}
             onSeeDetails={() => onSeeRideDetails(drive)}
             onOpenDriverProfile={() => onOpenDriverProfile(drive)}
           />
@@ -218,6 +236,15 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  badgeDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#E53E3E',
+  },
   avatarButton: {
     width: 36,
     height: 36,
@@ -251,6 +278,12 @@ const localStyles = StyleSheet.create({
     color: colors.darkBlue,
     fontSize: 12,
     lineHeight: 17,
+  },
+  emptyNotificationText: {
+    color: colors.darkBlue,
+    fontSize: 12,
+    textAlign: 'center',
+    opacity: 0.6,
   },
   ctaRow: {
     flexDirection: 'row',

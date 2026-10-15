@@ -36,3 +36,9 @@ export const onAuthStateChanged = (auth: any, callback: (user: any) => void) => 
 export const __resetAuthMock = () => {
   currentUser = null;
 };
+
+jest.mock('../../mobile/auth/useAuth', () => ({
+  useAuth: () => ({
+    user: { uid: 'mock-user-123' },
+  }),
+}));
