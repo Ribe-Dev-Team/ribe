@@ -2,6 +2,7 @@
 node_modules/
 backend/node_modules/
 mobile/node_modules/
+matching/dist/
 
 # Test coverage output
 coverage/
@@ -75,7 +76,9 @@ mup.json
 mup.js
 
 # TypeScript build info
-*.tsbuildinfo# Node modules
+*.tsbuildinfo
+
+# Node modules
 node_modules/
 
 _build
@@ -107,3 +110,8 @@ _build
 # Google Drive syncing (David)
 */desktop.ini
 *.ini
+
+# Firebase Admin service-account keys (the matching runner) - full database access, never commit
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+service-account*.json

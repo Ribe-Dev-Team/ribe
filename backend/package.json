@@ -5,12 +5,21 @@
     "start": "meteor run",
     "test": "meteor test --once --driver-package meteortesting:mocha",
     "test-app": "TEST_WATCH=1 meteor test --full-app --driver-package meteortesting:mocha",
-    "visualize": "meteor --production --extra-packages bundle-visualizer"
+    "visualize": "meteor --production --extra-packages bundle-visualizer",
+    "match": "ts-node server/matching/runner/run.ts",
+    "simulate": "ts-node -P tsconfig.json ../tests/component/simulate.ts",
+    "typecheck": "tsc --noEmit -p ."
   },
   "dependencies": {
     "@babel/runtime": "^7.29.7",
     "@swc/helpers": "^0.5.23",
+    "firebase-admin": "^13.10.0",
     "meteor-node-stubs": "^1.2.30"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
   },
   "meteor": {
     "mainModule": {
