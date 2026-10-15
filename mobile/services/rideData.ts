@@ -7,6 +7,7 @@ import { Coord } from '../pages/schema/booking.schema';
 import { BookingStatus, DisplayableBookingStatus, isDisplayable } from '../pages/schema/matchStatus';
 import { RiderCost, TripCosts } from '../pages/schema/firebaseBooking.schema';
 import { formatDollars, headlineAmount, RideCostSplit } from '../utility/costDisplay';
+import { MONASH_CLAYTON_LOCATION } from './googlePlaces';
 
 interface FirestoreRideRecord {
   userId: string;
@@ -224,10 +225,15 @@ function costSplitFor(
   return { viewer: 'rider', ...shared, ...own };
 }
 
-/** A passenger the driver picks up, as their card names them. */
+/** A passenger on a car: who they are, from users/{uid}, and where they're
+ *  collected, from their request. */
 interface StopPerson {
   name?: string;
   address?: string;
+  coord?: Coord;
+  photoUrl?: string;
+  bio?: string;
+  degree?: string;
 }
 
 /**
@@ -272,9 +278,10 @@ function middleStops(
 }
 
 /**
- * The passengers at a driver's stops: first name from users/{uid}, pickup
- * address from their request. Once per request; one that can't be read is
- * left out, and the card labels that stop "Passenger N" instead.
+ * The passengers at a car's stops: first name, photo, bio and degree from
+ * users/{uid}, pickup address and point from their request. Once per request;
+ * one that can't be read is left out, and the card labels that stop
+ * "Passenger N" instead.
  */
 async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPerson>> {
   const unique = [...new Set(requestIds)];
@@ -285,15 +292,22 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
       const snap = await getDoc(doc(db, 'rideRequests', id));
       if (!snap.exists()) return;
       const request = snap.data() as FirestoreRideRecord;
-      let name: string | undefined;
+      let profile: DocumentData = {};
       try {
         const user = request.userId ? await getDoc(doc(db, 'users', request.userId)) : undefined;
-        const fullName = user?.exists() ? (user.data()['name'] as string | undefined) : undefined;
-        name = fullName?.trim().split(/\s+/)[0] || undefined;
+        if (user?.exists()) profile = user.data();
       } catch (error) {
         console.warn('Failed to load a passenger name', id, error);
       }
-      out.set(id, { name, address: request.address || undefined });
+      const text = (field: string) => (typeof profile[field] === 'string' && profile[field].trim()) || undefined;
+      out.set(id, {
+        name: text('name')?.split(/\s+/)[0],
+        address: request.address || undefined,
+        coord: request.coord,
+        photoUrl: text('profilePhotoUrl'),
+        bio: text('bio'),
+        degree: text('degree'),
+      });
     } catch (error) {
       console.warn('Failed to load a passenger on this trip', id, error);
     }
@@ -598,6 +612,220 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
       );
     }),
     offers: offerRows.map(({ id, data }) => buildRideCard(data, 'offer', id, undefined, undefined, stopPeople)),
+  };
+}
+
+// ==========================================
+// RIDE DETAILS PAGE
+// ==========================================
+
+/** One point on a ride's map, in route order. */
+export interface RideMapPoint {
+  lat: number;
+  lng: number;
+  label: string;
+  kind: 'start' | 'stop' | 'end';
+}
+
+/** One stop on a ride's journey, in route order, as the details page lists it. */
+export interface JourneyStop {
+  kind: 'start' | 'stop' | 'end';
+  /** "Departure", "Your pickup", "Pickup · Ana", "Drop-off"... */
+  title: string;
+  address?: string;
+  /** The planned time, "~07:41"; absent until the matcher has planned the trip. */
+  time?: string;
+  /** Its marker on the map - A, 1, 2..., B - or absent when the stop isn't
+   *  on the map (another rider's, on a rider's own journey). */
+  marker?: string;
+  /** A rider still deciding on a match to this car. */
+  awaiting?: boolean;
+}
+
+/** Someone in the car, as the details page shows them. */
+export interface RidePerson {
+  name: string;
+  /** users/{uid}.profilePhotoUrl - a data: URI from the profile photo picker. */
+  photoUrl?: string;
+  bio?: string;
+  degree?: string;
+  /** A rider still deciding on a match to this car - not aboard yet. */
+  awaiting?: boolean;
+}
+
+export interface RideCar {
+  make?: string;
+  model?: string;
+  colour?: string;
+  plate?: string;
+}
+
+/** Everything the details page shows beyond the ride's own card. */
+export interface RideDetails {
+  /** A rider's driver, once matched. Absent for a driver's own offer. */
+  driver?: RidePerson & { phone?: string };
+  /** The car the ride is in: the matched driver's, or a driver's own. */
+  car?: RideCar;
+  /** Everyone else in the car, in pickup order. A rider sees the confirmed
+   *  riders they share it with; a driver every passenger, the one still
+   *  deciding included. */
+  passengers: RidePerson[];
+  /** Every stop, in order: where the trip starts, the stops along the way,
+   *  where it ends. */
+  journey: JourneyStop[];
+  /** The journey's stops that go on the map, marked as `journey` names them. */
+  mapPoints: RideMapPoint[];
+  /** When this person's trip starts - pickup or departure - for revealing
+   *  the driver's phone number. */
+  startsAt?: Date;
+}
+
+const CAMPUS_STOP = { lat: MONASH_CLAYTON_LOCATION.lat, lng: MONASH_CLAYTON_LOCATION.lng, address: MONASH_CLAYTON_LOCATION.label };
+
+const textField = (data: DocumentData, field: string) =>
+  (typeof data[field] === 'string' && data[field].trim()) || undefined;
+
+function carOf(profile: DocumentData): RideCar | undefined {
+  const car = {
+    make: textField(profile, 'vehicleMake'),
+    model: textField(profile, 'vehicleModel'),
+    colour: textField(profile, 'vehicleColor'),
+    plate: textField(profile, 'licensePlate'),
+  };
+  return Object.values(car).some(Boolean) ? car : undefined;
+}
+
+/** A stop being built: a journey stop plus, if it goes on the map, where. */
+type DraftStop = Omit<JourneyStop, 'marker'> & { at?: { lat: number; lng: number } };
+
+const estimated = (time?: StoredTime) => (time ? '~' + formatClock(toDate(time)) : undefined);
+
+/** This booking's own end of the trip - the other end is always campus. */
+const ownPlace = (record: FirestoreRideRecord) => ({
+  address: record.address || undefined,
+  at: record.coord ? { lat: record.coord.lat, lng: record.coord.lon } : undefined,
+});
+
+/** Mark the stops that go on the map - A, numbered stops, B - and list them. */
+function finishJourney(drafts: DraftStop[]): Pick<RideDetails, 'journey' | 'mapPoints'> {
+  let stopNumber = 0;
+  const journey: JourneyStop[] = [];
+  const mapPoints: RideMapPoint[] = [];
+  for (const { at, ...stop } of drafts) {
+    if (!at) { journey.push(stop); continue; }
+    const marker = stop.kind === 'start' ? 'A' : stop.kind === 'end' ? 'B' : String(++stopNumber);
+    journey.push({ ...stop, marker });
+    mapPoints.push({ ...at, label: stop.title, kind: stop.kind });
+  }
+  return { journey, mapPoints };
+}
+
+/**
+ * Load a ride's details page: its journey and map, who's driving and in what,
+ * and who else is in the car.
+ *
+ * A driver's journey is their whole route - departure, each passenger's stop
+ * by name and address, the end. A rider's lists their own stop and campus, and
+ * the other riders' stops only as "another passenger" with a time: as on their
+ * card, a rider never sees another rider's name or address on the route, and
+ * their map shows only their own two points. Anything that can't be read is
+ * left out rather than failing the page.
+ */
+export async function fetchRideDetails(rideId: string, kind: 'request' | 'offer'): Promise<RideDetails> {
+  const empty: RideDetails = { passengers: [], journey: [], mapPoints: [] };
+  const snap = await getDoc(doc(db, kind === 'offer' ? 'rideOffers' : 'rideRequests', rideId));
+  if (!snap.exists()) return empty;
+  const data = snap.data() as FirestoreRideRecord;
+  if (!isDisplayable(data.status ?? 'pending')) return empty;
+  let record = { ...data, status: data.status ?? 'pending' } as DisplayableRideRecord;
+  const own = ownPlace(record);
+  const campus = { address: CAMPUS_STOP.address, at: { lat: CAMPUS_STOP.lat, lng: CAMPUS_STOP.lng } };
+
+  const toPerson = (p: StopPerson | undefined, fallback: string, awaiting = false): RidePerson => ({
+    name: p?.name ?? fallback,
+    photoUrl: p?.photoUrl,
+    bio: p?.bio,
+    degree: p?.degree,
+    ...(awaiting ? { awaiting } : {}),
+  });
+
+  if (kind === 'offer') {
+    const schedule = scheduleFor(record, 'offer', rideId);
+    const ids = schedule?.stops.map((s) => s.requestId)
+      ?? [...(record.confirmedRequestIds ?? []), ...(record.pendingRequestId ? [record.pendingRequestId] : [])];
+    const [people, profile] = await Promise.all([fetchStopPeople(ids), fetchDriverProfile(record.userId)]);
+
+    // Going to campus a stop is a pickup; coming home, a drop-off.
+    const stops: DraftStop[] = ids.map((id, i) => {
+      const p = people.get(id);
+      const stop = schedule?.stops.find((s) => s.requestId === id);
+      return {
+        kind: 'stop',
+        title: `${record.toUni ? 'Pickup' : 'Drop-off'} · ${p?.name ?? `Passenger ${i + 1}`}`,
+        address: p?.address,
+        time: estimated(record.toUni ? stop?.pickupAt : stop?.arriveAt),
+        at: p?.coord && { lat: p.coord.lat, lng: p.coord.lon },
+        ...(id === record.pendingRequestId ? { awaiting: true } : {}),
+      };
+    });
+    const [from, to] = record.toUni ? [own, campus] : [campus, own];
+
+    return {
+      car: carOf(profile),
+      passengers: ids.map((id, i) => toPerson(people.get(id), `Passenger ${i + 1}`, id === record.pendingRequestId)),
+      ...finishJourney([
+        // The driver sets the departure, so it isn't an estimate.
+        { kind: 'start', title: 'Departure', ...from, time: schedule ? formatClock(toDate(schedule.departAt)) : undefined },
+        ...stops,
+        { kind: 'end', title: record.toUni ? 'Drop-off' : 'Home', ...to, time: estimated(schedule?.arriveAt) },
+      ]),
+      startsAt: schedule ? toDate(schedule.departAt) : undefined,
+    };
+  }
+
+  const offer = record.matchedOfferId ? (await fetchOfferViews([record.matchedOfferId])).get(record.matchedOfferId) : undefined;
+  record = asSearchingIfDropped(record, rideId, offer);
+  const matched = record.status !== 'pending' && offer && record.matchedDriverId;
+  const schedule = matched ? scheduleFor(record, 'request', rideId, offer) : undefined;
+  const ownIndex = schedule?.stops.findIndex((s) => s.requestId === rideId) ?? -1;
+  const ownStop = ownIndex >= 0 ? schedule!.stops[ownIndex] : undefined;
+
+  // The other riders' stops between this rider's two ends: pickups after
+  // theirs going to campus, drop-offs before theirs coming home.
+  const othersOnTheWay: DraftStop[] = !schedule || ownIndex < 0 ? [] : (record.toUni
+    ? schedule.stops.slice(ownIndex + 1).map((s) => ({ kind: 'stop' as const, title: 'Pickup · another passenger', time: estimated(s.pickupAt) }))
+    : schedule.stops.slice(0, ownIndex).map((s) => ({ kind: 'stop' as const, title: 'Drop-off · another passenger', time: estimated(s.arriveAt) })));
+
+  const route = finishJourney(record.toUni
+    ? [
+      { kind: 'start', title: 'Your pickup', ...own, time: estimated(ownStop?.pickupAt ?? record.pickupAt) },
+      ...othersOnTheWay,
+      { kind: 'end', title: 'Drop-off', ...campus, time: estimated(ownStop?.arriveAt ?? record.arriveAt) },
+    ]
+    : [
+      { kind: 'start', title: 'Pickup', ...campus, time: estimated(ownStop?.pickupAt ?? record.pickupAt) },
+      ...othersOnTheWay,
+      { kind: 'end', title: 'Your drop-off', ...own, time: estimated(ownStop?.arriveAt ?? record.arriveAt) },
+    ]);
+  if (!matched) return { ...empty, ...route };
+
+  // The riders they'd share the car with: those already confirmed in it.
+  const others = (offer.confirmedRequestIds ?? []).filter((id) => id !== rideId);
+  const [people, profile] = await Promise.all([fetchStopPeople(others), fetchDriverProfile(record.matchedDriverId!)]);
+  const planned = plannedTimes(record, 'request', rideId, offer);
+
+  return {
+    driver: {
+      name: textField(profile, 'name') ?? 'Your driver',
+      photoUrl: textField(profile, 'profilePhotoUrl'),
+      bio: textField(profile, 'bio'),
+      degree: textField(profile, 'degree'),
+      phone: textField(profile, 'phoneNumber'),
+    },
+    car: carOf(profile),
+    passengers: others.map((id) => toPerson(people.get(id), 'Another passenger')),
+    ...route,
+    startsAt: planned?.startAt,
   };
 }
 

@@ -161,3 +161,52 @@ export async function computeRoute({
  *  intermediate_waypoint_request_index: int32,  <- pickup/dropoff order
  * }
  */
+
+/** A point on a map, in the { lat, lng } the Maps APIs take. */
+export interface MapPoint {
+  lat: number;
+  lng: number;
+}
+
+const toWaypoint = ({ lat, lng }: MapPoint) => ({ location: { latLng: { latitude: lat, longitude: lng } } });
+
+/**
+ * The road route through `points`, in order, as an encoded polyline - the
+ * format Static Maps draws with `path=enc:`. Null when it can't be had: no key,
+ * the Routes API not enabled on it, or no route. Callers show the points alone
+ * then, so a missing route never costs the map.
+ *
+ * Traffic-unaware on purpose: it is only drawn, and a traffic-aware request
+ * refuses a departure time in the past, which every completed ride has.
+ */
+export async function fetchRoutePolyline(
+  points: MapPoint[],
+  apiKey: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string | null> {
+  if (!apiKey || points.length < 2) return null;
+  try {
+    const response = await fetchImpl('https://routes.googleapis.com/directions/v2:computeRoutes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'routes.polyline.encodedPolyline',
+      },
+      body: JSON.stringify({
+        origin: toWaypoint(points[0]),
+        destination: toWaypoint(points[points.length - 1]),
+        intermediates: points.slice(1, -1).map(toWaypoint),
+        travelMode: 'DRIVE',
+        routingPreference: 'TRAFFIC_UNAWARE',
+      }),
+    });
+    if (!response.ok) return null;
+    const json = await response.json();
+    const encoded = json?.routes?.[0]?.polyline?.encodedPolyline;
+    return typeof encoded === 'string' && encoded.length > 0 ? encoded : null;
+  } catch (err) {
+    console.warn('Route preview lookup failed:', err);
+    return null;
+  }
+}

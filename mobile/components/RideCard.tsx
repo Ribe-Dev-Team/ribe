@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import NumberStepper from './NumberStepper';
 import { RideCostSplit } from '../utility/costDisplay';
+import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
 
 const APPROVAL_WINDOW_MS = 12 * 60 * 60 * 1000;
 
@@ -36,8 +37,6 @@ function useApprovalCountdown(matchedAt?: Date, acceptDeadline?: Date) {
   return remainingMs;
 }
 
-const PHONE_REVEAL_WINDOW_MS = 12 * 60 * 60 * 1000;
-
 function useTimeUntil(target?: Date) {
   const targetMs = target ? target.getTime() : null;
   const [remainingMs, setRemainingMs] = useState(() => (targetMs ? targetMs - Date.now() : Infinity));
@@ -51,16 +50,6 @@ function useTimeUntil(target?: Date) {
   }, [targetMs]);
 
   return remainingMs;
-}
-
-function maskPhone(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  return `${digits.slice(0, 4)} •• •• ••`;
-}
-
-function formatPhone(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 10)}`;
 }
 
 export type RideStatus = 'confirmed' | 'awaiting' | 'pending' | 'cancelled';
@@ -353,7 +342,7 @@ export default function RideCard({
           {isDriver ? (
             <TouchableOpacity style={styles.removeOfferButton} onPress={confirmRemoveOffer}>
               <Ionicons name="close" size={16} color={colors.white} />
-              <Text style={styles.acceptText}>Remove offer</Text>
+              <Text style={styles.acceptText}>Remove Offer</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
@@ -588,7 +577,7 @@ export default function RideCard({
                     confirmRemoveOffer();
                   }}
                 >
-                  <Text style={styles.declineText}>Remove offer</Text>
+                  <Text style={styles.declineText}>Remove Offer</Text>
                 </TouchableOpacity>
               </View>
             ) : status === 'awaiting' ? (
