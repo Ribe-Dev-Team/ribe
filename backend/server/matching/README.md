@@ -353,8 +353,12 @@ whatever schedules `npm run match`.
    ends) and the driver's slot is freed. A rider whose driver removed the offer
    — awaiting or already confirmed — goes back to `pending` with the match
    cleared; the driver's phone can't write the rider's booking, so the runner
-   does. Both happen before matching, so everyone freed can be matched again in
-   the same run.
+   does. A confirmed rider who cancelled (`cancelConfirmedRequest`) comes off
+   their driver's `confirmedRequestIds` the same way, the other way round: the
+   rider's phone can't write the offer. That waits while another rider is
+   deciding on the car, since their proposed route includes the departed rider.
+   All of this happens before matching, so everyone freed can be matched again
+   in the same run.
 2. **Read** every request and offer whose stored status is `pending` (the app's
    word for "not matched yet" — see `mobile/pages/schema/matchStatus.ts`).
 3. **Batch** them by Melbourne date and direction, e.g. `2026-10-05_TO_CAMPUS`.
@@ -577,5 +581,9 @@ Two ways to poke at the algorithm without writing a Jest test:
   so an early arrival is treated as infeasible rather than under-reporting
   detour. This costs some matches where the driver lives further out and leaves
   early.
-- Only the rider can accept. Driver-side approval, cancelling a confirmed ride,
-  and `firestore.rules` do not exist yet.
+- Only the rider can accept. Driver-side approval and `firestore.rules` do not
+  exist yet.
+- When a confirmed rider cancels, their seat is freed on the next run, not at
+  once. Until then the driver's card still counts them. A car the driver has
+  locked loses its stored timetable, because the runner only re-plans cars that
+  are still being matched. Its cards fall back to each rider's own times.

@@ -27,9 +27,8 @@ import DriverProfilePage from './pages/DriverProfilePage';
 import DriverRegistrationPage from './pages/DriverRegistrationPage';
 import BookingPage from './pages/BookingPage';
 import {
-  acceptMatch, cancelOffer, declineMatch, setOfferLocked, updateOfferSeats,
+  acceptMatch, cancelConfirmedRequest, cancelOffer, declineMatch, deleteRideRequest, setOfferLocked, updateOfferSeats,
 } from './pages/schema/firebaseBookingMethods';
-import { deleteRideRequest } from './pages/schema/firebaseBookingMethods';
 import { db } from './firebaseConfig';
 
 export interface NotificationItem {
@@ -154,8 +153,10 @@ function buildRideActions(
       },
     };
   }
-  // A rider cancelling deletes their request. Drivers never reach this - an
-  // offer is removed through cancelOffer above, which the matcher relies on.
+  // A rider cancelling an unmatched request deletes it. A confirmed one is
+  // marked cancelled instead, so the runner can free their seat on the driver's
+  // offer. Drivers never reach this - an offer is removed through cancelOffer
+  // above, which the matcher relies on.
   const confirmed = ride.status === 'confirmed';
   return {
     onCancel: async () => {
@@ -164,7 +165,7 @@ function buildRideActions(
         return;
       }
       try {
-        await deleteRideRequest(ride.rideId);
+        await (confirmed ? cancelConfirmedRequest(ride.rideId) : deleteRideRequest(ride.rideId));
         Alert.alert(
           confirmed ? 'Ride canceled' : 'Ride request canceled',
           confirmed ? 'This ride has been canceled.' : 'This ride request has been canceled.',

@@ -343,6 +343,33 @@ export async function declineMatch(requestID: string): Promise<void> {
 }
 
 /**
+ * A confirmed rider cancels their seat. The request becomes 'cancelled' and
+ * keeps `matchedOfferId`, which is how the runner finds the car: the rider's
+ * phone can't write the driver's offer (`matchedRiderId` was removed when they
+ * accepted), so the runner takes them off it on its next run
+ * (backend/server/matching/writes.ts → planSettle) and the seat goes back into
+ * matching.
+ *
+ * Not a delete: with the request gone, the offer would still list the rider and
+ * every later run would skip the car as having a confirmed rider it can't read.
+ */
+export async function cancelConfirmedRequest(requestID: string): Promise<void> {
+  const requestRef = doc(db, 'rideRequests', requestID);
+
+  await runTransaction(db, async (tx) => {
+    const requestSnap = await tx.get(requestRef);
+    if (!requestSnap.exists()) throw new Error('No ride request ' + requestID);
+
+    const request = requestSnap.data() as RideRequest;
+    if (request.status !== 'confirmed') {
+      throw new Error('Ride request ' + requestID + " is '" + request.status + "', not confirmed.");
+    }
+
+    tx.update(requestRef, { status: 'cancelled' });
+  });
+}
+
+/**
  * The driver removes their whole offer - allowed at any time, with a rider
  * awaiting approval or with riders confirmed. The offer becomes 'cancelled' and
  * its pending slot is cleared, so a rider deciding can no longer accept it.

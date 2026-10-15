@@ -46,12 +46,15 @@ const clock = (d: Date) =>
   d.toLocaleTimeString('en-AU', { timeZone: CAMPUS_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false });
 
 function printReport(report: RunReport, dryRun: boolean): void {
-  const { released, expired } = report.settled;
+  const { released, expired, vacated } = report.settled;
   if (released.length) {
     console.log(`Returned ${released.length} rider(s) to the pool after their driver removed the offer: ${released.join(', ')}`);
   }
   if (expired.length) {
     console.log(`Expired ${expired.length} match(es) past their accept deadline: ${expired.join(', ')}`);
+  }
+  if (vacated.length) {
+    console.log(`Freed the seats of ${vacated.length} rider(s) who cancelled a confirmed ride: ${vacated.join(', ')}`);
   }
 
   if (report.skipped.length) {

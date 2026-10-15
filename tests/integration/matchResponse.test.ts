@@ -5,7 +5,7 @@
 // (backend/server/matching/runner/); these cover the app's half of the round trip.
 
 import {
-  acceptMatch, cancelOffer, declineMatch, setOfferLocked, updateOfferSeats,
+  acceptMatch, cancelConfirmedRequest, cancelOffer, declineMatch, setOfferLocked, updateOfferSeats,
 } from '../../mobile/pages/schema/firebaseBookingMethods';
 import { db } from '../../mobile/firebaseConfig';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
@@ -177,6 +177,27 @@ describe('declineMatch', () => {
     // The proposal is gone; the confirmed riders' timetable is untouched.
     expect(offer).not.toHaveProperty('pendingSchedule');
     expect(offer.schedule).toEqual(timetable(['a']));
+  });
+});
+
+describe('cancelConfirmedRequest', () => {
+  it("cancels the rider's request, keeping the offer id for the runner, and leaves the offer alone", async () => {
+    const { reqId, offerId } = await seedMatch({ confirmed: ['a'] });
+    await acceptMatch(reqId);
+    const offerBefore = await read('rideOffers', offerId);
+
+    await cancelConfirmedRequest(reqId);
+
+    // Not deleted: the runner finds the car through matchedOfferId and frees the seat.
+    expect(await read('rideRequests', reqId)).toMatchObject({ status: 'cancelled', matchedOfferId: offerId });
+    // The rider's phone can't write the driver's offer once they've accepted.
+    expect(await read('rideOffers', offerId)).toEqual(offerBefore);
+  });
+
+  it('refuses a request that is not confirmed', async () => {
+    const { reqId } = await seedMatch();
+    await expect(cancelConfirmedRequest(reqId)).rejects.toThrow("'awaiting', not confirmed");
+    expect((await read('rideRequests', reqId)).status).toBe('awaiting');
   });
 });
 

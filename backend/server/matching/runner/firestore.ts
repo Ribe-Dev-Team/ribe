@@ -121,14 +121,15 @@ export async function loadRequestsById(db: Firestore, ids: string[]): Promise<Ma
 
 /**
  * Settle every matched request against its offer (writes.ts → planSettle):
- * expire the matches past their deadline, and return riders to the pool when
- * their driver removed the offer. Runs before matching so a freed driver or
- * rider can be matched again in the same run.
+ * expire the matches past their deadline, return riders to the pool when their
+ * driver removed the offer, and take cancelled riders' seats off their offers.
+ * Runs before matching so a freed driver or rider can be matched again in the
+ * same run.
  */
 export async function settleMatched(db: Firestore, now: Date): Promise<Settled> {
-  const matched = await db.collection(REQUESTS).where('status', 'in', ['awaiting', 'confirmed']).get();
+  const matched = await db.collection(REQUESTS).where('status', 'in', ['awaiting', 'confirmed', 'cancelled']).get();
 
-  const settled: Settled = { released: [], expired: [] };
+  const settled: Settled = { released: [], expired: [], vacated: [] };
   for (const snap of matched.docs) {
     const outcome = await db.runTransaction(async (tx) => {
       const requestRef = db.collection(REQUESTS).doc(snap.id);
@@ -147,6 +148,7 @@ export async function settleMatched(db: Firestore, now: Date): Promise<Settled> 
     });
     if (outcome === 'RELEASED') settled.released.push(snap.id);
     if (outcome === 'EXPIRED') settled.expired.push(snap.id);
+    if (outcome === 'VACATED') settled.vacated.push(snap.id);
   }
   return settled;
 }

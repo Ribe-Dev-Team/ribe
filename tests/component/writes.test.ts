@@ -130,6 +130,30 @@ describe('planSettle', () => {
     expect(planSettle('r', confirmed, undefined, now)).toEqual(released);
   });
 
+  it("takes a confirmed rider who cancelled off the driver's offer", () => {
+    const cancelled: StoredRequest = { status: 'cancelled', matchedOfferId: 'o' };
+    const vacated = { outcome: 'VACATED', request: { set: {}, remove: REQUEST_MATCH_FIELDS } };
+    const full: StoredOffer = { ...offer, status: 'confirmed', seatCapacity: 2, confirmedRequestIds: ['c1', 'r'] };
+
+    // A full car has a seat again, so it goes back into the pool.
+    expect(planSettle('r', cancelled, full, now)).toEqual({
+      ...vacated,
+      offer: { set: { confirmedRequestIds: ['c1'], status: 'pending' }, remove: ['schedule'] },
+    });
+    // A locked car with someone still aboard stays done.
+    expect(planSettle('r', cancelled, { ...full, acceptingMore: false }, now)!.offer!.set.status).toBe('confirmed');
+    // Offer gone, or no longer listing them: only the request is tidied.
+    expect(planSettle('r', cancelled, undefined, now)).toEqual(vacated);
+    expect(planSettle('r', cancelled, { ...full, status: 'cancelled' }, now)).toEqual(vacated);
+    expect(planSettle('r', cancelled, { ...full, confirmedRequestIds: ['c1'] }, now)).toEqual(vacated);
+  });
+
+  it("waits while another rider is deciding on the cancelled rider's car", () => {
+    const cancelled: StoredRequest = { status: 'cancelled', matchedOfferId: 'o' };
+    const deciding: StoredOffer = { ...offer, status: 'awaiting', pendingRequestId: 'p', confirmedRequestIds: ['r'] };
+    expect(planSettle('r', cancelled, deciding, now)).toBeNull();
+  });
+
   it('waits while the rider still has time, and ignores requests not matched', () => {
     expect(planSettle('r', overdue, holding, before)).toBeNull();
     expect(planSettle('r', { status: 'awaiting', matchedOfferId: 'o' }, holding, now)).toBeNull();

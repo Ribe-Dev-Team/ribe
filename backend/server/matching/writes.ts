@@ -189,12 +189,13 @@ export const REQUEST_MATCH_FIELDS = [
 /** An offer's pending-slot fields, removed when the slot is freed. */
 export const OFFER_SLOT_FIELDS = ['matchedRiderId', 'matchedAt', 'acceptDeadline', 'pendingSchedule'];
 
-export type Settlement = 'RELEASED' | 'EXPIRED';
+export type Settlement = 'RELEASED' | 'EXPIRED' | 'VACATED';
 
 /** Request ids settled by one pass, by outcome. */
 export interface Settled {
   released: string[];
   expired: string[];
+  vacated: string[];
 }
 
 /**
@@ -209,6 +210,11 @@ export interface Settled {
  *   EXPIRED   the rider didn't answer by the deadline: the request expires -
  *             RideCard already tells the rider the trip is cancelled - and the
  *             driver's slot is freed for the next run
+ *   VACATED   a confirmed rider cancelled (cancelConfirmedRequest): their seat
+ *             comes off the driver's offer, which the rider's phone can't write.
+ *             Waits while another rider is deciding on that car - their proposed
+ *             route and pickup position include the departed rider - and goes
+ *             ahead once they answer or their match expires.
  *
  * Returns null when there is nothing to do.
  */
@@ -220,6 +226,32 @@ export function planSettle(
 ): { outcome: Settlement; request: FieldUpdate; offer?: FieldUpdate } | null {
   const released = { outcome: 'RELEASED' as const, request: { set: { status: 'pending' }, remove: REQUEST_MATCH_FIELDS } };
   const offerLive = offer !== undefined && offer.status !== 'cancelled';
+
+  if (request.status === 'cancelled') {
+    // Only a confirmed rider's cancellation keeps its offer id; a declined
+    // match has every match field removed already.
+    if (!request.matchedOfferId) return null;
+    const vacated = { outcome: 'VACATED' as const, request: { set: {}, remove: REQUEST_MATCH_FIELDS } };
+    const confirmed = offer?.confirmedRequestIds ?? [];
+    if (!offer || !offerLive || !confirmed.includes(requestId)) return vacated;
+    if (offer.pendingRequestId) return null;
+
+    const remaining = confirmed.filter((id) => id !== requestId);
+    return {
+      ...vacated,
+      offer: {
+        // Back in the pool if a seat is now free, unless it's locked with
+        // passengers still aboard. The timetable routes the car past the
+        // departed rider, so it goes; the runner re-plans it for a car in the
+        // pool, and the cards fall back to each rider's own times meanwhile.
+        set: {
+          confirmedRequestIds: remaining,
+          status: settledOfferStatus({ ...offer, confirmedRequestIds: remaining }),
+        },
+        remove: ['schedule'],
+      },
+    };
+  }
 
   if (request.status === 'confirmed') {
     const seated = offerLive && (offer.confirmedRequestIds ?? []).includes(requestId);

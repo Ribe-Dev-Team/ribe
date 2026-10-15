@@ -11,6 +11,8 @@ everything except the SDK.
                           pool and can be matched to another driver
   expiry                  an unanswered match expires and the freed driver is
                           offered someone else in the same run
+  rider cancels           a confirmed rider's seat comes off the car, which
+                          goes back into matching
   dry run                 matches are computed but nothing is written
   a failing batch         one batch failing (e.g. Google refusing) is reported
                           and doesn't stop the others
@@ -41,14 +43,14 @@ class MemoryStore implements MatchingStore {
   }
 
   async settleMatched(now: Date) {
-    const settled: Settled = { released: [], expired: [] };
+    const settled: Settled = { released: [], expired: [], vacated: [] };
     for (const [id, req] of this.requests) {
       const offer = req.matchedOfferId ? this.offers.get(req.matchedOfferId) : undefined;
       const plan = planSettle(id, req as any, offer as any, now);
       if (!plan) continue;
       this.apply(req, plan.request);
       if (plan.offer && offer) this.apply(offer, plan.offer);
-      (plan.outcome === 'RELEASED' ? settled.released : settled.expired).push(id);
+      ({ RELEASED: settled.released, EXPIRED: settled.expired, VACATED: settled.vacated })[plan.outcome].push(id);
     }
     return settled;
   }
@@ -110,6 +112,11 @@ class MemoryStore implements MatchingStore {
     });
     delete offer.matchedRiderId;
     delete offer.pendingSchedule;
+  }
+
+  /** What the app's cancelConfirmedRequest does: the rider's own request only. */
+  cancelConfirmed(reqId: string) {
+    this.requests.get(reqId)!.status = 'cancelled';
   }
 
   /** What the app's cancelOffer does: the driver removes the whole trip. */
@@ -227,6 +234,50 @@ describe('runOnce', () => {
     expect(store.requests.get('r1')!.status).toBe('expired');
     expect(report.batches[0].applied).toEqual(['r2']);
     expect(store.offers.get('d')).toMatchObject({ status: 'awaiting', pendingRequestId: 'r2' });
+  });
+
+  it("frees a confirmed rider's seat when they cancel, and matches it again in the same run", async () => {
+    const store = new MemoryStore();
+    seed(store);
+    await runOnce(store, options(store)); // r1 -> d
+    store.accept('r1');
+    store.cancelConfirmed('r1');
+
+    const report = await runOnce(store, options(store));
+
+    expect(report.settled.vacated).toEqual(['r1']);
+    expect(store.requests.get('r1')!.status).toBe('cancelled');
+    expect(store.requests.get('r1')).not.toHaveProperty('matchedOfferId');
+    // The car isn't skipped for listing a rider who left - r2 gets the seat.
+    expect(report.skipped.map((s) => s.reason)).not.toContain('CONFIRMED_RIDER_UNKNOWN');
+    expect(report.batches[0].applied).toEqual(['r2']);
+    expect(store.offers.get('d')).toMatchObject({ status: 'awaiting', pendingRequestId: 'r2', confirmedRequestIds: [] });
+    expect(store.offers.get('d')!.schedule).toBeUndefined();
+    expect(store.offers.get('d')!.pendingSchedule.stops.map((s: any) => s.requestId)).toEqual(['r2']);
+  });
+
+  it('waits for a rider deciding on the car before taking a cancelled rider off it', async () => {
+    const store = new MemoryStore();
+    seed(store);
+    await runOnce(store, options(store)); // r1 -> d
+    store.accept('r1');
+    await runOnce(store, options(store)); // r2 -> d, picked up before r1
+    store.cancelConfirmed('r1');
+
+    // r2's proposed route includes r1, so r1 stays on the car until r2 answers.
+    const waiting = await runOnce(store, options(store));
+    expect(waiting.settled.vacated).toEqual([]);
+    expect(store.offers.get('d')).toMatchObject({ pendingRequestId: 'r2', confirmedRequestIds: ['r1'] });
+
+    store.accept('r2');
+    expect(store.offers.get('d')!.confirmedRequestIds).toEqual(['r2', 'r1']);
+
+    // Then r1 comes off, and the car's timetable is re-planned without them.
+    const report = await runOnce(store, options(store));
+    expect(report.settled.vacated).toEqual(['r1']);
+    expect(store.offers.get('d')).toMatchObject({ status: 'pending', confirmedRequestIds: ['r2'] });
+    expect(report.batches[0].timetablesFilled).toEqual(['d']);
+    expect(store.offers.get('d')!.schedule.stops.map((s: any) => s.requestId)).toEqual(['r2']);
   });
 
   it('writes nothing on a dry run', async () => {

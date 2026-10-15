@@ -14,8 +14,8 @@ import {
  * One matching run, start to finish:
  *
  *   1. settle matched requests: expire matches nobody accepted in time,
- *      freeing those drivers' slots, and return riders whose driver removed
- *      the offer to the pool
+ *      freeing those drivers' slots, return riders whose driver removed
+ *      the offer to the pool, and free the seats of riders who cancelled
  *   2. read every request and offer still looking for a match
  *   3. group them into batches - one date, one direction each
  *   4. per batch: build travel times once, convert, fill in the timetable of
@@ -80,7 +80,7 @@ export interface RunReport {
 
 export async function runOnce(store: MatchingStore, opts: RunOptions): Promise<RunReport> {
   const settled: Settled = opts.dryRun
-    ? { released: [], expired: [] }
+    ? { released: [], expired: [], vacated: [] }
     : await store.settleMatched(opts.now);
 
   const pending = await store.loadPending();
