@@ -182,3 +182,27 @@ describe('validateDetailsStep - driver', () => {
     expect(result.valid).toBe(true);
   });
 });
+
+describe("validateDetailsStep - seats against the driver's car", () => {
+  const offer = { ...validRiderDetails, isDriving: true, detourTime: 15, numSeats: 3 };
+
+  test("rejects more seats than the car has", () => {
+    const result = validateDetailsStep({ ...offer, carSeats: 2 });
+    expect(result.valid).toBe(false);
+    expect(result.numSeatsErr).toBe('Your car has 2 passenger seats, so offer 2 or fewer.');
+  });
+
+  test('accepts every seat the car has, and fewer', () => {
+    expect(validateDetailsStep({ ...offer, carSeats: 3 }).valid).toBe(true);
+    expect(validateDetailsStep({ ...offer, numSeats: 1, carSeats: 3 }).numSeatsErr).toBe('');
+  });
+
+  test("says seat, not seats, for a one-seat car", () => {
+    expect(validateDetailsStep({ ...offer, numSeats: 2, carSeats: 1 }).numSeatsErr)
+      .toBe('Your car has 1 passenger seat, so offer 1 or fewer.');
+  });
+
+  test("doesn't apply to a ride request", () => {
+    expect(validateDetailsStep({ ...validRiderDetails, numSeats: 5, carSeats: 1 }).numSeatsErr).toBe('');
+  });
+});

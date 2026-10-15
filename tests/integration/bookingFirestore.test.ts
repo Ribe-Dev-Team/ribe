@@ -5,7 +5,7 @@
 
 import { addRideRequest, addRideOffer } from '../../mobile/pages/schema/firebaseBookingMethods';
 import { db } from '../../mobile/firebaseConfig';
-import { collection, doc, getDoc, getDocs, query } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc } from 'firebase/firestore';
 import { Booking, Coord } from '../../mobile/pages/schema/booking.schema';
 
 // The mocked Firestore/AsyncStorage use real setTimeout delays internally;
@@ -43,6 +43,14 @@ const baseDriverBooking: Booking = {
   capacity: 3,
   userId: 'test-user-123',
 };
+
+// Offering a ride needs a registered driver with a car (addRideOffer checks).
+// The test user is one, with 4 passenger seats; jest.setup.js empties the mock
+// after every test, so it's registered again before each.
+const registerTestDriver = (fields: Record<string, unknown> = {}) => setDoc(doc(db, 'users', 'test-user-123'), {
+  isDriver: true, vehicleMake: 'Toyota', vehicleModel: 'Corolla', licensePlate: 'ABC123', seatsAvailable: 4, ...fields,
+});
+beforeEach(() => registerTestDriver());
 
 describe('addRideRequest', () => {
   test('persists a valid ride request to Firestore', async () => {
@@ -103,6 +111,37 @@ describe('addRideRequest', () => {
 
     const snapshot = await getDocs(query(collection(db, 'rideRequests')));
     expect(snapshot.size).toBe(0);
+  });
+});
+
+describe('addRideOffer - who can offer, and how many seats', () => {
+  test('refuses someone who is not a registered driver', async () => {
+    await registerTestDriver({ isDriver: false, licensePlate: null, seatsAvailable: null });
+    await expect(addRideOffer(baseDriverBooking)).rejects.toThrow(/Register as a driver/);
+    expect((await getDocs(query(collection(db, 'rideOffers')))).size).toBe(0);
+  });
+
+  test('refuses a driver whose car is not registered', async () => {
+    await registerTestDriver({ licensePlate: null });
+    await expect(addRideOffer(baseDriverBooking)).rejects.toThrow(/Register as a driver/);
+  });
+
+  test('refuses more seats than the car has', async () => {
+    await registerTestDriver({ seatsAvailable: 2 });
+    await expect(addRideOffer({ ...baseDriverBooking, capacity: 3 })).rejects.toThrow(
+      'Your car has 2 passenger seats, so offer 2 or fewer.',
+    );
+  });
+
+  test("accepts every seat the car has", async () => {
+    await registerTestDriver({ seatsAvailable: 3 });
+    await expect(addRideOffer({ ...baseDriverBooking, capacity: 3 })).resolves.toEqual(expect.any(String));
+  });
+
+  test('takes the car from driver registration when the profile has lost it', async () => {
+    await registerTestDriver({ isDriver: false, licensePlate: null, seatsAvailable: null });
+    await setDoc(doc(db, 'drivers', 'test-user-123'), { licensePlate: 'ABC123', seatsAvailable: 3 });
+    await expect(addRideOffer({ ...baseDriverBooking, capacity: 3 })).resolves.toEqual(expect.any(String));
   });
 });
 

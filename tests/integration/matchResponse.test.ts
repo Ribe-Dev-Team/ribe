@@ -290,6 +290,16 @@ describe('changing seats (updateOfferSeats)', () => {
     expect((await read('rideOffers', offerId)).seatCapacity).toBe(4);
   });
 
+  it("never adds more seats than the driver's car has, but always lets them come down", async () => {
+    const { offerId } = await seedMatch({ confirmed: ['a'], seatCapacity: 2 });
+    await setDoc(doc(db, 'rideOffers', offerId), { ...(await read('rideOffers', offerId)), userId: 'driver-uid' });
+    await setDoc(doc(db, 'users', 'driver-uid'), { isDriver: true, licensePlate: 'ABC123', seatsAvailable: 3 });
+
+    await expect(updateOfferSeats(offerId, 4)).rejects.toThrow('Your car has 3 passenger seats, so this drive can take 3 at most.');
+    await updateOfferSeats(offerId, 3);
+    expect((await read('rideOffers', offerId)).seatCapacity).toBe(3);
+  });
+
   it("refuses on a locked drive - it takes nobody new, so seats would change nothing", async () => {
     const { offerId } = await seedMatch({ confirmed: ['a'], seatCapacity: 3 });
     await setDoc(doc(db, 'rideOffers', offerId), { ...(await read('rideOffers', offerId)), pendingRequestId: null, acceptingMore: false, status: 'confirmed' });
