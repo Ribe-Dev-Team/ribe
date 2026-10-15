@@ -1,0 +1,35 @@
+// Type-checking and ts-node settings for the TypeScript in server/ (the matcher
+// and its runner, and the trip-insertion code beside it).
+//
+// The strictness flags are the same as mobile/tsconfig.json's, deliberately:
+// the root tsconfig.json also compiles this code (the tests in ../tests import
+// it) under mobile's settings, so anything looser here would let code through
+// that the root check then rejects. What differs is only what has to: Node runs
+// this code, not Metro, so it is CommonJS for ts-node, with Node's types and no
+// JSX. The DOM library stays, as in mobile, because server/ imports app files
+// (mobile/services/googlePlaces.ts) written against the browser's fetch types.
+// Meteor ignores this file - it compiles server/ with its own TypeScript
+// package and only loads what server/main.js imports.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "node16",
+    "moduleResolution": "node16",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["server/**/*.ts"]
+}

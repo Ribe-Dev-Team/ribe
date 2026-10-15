@@ -2,12 +2,15 @@
 Utility file to handle generic date types, masks and functions.
 */
 
+import { formatTimeToStr } from "./times";
+
 export {
   datePattern,
   dateExclusions,
   monthNames,
   weekdayLabels,
   formatDateToStr,
+  formatDateTimeToStr,
   parseDateAsStr,
   startOfDay,
   isFutureDate,
@@ -44,6 +47,13 @@ function formatDateToStr(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   return `${day}-${month}-${date.getFullYear()}`;
+}
+
+/* Convert a date object into a human-readable string (using HH:MM:SS DD-MM-YYYY format) */
+function formatDateTimeToStr(date: Date): string {
+  const d = formatDateToStr(date);
+  const t = formatTimeToStr(date);
+  return t + ' ' + d;
 }
 
 /* Convert a date (as a string) into a Date object (or undefined if invalid) */
