@@ -48,7 +48,7 @@ async function pressAndConfirm(label: string, confirm: string) {
 }
 
 const show = () => render(
-  <DashboardPage onSeeRideDetails={() => {}} onOpenDriverProfile={() => {}} rideActions={rideActions} mode="driver" onModeChange={() => {}} />,
+  <DashboardPage onSeeRideDetails={() => {}} onOpenDriverProfile={() => {}} rideActions={rideActions} mode="driver" />,
 );
 
 it('shows a drive as locked as soon as the lock is written, and takes the Seats button away', async () => {

@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -23,16 +22,12 @@ interface DashboardPageProps {
   onOpenDriverProfile: (ride: RideCardProps) => void;
   /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
   rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
-  /** Rider or driver view, held by the parent so it survives the page being
-   *  remounted - which App does after every write (Lock, Seats, Accept...) to
-   *  reload, and on the way back from a ride's details. Uncontrolled (starts on
-   *  Rider) when omitted. */
-  mode?: DashboardMode;
-  onModeChange?: (mode: DashboardMode) => void;
+  /** Which of the user's trips this page is: My Rides (their ride requests)
+   *  or My Drives (their driving offers) - each its own navigation tab. */
+  mode: DashboardMode;
 }
 
 export type DashboardMode = 'rider' | 'driver';
-type ViewMode = DashboardMode;
 
 interface LaneConfig {
   status: RideStatus;
@@ -86,15 +81,9 @@ const DRIVER_LANES: LaneConfig[] = [
 const CARD_GAP = 12;
 
 export default function DashboardPage({
-  onScroll, onSeeRideDetails, onOpenDriverProfile, rideActions, mode: controlledMode, onModeChange,
+  onScroll, onSeeRideDetails, onOpenDriverProfile, rideActions, mode,
 }: DashboardPageProps) {
   const { user } = useAuth();
-  const [ownMode, setOwnMode] = useState<ViewMode>('rider');
-  const mode = controlledMode ?? ownMode;
-  const setMode = (next: ViewMode) => {
-    setOwnMode(next);
-    onModeChange?.(next);
-  };
   const [riderRides, setRiderRides] = useState<RideCardProps[]>([]);
   const [driverDrives, setDriverDrives] = useState<RideCardProps[]>([]);
   const [loading, setLoading] = useState(true);
@@ -155,35 +144,13 @@ export default function DashboardPage({
       <View style={localStyles.header}>
         <View style={localStyles.titleContainer}>
           <Text style={localStyles.title}>
-            {'Dashboard'}
+            {mode === 'rider' ? 'My Rides' : 'My Drives'}
           </Text>
           <Text style={localStyles.subtitle}>
             {mode === 'rider'
               ? 'Track your ride requests and passenger trips.'
               : 'Manage your driving offers and matched riders.'}
           </Text>
-        </View>
-        <View style={localStyles.toggle}>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Switch to rider view"
-            style={[localStyles.toggleOption, mode === 'rider' && localStyles.toggleOptionActive]}
-            onPress={() => setMode('rider')}
-          >
-            <Text style={[localStyles.toggleText, mode === 'rider' && localStyles.toggleTextActive]}>
-              Rider
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Switch to driver view"
-            style={[localStyles.toggleOption, mode === 'driver' && localStyles.toggleOptionActive]}
-            onPress={() => setMode('driver')}
-          >
-            <Text style={[localStyles.toggleText, mode === 'driver' && localStyles.toggleTextActive]}>
-              Driver
-            </Text>
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -280,30 +247,6 @@ const localStyles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
     lineHeight: 18,
-  },
-  toggle: {
-    flexDirection: 'row',
-    backgroundColor: colors.whiteA16,
-    borderRadius: 20,
-    padding: 3,
-    marginTop: 2,
-  },
-  toggleOption: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 17,
-  },
-  toggleOptionActive: {
-    backgroundColor: colors.mediumBlue,
-  },
-  toggleText: {
-    color: colors.white,
-    opacity: 0.7,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  toggleTextActive: {
-    opacity: 1,
   },
   lane: {
     marginBottom: 24,
