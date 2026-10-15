@@ -1,5 +1,6 @@
 import {
   getDriverValidationError,
+  MAX_CAR_SEATS,
   MAX_PLATE_LENGTH,
   isValidDob,
   isValidEmail,
@@ -144,5 +145,25 @@ describe('getDriverValidationError - license plate', () => {
   it('still asks for a missing plate first, and ignores the plate for non-drivers', () => {
     expect(getDriverValidationError({ ...driver, licensePlate: '  ' })).toBe('Please fill in all vehicle details.');
     expect(getDriverValidationError({ ...driver, isDriver: false, licensePlate: 'TOOLONG123' })).toBeNull();
+  });
+});
+
+describe('getDriverValidationError - car seats', () => {
+  const driver = {
+    isDriver: true, vehicleMake: 'Toyota', vehicleModel: 'Corolla', vehicleColor: 'Blue',
+    licensePlate: '1ABC234', seatsAvailable: '3',
+  };
+
+  it.each(['1', '4', '7'])('accepts %p passenger seats', (seatsAvailable) => {
+    expect(getDriverValidationError({ ...driver, seatsAvailable })).toBeNull();
+  });
+
+  it('allows at most 7', () => {
+    expect(MAX_CAR_SEATS).toBe(7);
+    expect(getDriverValidationError({ ...driver, seatsAvailable: '8' })).toBe('A car can have at most 7 passenger seats.');
+  });
+
+  it.each(['0', '-1', '2.5', 'abc'])('still refuses %p', (seatsAvailable) => {
+    expect(getDriverValidationError({ ...driver, seatsAvailable })).toBe('Please enter a valid number of seats available.');
   });
 });

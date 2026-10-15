@@ -160,9 +160,10 @@ describe('validateDetailsStep - driver', () => {
     expect(result.valid).toBe(false);
   });
 
-  test('caps seats at 12', () => {
-    const result = validateDetailsStep({ ...validDriverDetails, numSeats: 13 });
-    expect(result.numSeatsErr).toBe('Too many seats offered. Max 12.');
+  test('caps seats at 7', () => {
+    expect(validateDetailsStep({ ...validDriverDetails, numSeats: 7 }).numSeatsErr).toBe('');
+    const result = validateDetailsStep({ ...validDriverDetails, numSeats: 8 });
+    expect(result.numSeatsErr).toBe('Too many seats offered. Max 7.');
     expect(result.valid).toBe(false);
   });
 

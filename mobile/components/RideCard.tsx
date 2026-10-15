@@ -5,6 +5,7 @@ import { colors } from '../styles';
 import NumberStepper from './NumberStepper';
 import { RideCostSplit } from '../utility/costDisplay';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
+import { MAX_CAR_SEATS } from '../pages/schema/user.validation';
 
 const APPROVAL_WINDOW_MS = 12 * 60 * 60 * 1000;
 
@@ -151,9 +152,6 @@ export interface RideCardProps {
   /** Driver only: change how many passengers the drive takes. */
   onChangeSeats?: (seats: number) => void;
 }
-
-/** Most passengers an offer can take - the booking form's limit. */
-const MAX_SEATS = 12;
 
 export default function RideCard({
   kind,
@@ -515,7 +513,7 @@ export default function RideCard({
               value={seatDraft}
               onChange={setSeatDraft}
               min={Math.max(1, seatsTaken)}
-              max={MAX_SEATS}
+              max={MAX_CAR_SEATS}
               style={styles.seatEditorStepper}
             />
             <View style={styles.modalButtonRow}>

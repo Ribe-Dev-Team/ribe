@@ -6,6 +6,7 @@ import { Booking, Coord } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
 import { BOOKING_STATUSES, BookingStatus, isBookingStatus } from './matchStatus';
 import { timePattern, toMinutes } from '../../utility/times';
+import { MAX_CAR_SEATS } from './user.validation';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
 
 // convert DD-MM-YYYY string to Firestore Timestamp
@@ -222,8 +223,8 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error(`detour allowance of ${offer.maxDetourTime} (min) exceeds travel window of ${timeDiff} (min)`);
   }
 
-  if (offer.seatCapacity < 1 || offer.seatCapacity > 12) {
-    throw new Error(`Ride offers require 1 to 12 seats (inclusive) be available but ${offer.seatCapacity} were given.`);
+  if (offer.seatCapacity < 1 || offer.seatCapacity > MAX_CAR_SEATS) {
+    throw new Error(`Ride offers require 1 to ${MAX_CAR_SEATS} seats (inclusive) be available but ${offer.seatCapacity} were given.`);
   }
 
   // Only a registered driver can offer a ride, and never more seats than
@@ -472,14 +473,14 @@ export async function setOfferLocked(offerID: string, locked: boolean): Promise<
 
 /**
  * The driver changes how many passengers they'll take. Never below the riders
- * already confirmed plus one deciding on a match, and within the same 1-12 the
+ * already confirmed plus one deciding on a match, and within the same 1-7 the
  * booking form allows. Fewer seats than before can fill the car (it's done);
  * more can reopen a full one (back in the pool). Not while the drive is
  * locked: unlock it first.
  */
 export async function updateOfferSeats(offerID: string, seats: number): Promise<void> {
-  if (!Number.isInteger(seats) || seats < 1 || seats > 12) {
-    throw new Error('A drive offer needs 1 to 12 seats.');
+  if (!Number.isInteger(seats) || seats < 1 || seats > MAX_CAR_SEATS) {
+    throw new Error(`A drive offer needs 1 to ${MAX_CAR_SEATS} seats.`);
   }
   const offerRef = doc(db, 'rideOffers', offerID);
 

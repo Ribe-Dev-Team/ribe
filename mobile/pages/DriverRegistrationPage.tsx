@@ -142,6 +142,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
               <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Seats available</Text>
               <TextInput
                 keyboardType="number-pad"
+                maxLength={1}
                 onChangeText={setSeatsAvailable}
                 placeholder="2"
                 placeholderTextColor={colors.whiteA40}

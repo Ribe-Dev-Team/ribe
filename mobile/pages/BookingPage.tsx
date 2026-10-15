@@ -25,6 +25,7 @@ import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import RouteMapPreview from '../components/RouteMapPreview';
 import { geocodeAddress, ResolvedPlace } from '../services/googlePlaces';
 import { useAuth } from '../auth/useAuth';
+import { MAX_CAR_SEATS } from './schema/user.validation';
 
 interface BookingPageProps {
   onDone: () => void;
@@ -492,7 +493,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 {carSeats !== null && (
                   <Text style={localStyles.fieldHint}>Up to {carSeats} - the passenger seats in your car.</Text>
                 )}
-                <NumberStepper max={carSeats ?? 12} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
+                <NumberStepper max={carSeats ?? MAX_CAR_SEATS} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
                 {numSeatsErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{numSeatsErr}</Text>}
               </View>
             )}

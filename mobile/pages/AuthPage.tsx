@@ -578,6 +578,7 @@ export default function AuthPage({
                       <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
                       <TextInput
                         keyboardType="number-pad"
+                        maxLength={1}
                         onBlur={() => setFocusedField(null)}
                         onChangeText={setSeatsAvailable}
                         onFocus={() => setFocusedField('seatsAvailable')}

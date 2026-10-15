@@ -308,9 +308,9 @@ describe('changing seats (updateOfferSeats)', () => {
     expect((await read('rideOffers', offerId)).seatCapacity).toBe(3);
   });
 
-  it('stays within the 1-12 the booking form allows', async () => {
+  it('stays within the 1-7 the booking form allows', async () => {
     const { offerId } = await seedMatch();
-    await expect(updateOfferSeats(offerId, 13)).rejects.toThrow(/1 to 12/);
-    await expect(updateOfferSeats(offerId, 0)).rejects.toThrow(/1 to 12/);
+    await expect(updateOfferSeats(offerId, 8)).rejects.toThrow(/1 to 7/);
+    await expect(updateOfferSeats(offerId, 0)).rejects.toThrow(/1 to 7/);
   });
 });

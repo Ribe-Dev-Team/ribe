@@ -179,13 +179,13 @@ describe('addRideOffer', () => {
 
   test('rejects a seat capacity below 1', async () => {
     await expect(addRideOffer({ ...baseDriverBooking, capacity: 0 })).rejects.toThrow(
-      /require 1 to 12 seats/,
+      /require 1 to 7 seats/,
     );
   });
 
-  test('rejects a seat capacity above 12', async () => {
-    await expect(addRideOffer({ ...baseDriverBooking, capacity: 13 })).rejects.toThrow(
-      /require 1 to 12 seats/,
+  test('rejects a seat capacity above 7', async () => {
+    await expect(addRideOffer({ ...baseDriverBooking, capacity: 8 })).rejects.toThrow(
+      /require 1 to 7 seats/,
     );
   });
 
