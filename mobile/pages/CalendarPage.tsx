@@ -31,6 +31,11 @@ export interface Ride {
   driverUid?: string;
   vehicle: string;
   id?: string;
+  /** Awaiting only: whether this person, and the other side, have accepted. */
+  youAccepted?: boolean;
+  otherAccepted?: boolean;
+  /** A driver's awaiting drive only: the rider they're being asked to accept. */
+  rider?: RideCardProps['rider'];
 }
 
 const monthNames = [
@@ -101,6 +106,8 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             driverUid: ride.driver.uid,
             vehicle: ride.driver.vehicle,
             id: ride.id,
+            youAccepted: ride.youAccepted,
+            otherAccepted: ride.otherAccepted,
           })),
           ...offers.map((ride: RideCardProps) => ({
             rideId: ride.rideId,
@@ -114,6 +121,9 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             driverUid: ride.driver.uid,
             vehicle: ride.driver.vehicle,
             id: ride.id,
+            youAccepted: ride.youAccepted,
+            otherAccepted: ride.otherAccepted,
+            rider: ride.rider,
           })),
         ];
 
