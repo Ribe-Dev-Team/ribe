@@ -437,3 +437,45 @@ describe('runOnce — cost splits', () => {
     expect(again.batches[0].timetablesFilled).toEqual([]);
   });
 });
+
+describe('runOnce — trips home from campus', () => {
+  // The car can't be sent off before its riders are ready, so a driver free
+  // from 16:00 used to be refused for a rider free from 17:00 ("travel times
+  // don't overlap"), though both were heading home in the same hours. It now
+  // waits at campus for them - if everyone still gets home in time.
+  const at = (hhmm: string) => zonedDateTime({ year: 2026, month: 10, day: 5 }, hhmm);
+  function seedHome(store: MemoryStore, rider: { departureTime: string; arrivalTime: string; }) {
+    store.requests.set('r', {
+      id: 'r', userId: 'u-r', status: 'pending', toUni: false, coord: north(8), date: tripDay, ...rider,
+    });
+    store.offers.set('d', {
+      id: 'd', userId: 'u-d', status: 'pending', toUni: false, coord: north(20),
+      date: tripDay, departureTime: '16:00', arrivalTime: '18:00',
+      maxDetourTime: 20, seatCapacity: 3, pendingRequestId: null, confirmedRequestIds: [],
+    });
+  }
+
+  it('matches a driver free earlier than the rider, and plans the car to leave when the rider is ready', async () => {
+    const store = new MemoryStore();
+    seedHome(store, { departureTime: '17:00', arrivalTime: '18:00' });
+
+    const report = await runOnce(store, options(store));
+
+    expect(report.batches[0]).toMatchObject({ batchKey: '2026-10-05_FROM_CAMPUS', applied: ['r'] });
+    const { pendingSchedule } = store.offers.get('d')!;
+    expect(pendingSchedule.departAt).toEqual(at('17:00'));
+    // Everyone boards at campus at departure; the rider is home 8 km later, in time.
+    expect(store.requests.get('r')!.pickupAt).toEqual(at('17:00'));
+    expect(store.requests.get('r')!.arriveAt.getTime()).toBeLessThanOrEqual(at('17:50').getTime());
+  });
+
+  it("still refuses a rider who couldn't leave until after the driver must be home", async () => {
+    const store = new MemoryStore();
+    seedHome(store, { departureTime: '18:30', arrivalTime: '19:30' });
+
+    const report = await runOnce(store, options(store));
+
+    expect(report.batches[0].applied).toEqual([]);
+    expect(report.batches[0].unmatched[0].byOffer[0].reason).toBe('TIME_WINDOW');
+  });
+});

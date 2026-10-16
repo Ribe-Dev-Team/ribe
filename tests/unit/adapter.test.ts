@@ -163,9 +163,10 @@ describe('toMatchInputs', () => {
     const toCampus = toMatchInputs(batchOf([], [offerDoc({ id: 'o' })]), new Map(), t).offers[0];
     expect(toCampus.travelWindow).toEqual({ start: melb(5, '08:00'), end: melb(5, '09:00') });
 
-    // Leaving campus, everyone boards at departure.
+    // Leaving campus, everyone boards at departure - and the car can wait at
+    // campus for a rider ready later than the driver, up to the driver's arrival.
     const fromCampus = toMatchInputs(batchOf([], [offerDoc({ id: 'o', toUni: false })]), new Map(), t).offers[0];
-    expect(fromCampus.travelWindow).toEqual({ start: melb(5, '08:00'), end: melb(5, '08:00') });
+    expect(fromCampus.travelWindow).toEqual({ start: melb(5, '08:00'), end: melb(5, '09:00') });
   });
 
   it("gives the driver a deadline with the same margin riders get", () => {

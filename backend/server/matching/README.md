@@ -461,8 +461,12 @@ before its cutoff.
   every trip). It also matches more people: a rider who isn't ready until
   8:15 could never be collected by a driver timed from 7:00, but can once the
   trip is timed from 8:50 - "picked up before they're ready" is checked at the
-  slid times. Trips **from** campus don't slide: "leave from 5pm" means take me
-  home when class ends, so they keep the earliest departure.
+  slid times. Trips **from** campus leave at the driver's earliest - "leave
+  from 5pm" means take me home when class ends - unless a rider aboard isn't
+  ready until later; then the car waits at campus for them, as long as every
+  rider and the driver still get home by their arrival times. Without that, a
+  driver free from 4:00 could never take a rider free from 5:00 home, though
+  both are travelling in the same hours.
 
 ### Cost splitting
 

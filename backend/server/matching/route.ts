@@ -169,11 +169,18 @@ export function addPassenger(
       if (ev.riderArrivals[i] > riders[i].arriveBy) { breach = 'ARRIVAL_WINDOW'; break; }
     }
     if (breach) { sawCapViolation ??= breach; continue; }
-    // Everyone makes it leaving at the earliest; now leave as late as that
-    // allows, and check nobody is collected before they're ready THEN.
+    // Everyone makes it leaving at the earliest; now work out when the car
+    // really leaves - to campus as late as that allows, from campus once the
+    // last rider is ready - and check nobody is collected before they're ready.
     const slide = slideMinutes(offer, riders, ev);
     if (!withinTimeWindows(offer, riders, ev, departAt, slide)) {
       sawCapViolation ??= 'PICKUP_BEFORE_READY'; continue;
+    }
+    // Waiting at campus for a later rider makes everyone later home, so check
+    // the arrivals again at the real departure - the driver's own included.
+    // (Going to campus the slide is chosen so nobody is late.)
+    if (offer.direction === 'FROM_CAMPUS' && slide > 0 && !arrivesInTime(offer, riders, ev, slide)) {
+      sawCapViolation ??= 'ARRIVAL_WINDOW'; continue;
     }
 
     // Cheapest feasible insertion wins, measured by marginal driver cost.
@@ -201,11 +208,10 @@ export function addPassenger(
  * backend/server/tripAdditions.ts); the backward half - arriving too late - is
  * the arrival check `addPassenger` already makes.
  *
- * His scan also has to work out when the car can leave, because his model lets
- * departure move. Here every driver leaves at their stated time, so each stop's
- * time is already known and the check is direct: heading to campus a rider is
- * collected when the car reaches their door; leaving campus, everyone boards at
- * departure.
+ * Departure moves by `slide` (see `slideMinutes`), after which each stop's time
+ * is known and the check is direct: heading to campus a rider is collected when
+ * the car reaches their door; leaving campus, everyone boards at departure -
+ * which, from campus, the slide already sets to when the last rider is ready.
  *
  * The car is NOT modelled as waiting at a door for someone who isn't ready.
  * Waiting would delay everyone already aboard, which the detour maths doesn't
@@ -229,32 +235,54 @@ function withinTimeWindows(
 }
 
 /**
- * How many minutes later than its earliest departure a trip to campus can
- * leave and still get everyone there by their deadline - so it arrives as close
- * to the deadline as it safely can, instead of at the start of everyone's
- * window. Deadlines already include `arrivalMarginMinutes`, so "on campus by
- * 9:00" lands at 8:50. Sliding is a pure time shift: detours, pickup order and
- * the arrival checks made at the earliest departure are all unchanged.
+ * How many minutes after the driver's earliest departure the car really leaves.
+ * Sliding is a pure time shift: detours and pickup order are unchanged.
  *
- * Trips FROM campus don't slide: "leave from 5pm" means take me home when class
- * ends, so the earliest departure is the time that matters. Nor does a trip
- * whose driver has no deadline (`offer.arriveBy`), and a deadline already
- * passed at the earliest departure means 0 - leave as early as possible, never
- * later than that.
+ * TO campus: as late as still gets everyone there by their deadline - so it
+ * arrives as close to the deadline as it safely can, instead of at the start of
+ * everyone's window. Deadlines already include `arrivalMarginMinutes`, so "on
+ * campus by 9:00" lands at 8:50. A trip whose driver has no deadline
+ * (`offer.arriveBy`) doesn't slide, and a deadline already passed at the
+ * earliest departure means 0 - never later than the earliest.
+ *
+ * FROM campus: as soon as everyone aboard is ready to leave. "Leave from 5pm"
+ * means take me home when class ends, so the car goes at the driver's earliest
+ * unless a rider can't leave until later - then it waits for them, rather than
+ * a driver free from 4pm never being matched with a rider free from 5pm.
+ * Whether everyone still gets home in time after waiting is `addPassenger`'s
+ * check (`arrivesInTime`).
  *
  * `ev` must be timed from the earliest departure; `riders` are in route order.
  */
 export function slideMinutes(
   offer: MatchOffer,
-  riders: Array<{ arriveBy: Date }>,
+  riders: Array<{ arriveBy: Date; earliest?: Date }>,
   ev: RouteEvaluation,
 ): number {
-  if (offer.direction !== 'TO_CAMPUS' || !offer.arriveBy) return 0;
+  if (offer.direction === 'FROM_CAMPUS') {
+    const earliestDeparture = ev.finalArrival.getTime() - ev.totalMinutes * 60_000;
+    const lastReady = Math.max(earliestDeparture, ...riders.map((r) => r.earliest?.getTime() ?? earliestDeparture));
+    return (lastReady - earliestDeparture) / 60_000;
+  }
+  if (!offer.arriveBy) return 0;
   const spare = Math.min(
     offer.arriveBy.getTime() - ev.finalArrival.getTime(),
     ...riders.map((r, i) => r.arriveBy.getTime() - ev.riderArrivals[i].getTime()),
   ) / 60_000;
   return Math.max(0, spare);
+}
+
+/** Whether everyone - every rider, and the driver if they gave a time - still
+ *  arrives in time when the car leaves `slide` minutes after its earliest. */
+function arrivesInTime(
+  offer: MatchOffer,
+  riders: Array<{ arriveBy: Date }>,
+  ev: RouteEvaluation,
+  slide: number,
+): boolean {
+  const late = (arrival: Date, deadline: Date) => arrival.getTime() + slide * 60_000 > deadline.getTime();
+  if (offer.arriveBy && late(ev.finalArrival, offer.arriveBy)) return false;
+  return riders.every((r, i) => !late(ev.riderArrivals[i], r.arriveBy));
 }
 
 /**
@@ -321,15 +349,15 @@ export interface Timetable {
 
 /**
  * A route's timetable as it will really run: a trip to campus leaves as late as
- * still gets everyone there in time (`slideMinutes`), one leaving campus at the
- * driver's earliest - and leaving campus, everyone boards at that departure.
+ * still gets everyone there in time, one leaving campus once its last rider is
+ * ready (`slideMinutes`) - and leaving campus, everyone boards at that departure.
  * `ev` must be timed from `departAt`, the earliest departure; `riders` are in
  * route order. Used for a new match's proposed timetable and to fill in the
  * confirmed one for a car that lacks it.
  */
 export function timetableFor(
   offer: MatchOffer,
-  riders: Array<{ reqId: string; arriveBy: Date }>,
+  riders: Array<{ reqId: string; arriveBy: Date; earliest?: Date }>,
   ev: RouteEvaluation,
   departAt: Date,
 ): Timetable {

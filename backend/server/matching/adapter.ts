@@ -269,11 +269,11 @@ function toMatchRequest(
  *    window who offered 15 minutes of detour can really only give 10.
  *
  *  - Their `travelWindow` (what the time filter compares against a rider's) is
- *    when the car could be at a rider's door. Leaving campus, every passenger
- *    boards at departure, so it is exactly the departure time. Heading to
- *    campus, pickups happen somewhere along the drive, and the drive can be
- *    planned as late as the driver's arrival time - so it spans departure to
- *    arrival. Generous on purpose, like the corridor test, because a pair
+ *    when the car could be at a rider's door, from departure to arrival either
+ *    way. Heading to campus, pickups happen somewhere along a drive that can be
+ *    planned as late as the driver's arrival time. Leaving campus, everyone
+ *    boards at departure, and the car can wait at campus for a rider who's
+ *    ready later than the driver. Generous on purpose, like the corridor test, because a pair
  *    wrongly rejected here is never seen again. `addPassenger` then checks
  *    precisely that nobody is collected before they're ready and everyone
  *    arrives in time.
@@ -304,7 +304,11 @@ function toMatchOffer(
     currTripDuration = ev.totalMinutes;
   }
 
-  const lastPickup = doc.toUni ? new Date(Math.max(departAt.getTime(), driverArriveBy.getTime())) : departAt;
+  // The latest the car could be at a rider's: heading to campus, anywhere up
+  // to the driver's arrival; leaving it, the car can wait at campus for a
+  // rider until then too (`slideMinutes`). Generous either way - addPassenger
+  // checks everyone really arrives in time.
+  const lastPickup = new Date(Math.max(departAt.getTime(), driverArriveBy.getTime()));
 
   return {
     offerId: doc.id,

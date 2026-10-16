@@ -9,7 +9,7 @@
 const SERVO_SAVER_PRICES_URL = 'https://api.fuel.service.vic.gov.au/open-data/v1/fuel/prices';
 
 // Rough Melbourne median for unleaded 91 (c/L). Only used when the API is unavailable.
-export const FALLBACK_FUEL_PRICE = 190;
+export const FALLBACK_FUEL_PRICE = 240;
 
 export type FuelType = 'U91' | 'P95' | 'P98' | 'E10' | 'DSL';
 
