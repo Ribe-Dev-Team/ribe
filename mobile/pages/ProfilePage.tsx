@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -37,6 +38,15 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
   const profileName = profileData?.name || user?.displayName || 'Your name';
   const profileEmail = profileData?.email || user?.email || 'No email added';
   const profileDob = profileData?.dob || 'Not added';
+
+  const confirmLogout = () => Alert.alert(
+    'Sign out?',
+    'Are you sure you want to sign out of Ribe?',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: onLogout },
+    ],
+  );
 
   const openImagePicker = async () => {
     try {
@@ -106,7 +116,7 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
             <View style={styles.profileCard}>
               {!isEditing && (
                 <View style={localStyles.topActionsRow}>
-                  <PressableScale onPress={onLogout} style={localStyles.signOutButton}>
+                  <PressableScale onPress={confirmLogout} style={localStyles.signOutButton}>
                     <Ionicons name="log-out-outline" size={14} color={colors.white} />
                     <Text style={localStyles.signOutText}>Sign out</Text>
                   </PressableScale>
