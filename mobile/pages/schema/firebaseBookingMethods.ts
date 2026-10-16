@@ -114,7 +114,7 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
   }
 
   try {
-    const emissions = await estimateEmissionsSaved(req.address, 1);
+    const emissions = await estimateEmissionsSaved(req.address, 1, coord, req.toUni);
     if (emissions !== null) {
       req.emissionsSavedKg = emissions;
     }
@@ -210,7 +210,7 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
   }
 
   try {
-    const driverEmission = await estimateEmissionsSaved(offer.address, 1);
+    const driverEmission = await estimateEmissionsSaved(offer.address, 1, coord, offer.toUni);
     if (driverEmission !== null) {
       offer.driverEmissionsKg = driverEmission;
       offer.emissionsSavedKg = 0;
@@ -285,8 +285,7 @@ export async function acceptMatch(requestID: string): Promise<void> {
     const currentRiderEmission = request.emissionsSavedKg ?? 0;
     const allRiderEmissions = [...otherRiderEmissions, currentRiderEmission];
 
-    const driverEmission = offer.driverEmissionsKg ?? offer.emissionsSavedKg ?? 0;
-    const emissionsSavedKg = Math.round((driverEmission + allRiderEmissions.reduce((a, b) => a + b, 0)) * 10) / 10;
+    const emissionsSavedKg = Math.round(allRiderEmissions.reduce((a, b) => a + b, 0) * 10) / 10;
 
     tx.update(requestRef, { status: 'confirmed' });
     tx.update(offerRef, {

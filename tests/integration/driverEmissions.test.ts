@@ -1,4 +1,4 @@
-import { acceptMatch, addRideOffer, addRideRequest } from '../../mobile/pages/schema/firebaseBookingMethods';
+import { acceptMatch } from '../../mobile/pages/schema/firebaseBookingMethods';
 import { db } from '../../mobile/firebaseConfig';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { fetchUserRides } from '../../mobile/services/rideData';
@@ -19,7 +19,7 @@ jest.mock('../../mobile/utility/emissions', () => {
 jest.useRealTimers();
 
 describe('Driver emissions saved when getting riders', () => {
-  it('updates driver offer emissionsSavedKg as the total distance plus each riders emission upon acceptMatch', async () => {
+  it('updates driver offer emissionsSavedKg as the sum of rider emissions upon acceptMatch', async () => {
     const offerId = 'driver-offer-emissions-test';
     const req1Id = 'rider-1-req';
     const req2Id = 'rider-2-req';
@@ -55,8 +55,7 @@ describe('Driver emissions saved when getting riders', () => {
     expect(offerSnap1.exists()).toBe(true);
     const offerData1 = offerSnap1.data()!;
     expect(offerData1.confirmedRequestIds).toEqual([req1Id]);
-    // Amount saved is driver total distance emission (3.4) + rider 1 emission (2.5) = 5.9
-    expect(offerData1.emissionsSavedKg).toBe(5.9);
+    expect(offerData1.emissionsSavedKg).toBe(2.5);
 
     // Now driver gets a second rider (Rider 2)
     await setDoc(doc(db, 'rideOffers', offerId), {
@@ -82,8 +81,7 @@ describe('Driver emissions saved when getting riders', () => {
     const offerSnap2 = await getDoc(doc(db, 'rideOffers', offerId));
     const offerData2 = offerSnap2.data()!;
     expect(offerData2.confirmedRequestIds).toEqual([req1Id, req2Id]);
-    // Amount saved is driver total distance emission (3.4) + rider 1 (2.5) + rider 2 (1.8) = 7.7
-    expect(offerData2.emissionsSavedKg).toBe(7.7);
+    expect(offerData2.emissionsSavedKg).toBe(4.3);
   });
 
   it('reflects correct emissions saved on driver ride card via fetchUserRides', async () => {
@@ -130,13 +128,12 @@ describe('Driver emissions saved when getting riders', () => {
       seatCapacity: 3,
       confirmedRequestIds: [riderReqId],
       driverEmissionsKg: 3.4,
-      emissionsSavedKg: 5.9,
+      emissionsSavedKg: 2.5,
     });
 
     const ridesAfter = await fetchUserRides(driverUid);
     expect(ridesAfter.offers.length).toBe(1);
-    // Driver gets rider: emission saved is total distance (3.4) + rider emission (2.5) = 5.9
-    expect(ridesAfter.offers[0].co2SavedKg).toBe(5.9);
+    expect(ridesAfter.offers[0].co2SavedKg).toBe(2.5);
   });
 });
 

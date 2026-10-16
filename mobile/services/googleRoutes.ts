@@ -97,7 +97,7 @@ export async function computeRoute({
     body: JSON.stringify(routeReq),
   });
 
-  if (routeComp.ok) {
+  if (!routeComp.ok) {
     // handle error
     const err = await routeComp.text();
     throw new Error(`Failed to compute route (${routeComp.status}):\n${err}`);

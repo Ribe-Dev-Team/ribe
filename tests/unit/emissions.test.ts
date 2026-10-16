@@ -7,6 +7,7 @@ import {
   estimateDriverEmissionsSaved,
 } from '../../mobile/utility/emissions';
 import * as googlePlaces from '../../mobile/services/googlePlaces';
+import * as googleRoutes from '../../mobile/services/googleRoutes';
 
 jest.mock('../../mobile/services/googlePlaces', () => ({
   MONASH_CLAYTON_LOCATION: {
@@ -14,7 +15,13 @@ jest.mock('../../mobile/services/googlePlaces', () => ({
     lat: -37.9106,
     lng: 145.1361,
   },
+  GOOGLE_MAPS_API_KEY: 'test-key',
+  isPlacesConfigured: () => true,
   geocodeAddress: jest.fn(),
+}));
+
+jest.mock('../../mobile/services/googleRoutes', () => ({
+  computeRoute: jest.fn(),
 }));
 
 describe('emissions calculator', () => {
@@ -47,6 +54,57 @@ describe('emissions calculator', () => {
       expect(dist).not.toBeNull();
       expect(dist!).toBeGreaterThan(12);
       expect(dist!).toBeLessThan(15);
+    });
+
+    it('uses Google Routes distance in km when the route is available', async () => {
+      (googlePlaces.geocodeAddress as jest.Mock).mockResolvedValue({
+        lat: -37.8206,
+        lng: 145.1361,
+        description: 'Test Location',
+      });
+      (googleRoutes.computeRoute as jest.Mock).mockResolvedValue({ routes: [{ distanceMeters: 12345 }] });
+
+      await expect(getRoadDistanceKm('123 North St')).resolves.toBe(12.345);
+      expect(googleRoutes.computeRoute).toHaveBeenCalledWith(expect.objectContaining({
+        apiKey: 'test-key',
+        fieldMask: 'routes.distanceMeters',
+        route: expect.objectContaining({
+          origin: { lat: -37.8206, lon: 145.1361 },
+          dest: { lat: -37.9106, lon: 145.1361 },
+        }),
+      }));
+    });
+
+    it('uses the existing road-factor estimate if route lookup fails', async () => {
+      (googlePlaces.geocodeAddress as jest.Mock).mockResolvedValue({
+        lat: -37.8206,
+        lng: 145.1361,
+        description: 'Test Location',
+      });
+      (googleRoutes.computeRoute as jest.Mock).mockRejectedValue(new Error('Routes API unavailable'));
+
+      const dist = await getRoadDistanceKm('123 North St');
+      expect(dist).toBeGreaterThan(12);
+      expect(dist).toBeLessThan(15);
+    });
+
+    it('uses stored coordinates without geocoding', async () => {
+      (googleRoutes.computeRoute as jest.Mock).mockResolvedValue({ routes: [{ distanceMeters: 8000 }] });
+
+      await expect(getRoadDistanceKm('ignored', { lat: -37.8206, lon: 145.1361 })).resolves.toBe(8);
+      expect(googlePlaces.geocodeAddress).not.toHaveBeenCalled();
+    });
+
+    it('routes from campus to home for trips leaving campus', async () => {
+      const home = { lat: -37.8206, lon: 145.1361 };
+      const campus = { lat: -37.9106, lon: 145.1361 };
+      (googleRoutes.computeRoute as jest.Mock).mockResolvedValue({ routes: [{ distanceMeters: 8000 }] });
+
+      await getRoadDistanceKm('ignored', home, false);
+
+      expect(googleRoutes.computeRoute).toHaveBeenCalledWith(expect.objectContaining({
+        route: expect.objectContaining({ origin: campus, dest: home }),
+      }));
     });
   });
 
@@ -85,19 +143,18 @@ describe('emissions calculator', () => {
       expect(calculateDriverEmissionsSaved(20, [])).toBe(0);
     });
 
-    it('calculates total distance emission plus each riders emission when driver gets riders', () => {
+    it('sums rider emissions without adding the driver emission', () => {
       const driverDistanceKm = 20; // 20 * 0.17 = 3.4 kg
       const riderEmissions = [2.5, 1.8]; // sum = 4.3 kg
-      // Total = 3.4 + 4.3 = 7.7 kg
       const saved = calculateDriverEmissionsSaved(driverDistanceKm, riderEmissions);
-      expect(saved).toBe(7.7);
+      expect(saved).toBe(4.3);
     });
 
     it('correctly rounds to 1 decimal place', () => {
       const driverDistanceKm = 15.3; // 15.3 * 0.17 = 2.601
       const riderEmissions = [1.25, 2.12]; // sum = 3.37
-      // 2.601 + 3.37 = 5.971 -> 6.0
-      expect(calculateDriverEmissionsSaved(driverDistanceKm, riderEmissions)).toBe(6.0);
+      // Rider total 3.37 -> 3.4; driver emission is not included.
+      expect(calculateDriverEmissionsSaved(driverDistanceKm, riderEmissions)).toBe(3.4);
     });
   });
 
@@ -107,13 +164,13 @@ describe('emissions calculator', () => {
       expect(saved).toBe(0);
     });
 
-    it('returns null if driver address fails to geocode', async () => {
+    it('does not include or require the driver address emission', async () => {
       (googlePlaces.geocodeAddress as jest.Mock).mockResolvedValue(null);
       const saved = await estimateDriverEmissionsSaved('Driver Origin', ['Rider 1']);
-      expect(saved).toBeNull();
+      expect(saved).toBe(0);
     });
 
-    it('calculates driver trip emission plus each rider address emission', async () => {
+    it('sums each rider address emission without the driver trip', async () => {
       (googlePlaces.geocodeAddress as jest.Mock).mockImplementation(async (addr: string) => {
         if (addr === 'Driver Origin') {
           return { lat: -37.8206, lng: 145.1361, description: 'Driver' };
@@ -127,12 +184,11 @@ describe('emissions calculator', () => {
         return null;
       });
 
-      const driverDist = await getRoadDistanceKm('Driver Origin');
       const rider1Dist = await getRoadDistanceKm('Rider 1');
       const rider2Dist = await getRoadDistanceKm('Rider 2');
 
       const expected = Math.round(
-        (driverDist! * 0.17 + rider1Dist! * 0.17 + rider2Dist! * 0.17) * 10,
+        (rider1Dist! * 0.17 + rider2Dist! * 0.17) * 10,
       ) / 10;
 
       const saved = await estimateDriverEmissionsSaved('Driver Origin', ['Rider 1', 'Rider 2']);
@@ -145,9 +201,7 @@ describe('emissions calculator', () => {
         lng: 145.1361,
         description: 'Driver',
       });
-      const driverDist = await getRoadDistanceKm('Driver Origin');
-      const driverEmission = driverDist! * 0.17;
-      const expected = Math.round((driverEmission + 2.4 + 1.6) * 10) / 10;
+      const expected = 4.0;
 
       const saved = await estimateDriverEmissionsSaved('Driver Origin', [2.4, 1.6]);
       expect(saved).toBe(expected);

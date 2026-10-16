@@ -378,14 +378,11 @@ function buildRideCard(
       if (confirmedIds.length === 0) {
         return 0;
       }
-      const driverEmission = record.driverEmissionsKg ?? record.emissionsSavedKg ?? 0;
       const totalRiderEmissions = confirmedIds.reduce(
         (sum, id) => sum + (stopPeople?.get(id)?.emissionsSavedKg ?? 0),
         0,
       );
-      return totalRiderEmissions > 0
-        ? Math.round((driverEmission + totalRiderEmissions) * 10) / 10
-        : (record.emissionsSavedKg ?? 0);
+      return Math.round(totalRiderEmissions * 10) / 10;
     })(),
     driver: {
       uid: kind === 'request' ? record.matchedDriverId : record.userId,
