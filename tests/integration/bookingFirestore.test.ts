@@ -27,7 +27,7 @@ user before any other validation runs. Omitting it here made every test in this
 file fail on that check rather than on the behaviour it meant to exercise.
 */
 const baseRiderBooking: Booking = {
-  userId: 'test-user-123',
+  userId: 'mock-user-id',
   isDriving: false,
   toUni: true,
   address: '123 Main St',
@@ -64,9 +64,9 @@ describe('addRideRequest', () => {
     expect(data['departureTime']).toBe('08:00');
     expect(data['arrivalTime']).toBe('09:00');
     // the doc is stamped with its own generated id after creation
-    expect(data.requestID).toBe(id);
-    expect(data.userId).toBe('test-user-123');
-    expect(data.status).toBe('pending');
+    expect(data['requestID']).toBe(id);
+    expect(data['userId']).toBe('mock-user-id');
+    expect(data['status']).toBe('pending');
   });
 
   test('requires a signed-in user', async () => {
@@ -152,10 +152,10 @@ describe('addRideOffer', () => {
     const snapshot = await getDoc(doc(db, 'rideOffers', id));
     expect(snapshot.exists()).toBe(true);
     const data = snapshot.data();
-    expect(data.maxDetourTime).toBe(15);
-    expect(data.seatCapacity).toBe(3);
-    expect(data.offerID).toBe(id);
-    expect(data.userId).toBe('test-user-123');
+    expect(data['maxDetourTime']).toBe(15);
+    expect(data['seatCapacity']).toBe(3);
+    expect(data['offerID']).toBe(id);
+    expect(data['userId']).toBe('test-user-123');
   });
 
   test('requires a signed-in user', async () => {

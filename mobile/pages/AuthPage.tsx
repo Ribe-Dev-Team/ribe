@@ -56,7 +56,7 @@ interface AuthPageProps {
   error: string | null;
   clearError: () => void;
   handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
-  handleSignup: (fields: SignupFields, extra?: SignupProfileExtras) => Promise<void>;
+  handleSignup: (fields: SignupFields, extra?: SignupProfileExtras) => Promise<boolean>;
 }
 
 type SignupStep = 'about' | 'account' | 'profile' | 'driver' | 'confirm';
@@ -184,7 +184,7 @@ export default function AuthPage({
     let valid = true;
 
     if (!isValidEmail(email.trim())) {
-      setEmailErr('Enter a valid email address.');
+      setEmailErr('Please enter a valid Monash email address.');
       valid = false;
     } else setEmailErr('');
 
@@ -264,8 +264,8 @@ export default function AuthPage({
     if (validateDriverStep()) setSignupStep('confirm');
   };
 
-  const submitSignup = () => {
-    handleSignup(
+  const submitSignup = async () => {
+    const success = await handleSignup(
       { name, dob, phoneNumber, email, password, confirmPassword },
       {
         profilePhotoBase64: profilePhotoBase64 ?? undefined,
@@ -284,6 +284,11 @@ export default function AuthPage({
           : {}),
       },
     );
+
+    if (success) {
+      setMode('login');
+      setSignupStep('about');
+    }
   };
 
   const signupProgress = (
