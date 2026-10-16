@@ -72,9 +72,9 @@ async function flushHydration() {
 // setTimeout). fireEvent only wraps the synchronous part of the press handler in act(), so the
 // handler's final state update (setIsSubmitting(false)) lands outside it. Wrap the whole press in
 // an outer act() and keep it open until the submit has settled.
-async function pressSubmit() {
+async function pressSubmit(label = 'Submit request') {
   await act(async () => {
-    await fireEvent.press(screen.getByText('Submit request'));
+    await fireEvent.press(screen.getByText(label));
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
 }
@@ -99,6 +99,7 @@ describe('BookingPage - rider requesting a ride', () => {
     await render(<BookingPage onDone={onDone} />);
     await flushHydration();
 
+    await screen.findByText('Request a ride');
     // the draft restore effect should have hydrated the address field
     await screen.findByDisplayValue('123 Main St');
 
@@ -107,6 +108,7 @@ describe('BookingPage - rider requesting a ride', () => {
 
     await fireEvent.press(screen.getByText('Next')); // details -> confirm
     await screen.findByText('Confirm your request');
+    await screen.findByText('Submit request');
 
     await pressSubmit();
 
@@ -140,15 +142,17 @@ describe('BookingPage - driver offering a ride', () => {
     await render(<BookingPage onDone={onDone} />);
     await flushHydration();
 
+    await screen.findByText('Offer a ride');
     await screen.findByDisplayValue('456 Example Ave');
 
     await fireEvent.press(screen.getByText('Next')); // trip -> details
     await screen.findByText('Trip details');
 
     await fireEvent.press(screen.getByText('Next')); // details -> confirm
-    await screen.findByText('Confirm your request');
+    await screen.findByText('Confirm your offer');
+    await screen.findByText('Submit offer');
 
-    await pressSubmit();
+    await pressSubmit('Submit offer');
 
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(global.alert).toHaveBeenCalledWith('Ride offer successfully created!');

@@ -230,7 +230,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <Ionicons name="chevron-back" size={24} color={colors.white} />
             <Text style={localStyles.backButtonLabel}>Back</Text>
           </Pressable>
-          <Text style={localStyles.headerTitle}>Confirm your request</Text>
+          <Text style={localStyles.headerTitle}>{isDriving ? 'Confirm your offer' : 'Confirm your request'}</Text>
           {progressIndicator}
         </View>
 
@@ -293,7 +293,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               style={[localStyles.actionButton, isSubmitting && localStyles.actionButtonDisabled]}
               disabled={isSubmitting}
             >
-              <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Submit request'}</Text>
+              <Text style={styles.primaryButtonText}>
+                {isSubmitting ? 'Submitting...' : isDriving ? 'Submit offer' : 'Submit request'}
+              </Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -309,7 +311,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <Ionicons name="chevron-back" size={24} color={colors.white} />
             <Text style={localStyles.backButtonLabel}>Back</Text>
           </Pressable>
-          <Text style={localStyles.headerTitle}>Request a ride</Text>
+          <Text style={localStyles.headerTitle}>{isDriving ? 'Offer a ride' : 'Request a ride'}</Text>
           {progressIndicator}
         </View>
 
