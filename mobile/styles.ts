@@ -395,5 +395,8 @@ export default StyleSheet.create({
   costRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#D9E7EE', paddingVertical: 8 },
   costLabel: { color: colors.darkBlue, fontFamily: 'Marcellus_400Regular', fontSize: 13 },
   costValue: { color: colors.darkBlue, fontFamily: 'Marcellus_400Regular', fontSize: 14 },
+  costTotalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingTop: 12 },
+  costTotalLabel: { flex: 1, color: colors.darkBlue, fontFamily: 'Marcellus_400Regular', fontSize: 16 },
+  costTotalValue: { color: colors.darkBlue, fontFamily: 'Marcellus_400Regular', fontSize: 22 },
   costNote: { color: colors.darkBlue, opacity: 0.62, fontFamily: 'Marcellus_400Regular', fontSize: 11, marginTop: 12 },
 });

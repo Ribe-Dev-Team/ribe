@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import styles from '../styles';
-import { formatDollars, RideCostSplit } from '../utility/costDisplay';
+import { formatDollars, PassengerCost, RideCostSplit } from '../utility/costDisplay';
 
 interface CostSplitPanelProps {
   /** Worked out by the matching runner and read from Firestore (rideData.ts).
@@ -14,32 +14,52 @@ interface CostSplitPanelProps {
 export default function CostSplitPanel({ costSplit }: CostSplitPanelProps) {
   return (
     <View style={styles.costPanel}>
-      <Text style={styles.costTitle}>Suggested cost split</Text>
+      <Text style={styles.costTitle}>Suggested Cost Split</Text>
       {!costSplit ? (
         <Text style={styles.costNote}>
           A cost split is worked out once you're matched - check back after your ride is planned.
         </Text>
       ) : (
         <>
-          <Row label={`Fuel for trip (${costSplit.tripDistanceKm.toFixed(1)} km)`} value={formatDollars(costSplit.fuelCost)} />
-          <Row label={`Base share (÷ ${costSplit.tripParticipants})`} value={formatDollars(costSplit.baseTripContribution)} />
-          {costSplit.viewer === 'rider' ? (
+          <Row label={`Fuel for Trip (${costSplit.tripDistanceKm.toFixed(1)} km)`} value={formatDollars(costSplit.fuelCost)} />
+          {costSplit.viewer === 'driver' ? (
             <>
-              <Row
-                label={`Your detour (${(costSplit.detourDistanceKm ?? 0).toFixed(1)} km)`}
-                value={formatDollars(costSplit.detourCost ?? 0)}
-              />
-              <Row label="Your suggested contribution" value={formatDollars(costSplit.passengerContribution ?? 0)} />
+              {/* What each passenger is suggested to give: the same base share
+                  plus their own detour, so the amounts differ. */}
+              {(costSplit.passengers ?? []).map((p, i) => (
+                <Row key={i} label={`${possessive(p)} Suggested Contribution`} value={formatDollars(p.contribution)} />
+              ))}
+              <TotalRow label="Your Earnings" value={costSplit.passengersTotal ?? 0} />
             </>
           ) : (
-            <Row label="Passengers' suggested contributions" value={formatDollars(costSplit.passengersTotal ?? 0)} />
+            <>
+              <Row label={`Base Share (÷${costSplit.tripParticipants})`} value={formatDollars(costSplit.baseTripContribution)} />
+              <Row
+                label={`Detour Extra (${(costSplit.detourDistanceKm ?? 0).toFixed(1)} km)`}
+                value={formatDollars(costSplit.detourCost ?? 0)}
+              />
+              <TotalRow label="Suggested Contribution" value={costSplit.passengerContribution ?? 0} />
+            </>
           )}
-          <Text style={styles.costNote}>
-            Excludes parking costs. Based on {costSplit.fuelSource === 'servo-saver' ? 'the median' : 'an estimated'}{' '}
-            {costSplit.fuelType} price of {costSplit.medianFuelPrice.toFixed(1)}c/L and {costSplit.vehicleEconomy} L/100km.
-          </Text>
+          <Text style={styles.costNote}>Excludes parking costs.</Text>
         </>
       )}
+    </View>
+  );
+}
+
+/** "Tommy's", "James'" - with the awaiting mark after it, not inside it. */
+function possessive(p: PassengerCost) {
+  const owner = p.name.endsWith('s') ? `${p.name}'` : `${p.name}'s`;
+  return p.awaiting ? `${owner} (awaiting)` : owner;
+}
+
+/** The amount that matters, in larger text. */
+function TotalRow({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.costTotalRow}>
+      <Text style={styles.costTotalLabel}>{label}</Text>
+      <Text style={styles.costTotalValue}>{formatDollars(value)}</Text>
     </View>
   );
 }

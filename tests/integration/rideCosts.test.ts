@@ -73,6 +73,9 @@ describe('ride cards read the stored cost split', () => {
   });
 
   it("shows a driver what their passengers contribute in total", async () => {
+    // c1 has a profile, c2's can't be read - so is named by position.
+    await setDoc(doc(db, 'rideRequests', 'c1'), { ...booking, userId: 'c1-uid', status: 'confirmed', matchedOfferId: 'car-c' });
+    await setDoc(doc(db, 'users', 'c1-uid'), { name: 'Cleo Rider' });
     await setDoc(doc(db, 'rideOffers', 'car-c'), {
       ...booking, userId: 'driver-c', status: 'pending', seatCapacity: 4, confirmedRequestIds: ['c1', 'c2'],
       schedule: priced([{ id: 'c1', contribution: 3, detourKm: 5 }, { id: 'c2', contribution: 2.25, detourKm: 1 }]),
@@ -82,6 +85,11 @@ describe('ride cards read the stored cost split', () => {
 
     expect(card.cost).toBe('$5.25');
     expect(card.costSplit).toMatchObject({ viewer: 'driver', passengersTotal: 5.25, tripParticipants: 3 });
+    // Each passenger's own detour and contribution, in pickup order, by name.
+    expect(card.costSplit?.passengers).toEqual([
+      { name: 'Cleo', detourDistanceKm: 5, detourCost: 1, contribution: 3 },
+      { name: 'Passenger 2', detourDistanceKm: 1, detourCost: 0.2, contribution: 2.25 },
+    ]);
   });
 
   it("says TBC, with no breakdown, until the runner has priced the car", async () => {

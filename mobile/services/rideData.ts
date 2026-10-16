@@ -201,6 +201,7 @@ function costSplitFor(
   kind: 'request' | 'offer',
   docId: string,
   offer?: OfferView,
+  people?: Map<string, StopPerson>,
 ): RideCostSplit | undefined {
   if (kind === 'request' && record.status === 'pending') return undefined;
   const schedule = scheduleFor(record, kind, docId, offer);
@@ -219,12 +220,21 @@ function costSplitFor(
   };
 
   if (kind === 'offer') {
-    const contributions = schedule.stops.map((s) => s.cost?.passengerContribution);
-    if (contributions.some((c) => c === undefined)) return undefined;
+    if (schedule.stops.some((s) => !s.cost)) return undefined;
+    // Each passenger's own part, in pickup order: the same base share, plus
+    // their own detour - so their contributions differ.
+    const passengers = schedule.stops.map((s, i) => ({
+      name: people?.get(s.requestId)?.name ?? `Passenger ${i + 1}`,
+      ...(s.requestId === record.pendingRequestId ? { awaiting: true } : {}),
+      detourDistanceKm: s.cost!.detourDistanceKm,
+      detourCost: s.cost!.detourCost,
+      contribution: s.cost!.passengerContribution,
+    }));
     return {
       viewer: 'driver',
       ...shared,
-      passengersTotal: (contributions as number[]).reduce((a, b) => a + b, 0),
+      passengers,
+      passengersTotal: passengers.reduce((sum, p) => sum + p.contribution, 0),
     };
   }
 
@@ -463,7 +473,7 @@ function buildRideCard(
   // and the time actually spent in the car. Until then all there is is the
   // user's own booking window, so show that.
   const planned = plannedTimes(record, kind, docId, offer);
-  const costSplit = costSplitFor(record, kind, docId, offer);
+  const costSplit = costSplitFor(record, kind, docId, offer, stopPeople);
   const durationMinutes = planned
     ? Math.max(1, Math.round((planned.endAt.getTime() - planned.startAt.getTime()) / 60_000))
     : Math.max(15, Math.abs(toMinutes(arrivalTime) - toMinutes(departureTime)) || 30);
@@ -646,9 +656,9 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
         .map((row) => row.data.matchedOfferId)
         .filter((id): id is string => Boolean(id)),
     ),
+    // Every drive's passengers - named in its pickup list and its cost split.
     fetchStopPeople(
       offerRows
-        .filter((row) => row.data.toUni)
         .flatMap((row) => scheduleFor(row.data, 'offer', row.id)?.stops ?? [])
         .map((stop) => stop.requestId),
     ),
