@@ -136,6 +136,10 @@ export interface RideCardProps {
   matchedAt?: Date;
   /** The matcher's enforced accept-by time; when present the countdown runs to this instead */
   acceptDeadline?: Date;
+  /** Only relevant for 'awaiting' cards - a match needs both the rider and the
+   *  driver to accept. Whether this person has, and whether the other side has. */
+  youAccepted?: boolean;
+  otherAccepted?: boolean;
   /** Only relevant for 'confirmed' cards - driver's phone, masked until 12h before pickup */
   driverPhone?: string;
   /** Exact pickup date/time - used to decide when driverPhone gets revealed */
@@ -177,6 +181,8 @@ export default function RideCard({
   plate,
   matchedAt,
   acceptDeadline,
+  youAccepted,
+  otherAccepted,
   driverPhone,
   pickupDateTime,
   onAccept,
@@ -198,9 +204,15 @@ export default function RideCard({
   const [showCostInfo, setShowCostInfo] = useState(false);
   const [showPhoneInfo, setShowPhoneInfo] = useState(false);
   const [detailsVisible, setDetailsVisible] = useState(false);
-  // Only riders answer a match. A driver is told a rider was found and how long
-  // the rider has to accept; all they can do is remove the whole offer.
+  // A match needs both the rider and the driver to accept, in either order.
+  // Each sees Accept until they have, then waits on the other side.
   const isDriver = kind === 'offer';
+  const otherSide = isDriver ? 'rider' : 'driver';
+  const countdownText = (left: string) => youAccepted
+    ? `You've accepted. Waiting for the ${otherSide} - they have ${left} to accept${isDriver ? '.' : ', or you\'ll be matched with someone else.'}`
+    : isDriver
+      ? `Rider found. You have ${left} to accept or decline them${otherAccepted ? ' - they have already accepted.' : '.'}`
+      : `You have ${left} to review and accept before this trip is canceled${otherAccepted ? '. Your driver has already accepted.' : '.'}`;
   const confirmRemoveOffer = () =>
     Alert.alert(
       'Remove this drive offer?',
@@ -296,11 +308,7 @@ export default function RideCard({
         <View style={styles.countdownBanner}>
           <Ionicons name="time-outline" size={14} color={colors.darkBlue} />
           <Text style={styles.countdownText}>
-            {remainingMs <= 0
-              ? 'This match has expired.'
-              : isDriver
-                ? `Rider found. They have ${formatCountdown(remainingMs)} to review and accept before this match is cancelled and a new rider is searched for.`
-                : `You have ${formatCountdown(remainingMs)} to review and accept before this trip is canceled.`}
+            {remainingMs <= 0 ? 'This match has expired.' : countdownText(formatCountdown(remainingMs))}
           </Text>
         </View>
       )}
@@ -343,11 +351,11 @@ export default function RideCard({
             <Ionicons name="eye-outline" size={16} color={colors.white} />
             <Text style={styles.seeDetailsText}>See Details</Text>
           </TouchableOpacity>
-          {isDriver ? (
-            <TouchableOpacity style={styles.removeOfferButton} onPress={confirmRemoveOffer}>
-              <Ionicons name="close" size={16} color={colors.white} />
-              <Text style={styles.acceptText}>Remove offer</Text>
-            </TouchableOpacity>
+          {youAccepted ? (
+            <View style={styles.waitingLabel}>
+              <Ionicons name="hourglass-outline" size={14} color={colors.white} />
+              <Text style={styles.searchingText}>Waiting for {otherSide}</Text>
+            </View>
           ) : (
             <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
               <Ionicons name="checkmark" size={16} color={colors.white} />
@@ -569,22 +577,7 @@ export default function RideCard({
               </Text>
             )}
 
-            {status === 'awaiting' && isDriver ? (
-              <View style={styles.modalButtonRow}>
-                <TouchableOpacity style={styles.declineButton} onPress={() => setDetailsVisible(false)}>
-                  <Text style={styles.declineText}>Close</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.declineButton}
-                  onPress={() => {
-                    setDetailsVisible(false);
-                    confirmRemoveOffer();
-                  }}
-                >
-                  <Text style={styles.declineText}>Remove offer</Text>
-                </TouchableOpacity>
-              </View>
-            ) : status === 'awaiting' ? (
+            {status === 'awaiting' ? (
               <View style={styles.modalButtonRow}>
                 <TouchableOpacity
                   style={styles.declineButton}
@@ -595,15 +588,21 @@ export default function RideCard({
                 >
                   <Text style={styles.declineText}>Decline</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalAcceptButton}
-                  onPress={() => {
-                    setDetailsVisible(false);
-                    onAccept?.();
-                  }}
-                >
-                  <Text style={styles.modalAcceptText}>Accept</Text>
-                </TouchableOpacity>
+                {youAccepted ? (
+                  <TouchableOpacity style={styles.declineButton} onPress={() => setDetailsVisible(false)}>
+                    <Text style={styles.declineText}>Close</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.modalAcceptButton}
+                    onPress={() => {
+                      setDetailsVisible(false);
+                      onAccept?.();
+                    }}
+                  >
+                    <Text style={styles.modalAcceptText}>Accept</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               <TouchableOpacity style={styles.closeButton} onPress={() => setDetailsVisible(false)}>
@@ -930,18 +929,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  // Outlined rather than filled: removing an offer is the destructive choice.
-  removeOfferButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.whiteA50,
-    paddingVertical: 9,
-  },
   acceptButton: {
     flex: 1,
     flexDirection: 'row',
@@ -950,6 +937,15 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: colors.confirmed,
     borderRadius: 14,
+    paddingVertical: 9,
+  },
+  // In Accept's place once you've accepted: the same footprint, not a button.
+  waitingLabel: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
     paddingVertical: 9,
   },
   acceptText: {

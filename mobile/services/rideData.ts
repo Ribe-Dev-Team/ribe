@@ -31,6 +31,9 @@ interface FirestoreRideRecord {
   pendingRequestId?: string | null;
   confirmedRequestIds?: string[];
   acceptingMore?: boolean; // false once the driver locks the trip
+  // Who has accepted the rider in an offer's pending slot so far.
+  riderAccepted?: boolean;
+  driverAccepted?: boolean;
   // A request's own estimated times, as of its match.
   pickupAt?: StoredTime;
   arriveAt?: StoredTime;
@@ -57,7 +60,7 @@ interface StoredSchedule {
 type OfferView = Pick<
   FirestoreRideRecord,
   'status' | 'schedule' | 'pendingSchedule' | 'pendingRequestId' | 'confirmedRequestIds'
-  | 'seatCapacity' | 'acceptingMore'
+  | 'seatCapacity' | 'acceptingMore' | 'riderAccepted' | 'driverAccepted'
 >;
 
 /** A car's seats as a card shows them. `open`: still being offered new
@@ -337,6 +340,8 @@ async function fetchOfferViews(offerIds: string[]): Promise<Map<string, OfferVie
         confirmedRequestIds: data.confirmedRequestIds,
         seatCapacity: data.seatCapacity,
         acceptingMore: data.acceptingMore,
+        riderAccepted: data.riderAccepted,
+        driverAccepted: data.driverAccepted,
       });
     } catch (error) {
       console.warn('Failed to load matched trip', id, error);
@@ -428,6 +433,12 @@ function buildRideCard(
     ? 'confirmed'
     : record.status;
 
+  // Both sides' answers live on the offer's pending slot: a driver's own
+  // record, or a rider's matched offer while it's still holding them.
+  const slot = kind === 'offer' ? record : offer?.pendingRequestId === docId ? offer : undefined;
+  const riderAccepted = slot?.riderAccepted === true;
+  const driverAccepted = slot?.driverAccepted === true;
+
   return {
     rideId: docId,
     id: docId,
@@ -470,6 +481,10 @@ function buildRideCard(
     // The deadline the runner actually enforces - often well under 12h, since
     // it is clamped to the matching cutoff before departure.
     acceptDeadline: toDateOrUndefined(record.acceptDeadline),
+    ...(status === 'awaiting' ? {
+      youAccepted: kind === 'offer' ? driverAccepted : riderAccepted,
+      otherAccepted: kind === 'offer' ? riderAccepted : driverAccepted,
+    } : {}),
     pickupDateTime: planned?.startAt ?? date,
   };
 }

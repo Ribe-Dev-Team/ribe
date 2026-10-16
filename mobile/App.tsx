@@ -27,7 +27,8 @@ import DriverProfilePage from './pages/DriverProfilePage';
 import DriverRegistrationPage from './pages/DriverRegistrationPage';
 import BookingPage from './pages/BookingPage';
 import {
-  acceptMatch, cancelConfirmedRequest, cancelOffer, declineMatch, deleteRideRequest, setOfferLocked, updateOfferSeats,
+  acceptMatch, cancelConfirmedRequest, cancelOffer, declineMatch, deleteRideRequest, driverAcceptMatch,
+  driverDeclineMatch, setOfferLocked, updateOfferSeats,
 } from './pages/schema/firebaseBookingMethods';
 import { db } from './firebaseConfig';
 
@@ -49,6 +50,8 @@ function toDetailRide(ride: RideCardProps): Ride {
     driver: ride.driver.name,
     driverUid: ride.driver.uid,
     vehicle: ride.driver.vehicle,
+    youAccepted: ride.youAccepted,
+    otherAccepted: ride.otherAccepted,
   };
 }
 
@@ -57,6 +60,8 @@ interface ActionableRide {
   rideId?: string;
   kind?: 'request' | 'offer';
   status: 'confirmed' | 'awaiting' | 'pending' | 'cancelled';
+  /** Awaiting only: this person has already accepted the match. */
+  youAccepted?: boolean;
 }
 
 function errorMessage(error: unknown): string {
@@ -76,10 +81,41 @@ function buildRideActions(
   driverName: string,
   onChanged: () => void,
 ) {
-  // A driver never answers a match - only the rider does. What a driver can do,
-  // whatever state the offer is in, is remove it.
+  // A match needs both sides to accept. Accept is offered until you have;
+  // Decline until the match is confirmed.
+  const answering = ride.status === 'awaiting' && Boolean(ride.rideId);
+
+  // A driver answers the rider found for them, and whatever state the offer is
+  // in can remove it, lock it, or change its seats.
   if (ride.kind === 'offer') {
     return {
+      ...(answering && !ride.youAccepted ? {
+        onAccept: async () => {
+          try {
+            const answer = await driverAcceptMatch(ride.rideId!);
+            Alert.alert(
+              answer === 'confirmed' ? 'Rider confirmed' : 'Rider accepted',
+              answer === 'confirmed'
+                ? 'They have accepted too, so they are now confirmed on this drive.'
+                : 'Waiting for the rider to accept as well.',
+            );
+            onChanged();
+          } catch (error) {
+            Alert.alert('Could not accept rider', errorMessage(error));
+          }
+        },
+      } : {}),
+      ...(answering ? {
+        onDecline: async () => {
+          try {
+            await driverDeclineMatch(ride.rideId!);
+            Alert.alert('Rider declined', 'They will be matched with another driver, and your seat is open again.');
+            onChanged();
+          } catch (error) {
+            Alert.alert('Could not decline rider', errorMessage(error));
+          }
+        },
+      } : {}),
       onCancel: async () => {
         if (!ride.rideId) {
           Alert.alert('Not available yet', 'Removing an offer from this view is not wired up.');
@@ -124,19 +160,26 @@ function buildRideActions(
     const approvable = Boolean(ride.rideId);
 
     return {
-      onAccept: async () => {
-        if (!approvable) {
-          Alert.alert('Not available yet', 'Approving a ride from this view is not wired up.');
-          return;
-        }
-        try {
-          await acceptMatch(ride.rideId!);
-          Alert.alert('Ride accepted', `Trip with ${driverName} confirmed.`);
-          onChanged();
-        } catch (error) {
-          Alert.alert('Could not accept ride', errorMessage(error));
-        }
-      },
+      ...(ride.youAccepted ? {} : {
+        onAccept: async () => {
+          if (!approvable) {
+            Alert.alert('Not available yet', 'Approving a ride from this view is not wired up.');
+            return;
+          }
+          try {
+            const answer = await acceptMatch(ride.rideId!);
+            Alert.alert(
+              'Ride accepted',
+              answer === 'confirmed'
+                ? `Trip with ${driverName} confirmed.`
+                : `Waiting for ${driverName} to accept as well.`,
+            );
+            onChanged();
+          } catch (error) {
+            Alert.alert('Could not accept ride', errorMessage(error));
+          }
+        },
+      }),
       onDecline: async () => {
         if (!approvable) {
           Alert.alert('Not available yet', 'Declining a ride from this view is not wired up.');

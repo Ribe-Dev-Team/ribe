@@ -92,9 +92,17 @@ export interface RideOffer {
   The uid of the rider in that pending slot. The published Firestore rules let
   a user update someone else's offer only when this matches them, and the
   rider's Accept/Decline updates the driver's offer - so it's required, not
-  informational. Cleared again once the rider answers.
+  informational. Cleared again once the match is confirmed or declined.
   */
   matchedRiderId?: string;
+  /*
+  Who has accepted the rider in the pending slot so far. A match is confirmed
+  only once BOTH have, in either order: whoever accepts second confirms it.
+  Pending-slot fields, so they're removed whenever the slot is freed and can't
+  carry over to the next rider matched.
+  */
+  riderAccepted?: boolean;
+  driverAccepted?: boolean;
   confirmedRequestIds?: string[];
   /*
   False once the driver locks the trip: no more passengers are offered to it
