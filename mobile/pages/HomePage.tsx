@@ -126,10 +126,10 @@ export default function HomePage({
                   notificationsList.map((item) => (
                     <View key={item.id} style={localStyles.notificationRow}>
                       <Ionicons
-                        name={item.type === 'cancellation' ? 'alert-circle' : 'ellipse'}
-                        size={item.type === 'cancellation' ? 12 : 6}
+                        name={item.type === 'cancellation' ? 'alert-circle' : item.type === 'passenger' ? 'person-add-outline' : 'ellipse'}
+                        size={item.type === 'upcoming' ? 6 : 12}
                         color={item.type === 'cancellation' ? '#E53E3E' : colors.mediumBlue}
-                        style={{ marginTop: item.type === 'cancellation' ? 2 : 5 }}
+                        style={{ marginTop: item.type === 'upcoming' ? 5 : 2 }}
                       />
                       <Text style={localStyles.notificationText}>{item.text}</Text>
                     </View>

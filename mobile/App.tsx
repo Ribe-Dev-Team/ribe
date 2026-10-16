@@ -9,7 +9,7 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { useFonts, Marcellus_400Regular } from '@expo-google-fonts/marcellus';
 
 import { AuthProvider, useAuth } from './auth/useAuth';
@@ -30,11 +30,18 @@ import {
   acceptMatch, cancelConfirmedRequest, cancelOffer, declineMatch, deleteRideRequest, setOfferLocked, updateOfferSeats,
 } from './pages/schema/firebaseBookingMethods';
 import { db } from './firebaseConfig';
+import {
+  getOfferNotificationEvents,
+  getOfferNotificationText,
+  getRiderMatchNotificationText,
+  OfferNotificationAudience,
+  OfferNotificationState,
+} from './services/rideNotifications';
 
 export interface NotificationItem {
   id: string;
   text: string;
-  type: 'upcoming' | 'cancellation';
+  type: 'upcoming' | 'passenger' | 'cancellation';
 }
 
 function toDetailRide(ride: RideCardProps): Ride {
@@ -285,16 +292,17 @@ function AppContent() {
       );
     };
 
-    // Sync helper to combine active day-of reminders with existing cancellations
-    const syncNotifications = (
-      reqDocs: any[],
-      offerDocs: any[],
-      cancellations: NotificationItem[]
-    ) => {
+    let currentReqDocs: any[] = [];
+    let currentOfferDocs: any[] = [];
+    const sessionNotifications: NotificationItem[] = [];
+    const offerStates = new Map<string, OfferNotificationState>();
+    const offerUnsubscribers = new Map<string, () => void>();
+
+    const syncNotifications = () => {
       const upcomingNotifs: NotificationItem[] = [];
 
       // Check active requests scheduled for today
-      reqDocs.forEach((doc) => {
+      currentReqDocs.forEach((doc) => {
         const data = doc.data();
         if (data.status !== 'cancelled' && isToday(data.date)) {
           upcomingNotifs.push({
@@ -306,7 +314,7 @@ function AppContent() {
       });
 
       // Check active offers scheduled for today
-      offerDocs.forEach((doc) => {
+      currentOfferDocs.forEach((doc) => {
         const data = doc.data();
         if (data.status !== 'cancelled' && isToday(data.date)) {
           upcomingNotifs.push({
@@ -317,39 +325,101 @@ function AppContent() {
         }
       });
 
-      // Combine upcoming day-of reminders with accumulated cancellations (deduplicated)
+      // Keep event notifications while refreshing today's upcoming reminders.
       setNotificationsList((prev) => {
-        const existingCancels = prev.filter((n) => n.type === 'cancellation');
-        const allCancels = [...cancellations, ...existingCancels].filter(
-          (item, index, self) => index === self.findIndex((t) => t.id === item.id)
+        const existingEvents = prev.filter((item) => item.type !== 'upcoming');
+        const events = [...sessionNotifications, ...existingEvents].filter(
+          (item, index, self) => index === self.findIndex((other) => other.id === item.id)
         );
-        return [...upcomingNotifs, ...allCancels];
+        return [...upcomingNotifs, ...events];
       });
     };
 
-    let currentReqDocs: any[] = [];
-    let currentOfferDocs: any[] = [];
-    let pendingCancellations: NotificationItem[] = [];
+    const appendNotification = (item: NotificationItem) => {
+      if (!sessionNotifications.some((existing) => existing.id === item.id)) {
+        sessionNotifications.push(item);
+      }
+      syncNotifications();
+    };
+
+    const processOfferState = (offerId: string, data: any, audience: OfferNotificationAudience) => {
+      const stateKey = `${audience}:${offerId}`;
+      const previous = offerStates.get(stateKey);
+      const current: OfferNotificationState = {
+        status: data.status,
+        pendingRequestId: data.pendingRequestId,
+        confirmedRequestIds: data.confirmedRequestIds ?? [],
+      };
+      offerStates.set(stateKey, current);
+
+      for (const event of getOfferNotificationEvents(previous, current)) {
+        if (audience === 'rider' && event.type === 'new-match'
+          && currentReqDocs.some((requestDoc) => requestDoc.id === event.requestId)) continue;
+        const eventId = 'requestId' in event ? event.requestId : Date.now();
+        const text = getOfferNotificationText(event, audience, {
+          destination: getDestination(data),
+          date: formatDate(data.date),
+          time: data.departureTime || 'scheduled time',
+        });
+        appendNotification({
+          id: `offer-event-${audience}-${offerId}-${event.type}-${eventId}`,
+          text,
+          type: event.type === 'drive-cancelled' || event.type === 'passenger-cancelled'
+            ? 'cancellation'
+            : 'passenger',
+        });
+      }
+    };
+
+    const subscribeToOffer = (offerId: string, audience: OfferNotificationAudience) => {
+      const listenerKey = `${audience}:${offerId}`;
+      if (offerUnsubscribers.has(listenerKey)) return;
+      const unsubscribe = onSnapshot(
+        doc(db, 'rideOffers', offerId),
+        (snapshot) => {
+          if (snapshot.exists()) processOfferState(snapshot.id, snapshot.data(), audience);
+        },
+        (err) => console.warn('Offer notification listener failed:', err),
+      );
+      offerUnsubscribers.set(listenerKey, unsubscribe);
+    };
 
     // Listener for Ride Requests
+    const requestOfferIds = new Map<string, string | null>();
     const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
       currentReqDocs = snapshot.docs;
 
+      snapshot.docs.forEach((requestDoc) => {
+        const offerId = requestDoc.data()['matchedOfferId'];
+        if (typeof offerId === 'string' && offerId) subscribeToOffer(offerId, 'rider');
+      });
+
       snapshot.docChanges().forEach((change) => {
+        const data = change.doc.data();
+        const matchedOfferId = typeof data['matchedOfferId'] === 'string' ? data['matchedOfferId'] : null;
+        const previousOfferId = requestOfferIds.get(change.doc.id);
+        if (matchedOfferId && matchedOfferId !== previousOfferId && data['status'] === 'awaiting') {
+          appendNotification({
+            id: `request-match-${change.doc.id}-${matchedOfferId}`,
+            text: getRiderMatchNotificationText(getDestination(data), formatDate(data['date'])),
+            type: 'passenger',
+          });
+        }
+        requestOfferIds.set(change.doc.id, matchedOfferId);
+
         if (
           change.type === 'removed' ||
-          (change.type === 'modified' && change.doc.data()['status'] === 'cancelled')
+          (change.type === 'modified' && data['status'] === 'cancelled')
         ) {
-          const data = change.doc.data();
-          pendingCancellations.push({
-            id: `cancel-req-${change.doc.id}-${Date.now()}`,
+          appendNotification({
+            id: `cancel-req-${change.doc.id}`,
             text: `Ride request to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] || 'scheduled time'} was cancelled.`,
             type: 'cancellation',
           });
         }
       });
 
-      syncNotifications(currentReqDocs, currentOfferDocs, pendingCancellations);
+      syncNotifications();
     });
 
     // Listener for Ride Offers
@@ -357,25 +427,16 @@ function AppContent() {
       currentOfferDocs = snapshot.docs;
 
       snapshot.docChanges().forEach((change) => {
-        if (
-          change.type === 'removed' ||
-          (change.type === 'modified' && change.doc.data()['status'] === 'cancelled')
-        ) {
-          const data = change.doc.data();
-          pendingCancellations.push({
-            id: `cancel-offer-${change.doc.id}-${Date.now()}`,
-            text: `Drive offer to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] || 'scheduled time'} was cancelled.`,
-            type: 'cancellation',
-          });
-        }
+        if (change.type !== 'removed') processOfferState(change.doc.id, change.doc.data(), 'driver');
       });
 
-      syncNotifications(currentReqDocs, currentOfferDocs, pendingCancellations);
+      syncNotifications();
     });
 
     return () => {
       unsubRequests();
       unsubOffers();
+      offerUnsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [user?.uid]);
   const changeTab = (tab: NavigationTab) => {
