@@ -52,6 +52,7 @@ function toDetailRide(ride: RideCardProps): Ride {
     vehicle: ride.driver.vehicle,
     youAccepted: ride.youAccepted,
     otherAccepted: ride.otherAccepted,
+    rider: ride.rider,
   };
 }
 

@@ -180,10 +180,14 @@ function plannedTimes(
   return undefined;
 }
 
-/** A passenger the driver picks up, as their card names them. */
+/** A passenger the driver picks up, as their card names them - and, for the
+ *  rider a driver is being asked to accept, what the card shows about them. */
 interface StopPerson {
+  uid?: string;
   name?: string;
   address?: string;
+  degree?: string;
+  avatarUri?: string;
 }
 
 /**
@@ -228,9 +232,10 @@ function middleStops(
 }
 
 /**
- * The passengers at a driver's stops: first name from users/{uid}, pickup
- * address from their request. Once per request; one that can't be read is
- * left out, and the card labels that stop "Passenger N" instead.
+ * The passengers at a driver's stops, and the rider each awaiting drive is
+ * asking about: first name, degree and photo from users/{uid}, pickup address
+ * from their request. Once per request; one that can't be read is left out,
+ * and the card labels that stop "Passenger N" instead.
  */
 async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPerson>> {
   const unique = [...new Set(requestIds)];
@@ -241,21 +246,46 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
       const snap = await getDoc(doc(db, 'rideRequests', id));
       if (!snap.exists()) return;
       const request = snap.data() as FirestoreRideRecord;
-      let name: string | undefined;
+      let user: DocumentData = {};
       try {
-        const user = request.userId ? await getDoc(doc(db, 'users', request.userId)) : undefined;
-        const fullName = user?.exists() ? (user.data()['name'] as string | undefined) : undefined;
-        name = fullName?.trim().split(/\s+/)[0] || undefined;
+        const userSnap = request.userId ? await getDoc(doc(db, 'users', request.userId)) : undefined;
+        if (userSnap?.exists()) user = userSnap.data();
       } catch (error) {
         console.warn('Failed to load a passenger name', id, error);
       }
-      out.set(id, { name, address: request.address || undefined });
+      const fullName = user['name'] as string | undefined;
+      out.set(id, {
+        uid: request.userId || undefined,
+        name: fullName?.trim().split(/\s+/)[0] || undefined,
+        address: request.address || undefined,
+        degree: (user['degree'] as string | undefined) || undefined,
+        avatarUri: (user['profilePhotoUrl'] as string | undefined) || undefined,
+      });
     } catch (error) {
       console.warn('Failed to load a passenger on this trip', id, error);
     }
   }));
 
   return out;
+}
+
+/** One profile document, or `{}` when it's missing or can't be read. */
+async function readProfile(collectionName: string, uid: string): Promise<DocumentData> {
+  try {
+    const snap = await getDoc(doc(db, collectionName, uid));
+    return snap.exists() ? snap.data() : {};
+  } catch (error) {
+    console.warn(`Failed to load ${collectionName} profile`, uid, error);
+    return {};
+  }
+}
+
+/**
+ * A rider's account profile (users/{uid}): name, bio, degree. For the driver
+ * deciding whether to accept them. `{}` when it can't be read.
+ */
+export async function fetchRiderProfile(uid: string): Promise<DocumentData> {
+  return readProfile('users', uid);
 }
 
 /**
@@ -268,17 +298,7 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
  * unreadable profile must never fail the screen showing it.
  */
 export async function fetchDriverProfile(uid: string): Promise<DocumentData> {
-  const read = async (collectionName: string): Promise<DocumentData> => {
-    try {
-      const snap = await getDoc(doc(db, collectionName, uid));
-      return snap.exists() ? snap.data() : {};
-    } catch (error) {
-      console.warn(`Failed to load ${collectionName} profile`, uid, error);
-      return {};
-    }
-  };
-
-  const [driverDoc, userDoc] = await Promise.all([read('drivers'), read('users')]);
+  const [driverDoc, userDoc] = await Promise.all([readProfile('drivers', uid), readProfile('users', uid)]);
   const merged: DocumentData = { ...userDoc };
   for (const [key, value] of Object.entries(driverDoc)) {
     if (value !== undefined && value !== null && value !== '') merged[key] = value;
@@ -439,6 +459,11 @@ function buildRideCard(
   const riderAccepted = slot?.riderAccepted === true;
   const driverAccepted = slot?.driverAccepted === true;
 
+  // The rider a driver is being asked to accept, so they can see who it is.
+  const pendingRider = kind === 'offer' && status === 'awaiting' && record.pendingRequestId
+    ? stopPeople?.get(record.pendingRequestId)
+    : undefined;
+
   return {
     rideId: docId,
     id: docId,
@@ -474,6 +499,14 @@ function buildRideCard(
       name: resolved.name,
       vehicle: resolved.vehicle,
     },
+    ...(pendingRider ? {
+      rider: {
+        uid: pendingRider.uid,
+        name: pendingRider.name ?? 'Your matched rider',
+        degree: pendingRider.degree,
+        avatarUri: pendingRider.avatarUri,
+      },
+    } : {}),
     plate: resolved.plate,
     driverPhone: resolved.phone,
     // The matcher's own timestamp, not the time of this fetch.
@@ -538,12 +571,17 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
         .map((row) => row.data.matchedOfferId)
         .filter((id): id is string => Boolean(id)),
     ),
-    fetchStopPeople(
-      offerRows
+    fetchStopPeople([
+      ...offerRows
         .filter((row) => row.data.toUni)
         .flatMap((row) => scheduleFor(row.data, 'offer', row.id)?.stops ?? [])
         .map((stop) => stop.requestId),
-    ),
+      // Whichever way the drive goes, the rider each one is asked to accept.
+      ...offerRows
+        .filter((row) => row.data.status === 'awaiting')
+        .map((row) => row.data.pendingRequestId)
+        .filter((id): id is string => Boolean(id)),
+    ]),
   ]);
 
   return {

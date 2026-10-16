@@ -131,6 +131,9 @@ export interface RideCardProps {
   cost: string;
   co2SavedKg: number;
   driver: { uid?: string; name: string; vehicle: string; avatarUri?: string };
+  /** A driver's 'awaiting' card only: the rider they're being asked to accept,
+   *  by first name - the same way their stop is labelled. */
+  rider?: { uid?: string; name: string; degree?: string; avatarUri?: string };
   plate: string;
   /** When a driver match was found - only used for 'awaiting' cards to show a 12h approval countdown */
   matchedAt?: Date;
@@ -152,7 +155,9 @@ export interface RideCardProps {
   onCancel?: () => void;
   /** Opens the full ride details page. Falls back to the in-card modal when omitted. */
   onSeeDetails?: () => void;
-  /** Opens the driver's full profile page. Falls back to the in-card modal when omitted. */
+  /** Opens the other person's full profile page: the driver on a rider's card,
+   *  or the rider being asked on a driver's awaiting card. Falls back to the
+   *  in-card modal on a rider's card when omitted. */
   onOpenDriverProfile?: () => void;
   /** Driver only: stop (true) or resume (false) taking passengers. */
   onSetLocked?: (locked: boolean) => void;
@@ -178,6 +183,7 @@ export default function RideCard({
   cost,
   co2SavedKg,
   driver,
+  rider,
   plate,
   matchedAt,
   acceptDeadline,
@@ -341,6 +347,29 @@ export default function RideCard({
       )}
 
       <View style={styles.divider} />
+
+      {/* Who the driver is being asked to take, so they can decide. */}
+      {status === 'awaiting' && isDriver && rider && (
+        <TouchableOpacity
+          style={[styles.driverRow, styles.riderRow]}
+          accessibilityLabel={`View ${rider.name}'s profile`}
+          disabled={!onOpenDriverProfile}
+          onPress={onOpenDriverProfile}
+        >
+          {rider.avatarUri ? (
+            <Image source={{ uri: rider.avatarUri }} style={styles.avatar} />
+          ) : (
+            <View style={styles.avatarFallback}>
+              <Ionicons name="person" size={16} color={colors.white} />
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.driverName}>{rider.name}</Text>
+            <Text style={styles.vehicleText}>{rider.degree || 'Monash student'}</Text>
+          </View>
+          {onOpenDriverProfile && <Ionicons name="chevron-forward" size={16} color={colors.white} />}
+        </TouchableOpacity>
+      )}
 
       {status === 'awaiting' ? (
         <View style={styles.actionRow}>
@@ -814,6 +843,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  riderRow: {
+    marginBottom: 10,
   },
   avatar: {
     width: 32,

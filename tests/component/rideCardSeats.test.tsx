@@ -218,3 +218,29 @@ describe('stops', () => {
     expect(screen.queryByText('Ann · 1 First St')).toBeNull();
   });
 });
+
+describe("the rider on a driver's awaiting card", () => {
+  const asking: Partial<RideCardProps> = {
+    kind: 'offer',
+    status: 'awaiting',
+    matchedAt: new Date(),
+    acceptDeadline: new Date(Date.now() + 60 * 60_000),
+    rider: { uid: 'asking-uid', name: 'Priya', degree: 'Engineering' },
+  };
+
+  it('shows who they are, and opens their profile', async () => {
+    const onOpenDriverProfile = jest.fn();
+    await render(<RideCard {...base} {...asking} onOpenDriverProfile={onOpenDriverProfile} />);
+
+    expect(screen.getByText('Priya')).toBeTruthy();
+    expect(screen.getByText('Engineering')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText("View Priya's profile"));
+    expect(onOpenDriverProfile).toHaveBeenCalled();
+  });
+
+  it("isn't shown to the rider, who sees their driver instead", async () => {
+    await render(<RideCard {...base} {...asking} kind="request" />);
+
+    expect(screen.queryByText('Priya')).toBeNull();
+  });
+});

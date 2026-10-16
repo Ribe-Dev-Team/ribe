@@ -3,7 +3,7 @@ import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import MapPreview from '../components/MapPreview';
-import { fetchDriverProfile } from '../services/rideData';
+import { fetchDriverProfile, fetchRiderProfile } from '../services/rideData';
 
 interface RideDetailPageProps {
 	ride: Ride;
@@ -40,11 +40,16 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel }: RideDetailPageProps) {
-	const [profile, setProfile] = useState<DriverProfileInfo>(fallbackDriverProfile);
-	const [loadingProfile, setLoadingProfile] = useState(Boolean(ride.driverUid));
 	const isConfirmed = ride.status === 'confirmed';
 	// A match needs both sides to accept; once you have, you're waiting on the other.
 	const isDriver = ride.kind === 'offer';
+	// The other person on the ride: a rider's driver, or the rider a driver is
+	// being asked to accept (only while awaiting - a driver has no one else to show).
+	const pendingRider = isDriver && ride.status === 'awaiting' ? ride.rider : undefined;
+	const personUid = isDriver ? pendingRider?.uid : ride.driverUid;
+	const personName = isDriver ? pendingRider?.name ?? '' : ride.driver;
+	const [profile, setProfile] = useState<DriverProfileInfo>(fallbackDriverProfile);
+	const [loadingProfile, setLoadingProfile] = useState(Boolean(personUid));
 	const status = ride.status === 'confirmed' ? 'Confirmed ride'
 		: ride.status === 'awaiting' ? (
 			ride.youAccepted ? `You accepted - waiting for the ${isDriver ? 'rider' : 'driver'}`
@@ -57,12 +62,16 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 	useEffect(() => {
 		let active = true;
 
+		const role = isDriver ? 'rider' : 'driver';
+		const initialsOf = (name: string) =>
+			name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase() || (isDriver ? 'R' : 'DR');
+
 		const loadDriverProfile = async () => {
-			if (!ride.driverUid) {
+			if (!personUid) {
 				if (active) {
 					setProfile({
-						initials: ride.driver.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
-						bio: 'Driver details are not available yet.',
+						initials: initialsOf(personName),
+						bio: `${isDriver ? 'Rider' : 'Driver'} details are not available yet.`,
 						degree: 'Monash student',
 						phone: 'Phone not shared yet',
 						vehicle: ride.vehicle || 'Vehicle details coming soon',
@@ -73,29 +82,31 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			}
 
 			try {
-				// Driver registration and account profile merged - a driver may not
-				// have finished registration, and only the account has bio/degree/phone.
-				const data = await fetchDriverProfile(ride.driverUid);
+				// A driver's: registration and account profile merged - a driver may
+				// not have finished registration, and only the account has bio/degree/phone.
+				const data = isDriver ? await fetchRiderProfile(personUid) : await fetchDriverProfile(personUid);
 				if (!active) return;
 
 				if (Object.keys(data).length > 0) {
 					setProfile({
-						initials: (data['name'] ?? ride.driver).split(' ').map((part: string) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
-						bio: data['bio'] ?? 'This driver has not added a bio yet.',
+						// A rider is shown by first name only, so their initial is too.
+						initials: initialsOf(isDriver ? personName : data['name'] ?? personName),
+						bio: data['bio'] ?? `This ${role} has not added a bio yet.`,
 						degree: data['degree'] ?? 'Monash student',
 						phone: data['phoneNumber'] ?? 'Phone not shared yet',
 						vehicle: [data['vehicleMake'], data['vehicleModel']].filter(Boolean).join(' ') || ride.vehicle || 'Vehicle details coming soon',
 					});
+					setLoadingProfile(false);
 					return;
 				}
 			} catch (error) {
-				console.warn('Failed to load driver profile:', error);
+				console.warn(`Failed to load ${role} profile:`, error);
 			}
 
 			if (active) {
 				setProfile({
-					initials: ride.driver.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase() || 'DR',
-					bio: 'Driver details are not available yet.',
+					initials: initialsOf(personName),
+					bio: `${isDriver ? 'Rider' : 'Driver'} details are not available yet.`,
 					degree: 'Monash student',
 					phone: 'Phone not shared yet',
 					vehicle: ride.vehicle || 'Vehicle details coming soon',
@@ -109,7 +120,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 		return () => {
 			active = false;
 		};
-	}, [ride.driver, ride.driverUid, ride.vehicle]);
+	}, [isDriver, personName, personUid, ride.vehicle]);
 
 	return (
 		<ScrollView contentContainerStyle={styles.detailScreen} showsVerticalScrollIndicator={false}>
@@ -127,7 +138,15 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 				<View style={styles.locationRow}><Text style={[styles.locationDot, { color: colors.pending }]}>●</Text><View><Text style={styles.locationLabel}>Drop-off spot</Text><Text style={styles.locationText}>{ride.destination}</Text></View></View>
 			</Section>
 
-			{isConfirmed ? (
+			{isDriver ? (
+				// Who the driver is being asked to take. Their phone isn't shared.
+				pendingRider && (
+					<Section title="Your rider">
+						<View style={styles.personRow}><View style={styles.avatar}><Text style={styles.avatarText}>{loadingProfile ? '...' : profile.initials}</Text></View><View style={styles.personCopy}><Text style={styles.personName}>{pendingRider.name}</Text><Text style={styles.personBio}>{loadingProfile ? 'Loading rider details...' : profile.bio}</Text></View></View>
+						<Text style={styles.infoLine}>Degree  ·  {loadingProfile ? 'Loading...' : profile.degree}</Text>
+					</Section>
+				)
+			) : isConfirmed ? (
 				<Section title="Your driver">
 					<View style={styles.personRow}><View style={styles.avatar}><Text style={styles.avatarText}>{loadingProfile ? '...' : profile.initials}</Text></View><View style={styles.personCopy}><Text style={styles.personName}>{ride.driver}</Text><Text style={styles.personBio}>{loadingProfile ? 'Loading driver details...' : profile.bio}</Text></View></View>
 					<Text style={styles.infoLine}>Degree  ·  {loadingProfile ? 'Loading...' : profile.degree}</Text>

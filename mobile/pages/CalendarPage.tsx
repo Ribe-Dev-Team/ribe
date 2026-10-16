@@ -34,6 +34,8 @@ export interface Ride {
   /** Awaiting only: whether this person, and the other side, have accepted. */
   youAccepted?: boolean;
   otherAccepted?: boolean;
+  /** A driver's awaiting drive only: the rider they're being asked to accept. */
+  rider?: RideCardProps['rider'];
 }
 
 const monthNames = [
@@ -121,6 +123,7 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             id: ride.id,
             youAccepted: ride.youAccepted,
             otherAccepted: ride.otherAccepted,
+            rider: ride.rider,
           })),
         ];
 

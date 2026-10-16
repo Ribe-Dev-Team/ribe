@@ -3,7 +3,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import { RideCardProps } from '../components/RideCard';
-import { fetchDriverProfile } from '../services/rideData';
+import { fetchDriverProfile, fetchRiderProfile } from '../services/rideData';
 
 interface DriverProfilePageProps {
   ride: RideCardProps;
@@ -18,20 +18,30 @@ interface DriverProfileDetails {
   memberSince: string;
 }
 
-const fallbackProfile: DriverProfileDetails = {
+const fallbackFor = (role: 'driver' | 'rider'): DriverProfileDetails => ({
   degree: 'Monash student',
   year: '',
-  bio: 'This driver has not added a bio yet.',
+  bio: `This ${role} has not added a bio yet.`,
   ridesShared: 0,
   memberSince: 'Recently',
-};
+});
 
+/**
+ * The other person on a ride. Opened from a rider's card it's their driver;
+ * opened from a driver's awaiting card it's the rider they're being asked to
+ * accept - no car, and only what a rider's account profile holds.
+ */
 export default function DriverProfilePage({ ride, onBack }: DriverProfilePageProps) {
+  const role = ride.kind === 'offer' ? 'rider' : 'driver';
+  const person = role === 'rider'
+    ? ride.rider ?? { name: 'Your matched rider' }
+    : ride.driver;
+  const fallbackProfile = fallbackFor(role);
   const [profile, setProfile] = useState<DriverProfileDetails>(fallbackProfile);
-  const [loading, setLoading] = useState(Boolean(ride.driver.uid));
+  const [loading, setLoading] = useState(Boolean(person.uid));
 
   useEffect(() => {
-    if (!ride.driver.uid) {
+    if (!person.uid) {
       setProfile(fallbackProfile);
       setLoading(false);
       return;
@@ -41,14 +51,16 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
 
     const loadProfile = async () => {
       try {
-        // Driver registration and account profile merged - a driver may not
-        // have finished registration, and only the account has bio/degree.
-        const data = await fetchDriverProfile(ride.driver.uid!);
+        // A driver's: registration and account profile merged - a driver may
+        // not have finished registration, and only the account has bio/degree.
+        const data = role === 'rider'
+          ? await fetchRiderProfile(person.uid!)
+          : await fetchDriverProfile(person.uid!);
         if (Object.keys(data).length > 0 && isMounted) {
           setProfile({
             degree: data['degree'] ?? 'Monash student',
             year: data['year'] ?? '',
-            bio: data['bio'] ?? 'This driver has not added a bio yet.',
+            bio: data['bio'] ?? fallbackProfile.bio,
             ridesShared: Number(data['ridesShared'] ?? 0),
             memberSince: data['memberSince'] ?? 'Recently',
           });
@@ -69,7 +81,7 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
     return () => {
       isMounted = false;
     };
-  }, [ride.driver.name, ride.driver.uid]);
+  }, [role, person.name, person.uid]);
 
   const [make, colorTrim] = ride.driver.vehicle.split(' - ');
 
@@ -77,21 +89,21 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
     <ScrollView contentContainerStyle={localStyles.screen} showsVerticalScrollIndicator={false}>
       <Pressable accessibilityLabel="Back to trip" onPress={onBack} style={localStyles.backButton}>
         <Ionicons name="chevron-back" size={22} color={colors.white} />
-        <Text style={localStyles.backButtonText}>Your driver</Text>
+        <Text style={localStyles.backButtonText}>Your {role}</Text>
       </Pressable>
 
       <View style={localStyles.card}>
-        {ride.driver.avatarUri ? (
-          <Image source={{ uri: ride.driver.avatarUri }} style={localStyles.avatar} />
+        {person.avatarUri ? (
+          <Image source={{ uri: person.avatarUri }} style={localStyles.avatar} />
         ) : (
           <View style={localStyles.avatarFallback}>
             <Ionicons name="person" size={36} color={colors.white} />
           </View>
         )}
 
-        <Text style={localStyles.name}>{ride.driver.name}</Text>
+        <Text style={localStyles.name}>{person.name}</Text>
         <Text style={localStyles.subtitle}>
-          {loading ? 'Loading driver profile...' : `${profile.degree}${profile.year ? ` · ${profile.year} · at Monash` : ''}`}
+          {loading ? `Loading ${role} profile...` : `${profile.degree}${profile.year ? ` · ${profile.year} · at Monash` : ''}`}
         </Text>
 
         <View style={localStyles.badgeRow}>
@@ -99,10 +111,12 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
             <Ionicons name="checkmark-circle" size={14} color={colors.confirmedLight} />
             <Text style={localStyles.badgeText}>Monash verified</Text>
           </View>
-          <View style={localStyles.badge}>
-            <Ionicons name="checkmark-circle" size={14} color={colors.confirmedLight} />
-            <Text style={localStyles.badgeText}>Licence checked</Text>
-          </View>
+          {role === 'driver' && (
+            <View style={localStyles.badge}>
+              <Ionicons name="checkmark-circle" size={14} color={colors.confirmedLight} />
+              <Text style={localStyles.badgeText}>Licence checked</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -111,7 +125,7 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
         <Text style={localStyles.bioText}>{profile.bio}</Text>
       </View>
 
-      <View style={localStyles.card}>
+      {role === 'driver' && <View style={localStyles.card}>
         <View style={localStyles.vehicleRow}>
           <Ionicons name="car-sport-outline" size={22} color={colors.white} />
           <View style={{ flex: 1 }}>
@@ -121,7 +135,7 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
             </Text>
           </View>
         </View>
-      </View>
+      </View>}
 
       <View style={localStyles.statsRow}>
         <View style={localStyles.statChip}>
@@ -139,8 +153,12 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
           <Ionicons name="lock-closed-outline" size={14} color={colors.white} />
           <Text style={localStyles.privacyTitle}>Not shown to you</Text>
         </View>
-        <Text style={localStyles.privacyLine}>Phone number - unlocks 12 hours before pickup</Text>
-        <Text style={localStyles.privacyLine}>Home address - only the pickup point you agreed</Text>
+        {role === 'driver' && (
+          <Text style={localStyles.privacyLine}>Phone number - unlocks 12 hours before pickup</Text>
+        )}
+        <Text style={localStyles.privacyLine}>
+          {role === 'driver' ? 'Home address - only the pickup point you agreed' : 'Home address - only their pickup point'}
+        </Text>
         <Text style={localStyles.privacyLine}>Email, date of birth - never shared</Text>
       </View>
 
