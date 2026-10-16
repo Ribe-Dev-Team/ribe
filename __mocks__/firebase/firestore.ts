@@ -51,10 +51,8 @@ export const getDoc = async (docRef: any) => {
     };
 };
 
-// getDocs (for queries or full collection)
-export const getDocs = async (queryRef: any) => {
-    await new Promise(r => setTimeout(r, 5));
-
+// The documents a query matches right now.
+const matching = (queryRef: any) => {
     const col = mockDb[queryRef.collectionName] || {};
 
     let docs = Object.entries(col).map(([id, data]) => ({
@@ -71,10 +69,46 @@ export const getDocs = async (queryRef: any) => {
         }
     }
 
+    return docs;
+};
+
+// getDocs (for queries or full collection)
+export const getDocs = async (queryRef: any) => {
+    await new Promise(r => setTimeout(r, 5));
+
+    const docs = matching(queryRef);
     return {
         docs,
         size: docs.length,
     };
+};
+
+// onSnapshot - a live query, as the app uses for its ride lists. It fires once
+// with the current matches, then again after every write to that collection
+// (setDoc, updateDoc, addDoc, deleteDoc, and a transaction's updates). Every
+// change is reported as one snapshot; docChanges() is always empty, so code
+// that reacts to particular changes isn't exercised by this mock.
+type SnapshotListener = { queryRef: any; callback: (snapshot: any) => void; };
+let listeners: SnapshotListener[] = [];
+
+const snapshotOf = (queryRef: any) => {
+    const docs = matching(queryRef);
+    return { docs, size: docs.length, empty: docs.length === 0, docChanges: () => [] };
+};
+
+const notify = (collectionName: string) => {
+    for (const l of listeners) {
+        if (l.queryRef.collectionName === collectionName) l.callback(snapshotOf(l.queryRef));
+    }
+};
+
+export const onSnapshot = (queryRef: any, callback: (snapshot: any) => void) => {
+    const listener = { queryRef, callback };
+    listeners.push(listener);
+    setTimeout(() => {
+        if (listeners.includes(listener)) callback(snapshotOf(queryRef));
+    }, 5);
+    return () => { listeners = listeners.filter((l) => l !== listener); };
 };
 
 // setDoc
@@ -86,6 +120,7 @@ export const setDoc = async (docRef: any, data: any) => {
     }
 
     mockDb[docRef.collectionName][docRef.id] = data;
+    notify(docRef.collectionName);
 };
 
 // deleteField - Firestore's way to remove a field in an update:
@@ -111,6 +146,7 @@ export const updateDoc = async (docRef: any, data: any) => {
         if (value === DELETE_FIELD) delete merged[field];
     }
     mockDb[docRef.collectionName][docRef.id] = merged;
+    notify(docRef.collectionName);
 };
 
 // runTransaction - reads go straight through; updates are buffered and applied
@@ -138,6 +174,7 @@ export const addDoc = async (collectionRef: any, data: any) => {
     }
 
     mockDb[collectionRef.name][id] = data;
+    notify(collectionRef.name);
 
     return {
         id,
@@ -150,6 +187,7 @@ export const deleteDoc = async (docRef: any) => {
     await new Promise(r => setTimeout(r, 5));
 
     delete mockDb[docRef.collectionName]?.[docRef.id];
+    notify(docRef.collectionName);
 };
 
 // Query builder
@@ -169,4 +207,5 @@ export const where = (field: string, op: string, value: any) => ({
 // Reset between tests
 export const __resetFirestoreMock = () => {
     mockDb = {};
+    listeners = [];
 };

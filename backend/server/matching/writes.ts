@@ -1,4 +1,5 @@
 import { MatchOffer, ProposedMatch, TripStop } from './types';
+import type { StoredRiderCost, StoredTripCosts } from '../costSplitting/tripCosts';
 
 /**
  * What a matching run writes back, as plain decisions with no Firebase SDK in
@@ -45,11 +46,13 @@ export function settledOfferStatus(offer: StoredOffer): 'confirmed' | 'pending' 
 }
 
 /** A car's timetable as stored on its offer: the driver's own departure and
- *  arrival, and every rider in pickup order. */
+ *  arrival, and every rider in pickup order - with the car's cost split
+ *  (costSplitting/tripCosts.ts) once the runner has priced it. */
 export interface StoredSchedule {
   departAt: Date;
   arriveAt: Date;
-  stops: Array<{ requestId: string; pickupAt: Date; arriveAt: Date }>;
+  stops: Array<{ requestId: string; pickupAt: Date; arriveAt: Date; cost?: StoredRiderCost }>;
+  costs?: StoredTripCosts;
 }
 
 /** A timetable (route.ts → timetableFor) in the shape the offer stores. */

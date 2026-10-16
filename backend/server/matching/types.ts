@@ -214,6 +214,13 @@ export interface TravelTimeMatrix {
   minutes(a: Coord, b: Coord): number;
 }
 
+/** Road distance between any two points, in km. The matching run never needs
+ *  it - only cost splitting does - but it comes from the same per-batch
+ *  matrix, so pricing a car costs no extra API calls. */
+export interface RoadDistanceMatrix {
+  km(a: Coord, b: Coord): number;
+}
+
 export interface MatchingConfig {
   /** KEY-136. Set high (~90) to kill only absurd pairs; see notes in README. */
   bearingThresholdDegrees: number;

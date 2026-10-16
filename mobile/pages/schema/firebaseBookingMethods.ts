@@ -14,6 +14,7 @@ import { Booking, Coord } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
 import { BOOKING_STATUSES, BookingStatus, isBookingStatus } from './matchStatus';
 import { timePattern, toMinutes } from '../../utility/times';
+import { MAX_CAR_SEATS } from './user.validation';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
 import { estimateEmissionsSaved } from '../../utility/emissions';
 
@@ -58,6 +59,28 @@ const validateCoord = (coord: Coord | undefined, label: string): Coord | undefin
 
   return { lat, lon };
 };
+
+/*
+The passenger seats in a user's registered car, or null if they have no car
+registered - not a driver, or a driver whose car details are missing. Read
+from users/{uid}, falling back to drivers/{uid} (driver registration), the
+same way the profile does: an older profile save could reset users/{uid}
+while drivers/{uid} kept the car.
+*/
+export async function registeredCarSeats(uid: string): Promise<number | null> {
+  const [userSnap, driverSnap] = await Promise.all([
+    getDoc(doc(db, 'users', uid)),
+    getDoc(doc(db, 'drivers', uid)),
+  ]);
+  const user = userSnap.exists() ? userSnap.data() : {};
+  const driver = driverSnap.exists() ? driverSnap.data() : null;
+  if (!user['isDriver'] && !driver) return null;
+
+  const plate = user['licensePlate'] ?? driver?.['licensePlate'];
+  const seats = user['seatsAvailable'] ?? driver?.['seatsAvailable'];
+  if (!plate || !Number.isInteger(seats) || seats < 1) return null;
+  return seats;
+}
 
 // Add request to DB
 export const addRideRequest = async (booking: Booking): Promise<string> => {
@@ -205,8 +228,18 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error(`detour allowance of ${offer.maxDetourTime} (min) exceeds travel window of ${timeDiff} (min)`);
   }
 
-  if (offer.seatCapacity < 1 || offer.seatCapacity > 12) {
-    throw new Error(`Ride offers require 1 to 12 seats (inclusive) be available but ${offer.seatCapacity} were given.`);
+  if (offer.seatCapacity < 1 || offer.seatCapacity > MAX_CAR_SEATS) {
+    throw new Error(`Ride offers require 1 to ${MAX_CAR_SEATS} seats (inclusive) be available but ${offer.seatCapacity} were given.`);
+  }
+
+  // Only a registered driver can offer a ride, and never more seats than
+  // their car has. The booking page already stops both; this is the backstop.
+  const carSeats = await registeredCarSeats(offer.userId);
+  if (carSeats === null) {
+    throw new Error('Register as a driver, with your car, in your profile before offering a ride.');
+  }
+  if (offer.seatCapacity > carSeats) {
+    throw new Error(`Your car has ${carSeats} passenger seat${carSeats === 1 ? '' : 's'}, so offer ${carSeats} or fewer.`);
   }
 
   try {
@@ -446,13 +479,14 @@ export async function setOfferLocked(offerID: string, locked: boolean): Promise<
 
 /**
  * The driver changes how many passengers they'll take. Never below the riders
- * already confirmed plus one deciding on a match, and within the same 1-12 the
+ * already confirmed plus one deciding on a match, and within the same 1-7 the
  * booking form allows. Fewer seats than before can fill the car (it's done);
- * more can reopen a full one (back in the pool), unless it's locked.
+ * more can reopen a full one (back in the pool). Not while the drive is
+ * locked: unlock it first.
  */
 export async function updateOfferSeats(offerID: string, seats: number): Promise<void> {
-  if (!Number.isInteger(seats) || seats < 1 || seats > 12) {
-    throw new Error('A drive offer needs 1 to 12 seats.');
+  if (!Number.isInteger(seats) || seats < 1 || seats > MAX_CAR_SEATS) {
+    throw new Error(`A drive offer needs 1 to ${MAX_CAR_SEATS} seats.`);
   }
   const offerRef = doc(db, 'rideOffers', offerID);
 
@@ -462,10 +496,21 @@ export async function updateOfferSeats(offerID: string, seats: number): Promise<
 
     const offer = offerSnap.data() as RideOffer;
     if (offer.status === 'cancelled') throw new Error('This offer has been removed.');
+    // A locked drive takes nobody new, so its seats change nothing - the card
+    // hides the control, and this keeps it that way.
+    if (offer.acceptingMore === false) throw new Error('Unlock this drive to change its seats.');
 
     const taken = (offer.confirmedRequestIds ?? []).length + (offer.pendingRequestId ? 1 : 0);
     if (seats < taken) {
       throw new Error(`${taken} seat${taken === 1 ? ' is' : 's are'} already taken, so the car needs at least ${taken}.`);
+    }
+    // Never more than the car holds. Only checked when adding seats, so a
+    // driver can always come down to fit, whatever their profile says.
+    if (seats > offer.seatCapacity) {
+      const carSeats = await registeredCarSeats(offer.userId);
+      if (carSeats !== null && seats > carSeats) {
+        throw new Error(`Your car has ${carSeats} passenger seat${carSeats === 1 ? '' : 's'}, so this drive can take ${carSeats} at most.`);
+      }
     }
 
     const next = { ...offer, seatCapacity: seats };

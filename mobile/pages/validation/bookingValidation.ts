@@ -3,6 +3,7 @@ Pure validation logic for the booking flow (BookingPage). Kept free of React sta
 so it can be unit tested directly without rendering the component.
 */
 
+import { MAX_CAR_SEATS } from '../schema/user.validation';
 import { timePattern, toMinutes } from '../../utility/times';
 import { isFutureDate, parseDateAsStr } from '../../utility/dates';
 
@@ -20,6 +21,8 @@ interface DetailsStepInput {
   numSeats: number;
   depTime: string;
   arrTime: string;
+  /** Passenger seats in the driver's registered car. An offer can't have more. */
+  carSeats?: number;
 }
 
 interface DetailsStepErrors {
@@ -60,7 +63,7 @@ function validateTripStep(address: string): TripStepErrors {
 }
 
 function validateDetailsStep(input: DetailsStepInput): DetailsStepErrors {
-  const { travelDate, isDriving, detourTime, numSeats, depTime, arrTime } = input;
+  const { travelDate, isDriving, detourTime, numSeats, depTime, arrTime, carSeats } = input;
   let valid = true;
 
   // travel date validation
@@ -90,8 +93,11 @@ function validateDetailsStep(input: DetailsStepInput): DetailsStepErrors {
     if (numSeats < 1) {
       numSeatsErr = 'Ride offers require at least one available seat';
       valid = false;
-    } else if (numSeats > 12) {
-      numSeatsErr = 'Too many seats offered. Max 12.';
+    } else if (carSeats !== undefined && numSeats > carSeats) {
+      numSeatsErr = `Your car has ${carSeats} passenger seat${carSeats === 1 ? '' : 's'}, so offer ${carSeats} or fewer.`;
+      valid = false;
+    } else if (numSeats > MAX_CAR_SEATS) {
+      numSeatsErr = `Too many seats offered. Max ${MAX_CAR_SEATS}.`;
       valid = false;
     }
   }

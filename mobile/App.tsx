@@ -19,7 +19,7 @@ import { RideCardProps } from './components/RideCard';
 import AuthPage from './pages/AuthPage';
 import HomePage from './pages/HomePage';
 import CalendarPage, { Ride } from './pages/CalendarPage';
-import DashboardPage, { DashboardMode } from './pages/DashboardPage';
+import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import RideDetailPage from './pages/RideDetailPage';
 import { rideTimeSummary } from './services/rideData';
@@ -50,6 +50,7 @@ function toDetailRide(ride: RideCardProps): Ride {
     driverUid: ride.driver.uid,
     vehicle: ride.driver.vehicle,
     co2SavedKg: ride.co2SavedKg,
+    costSplit: ride.costSplit,
   };
 }
 
@@ -215,15 +216,16 @@ function AppContent() {
   const [showDriverRegistration, setShowDriverRegistration] = useState(false);
   // Bumped after a write so the ride lists remount and refetch. See afterRideChange.
   const [dataVersion, setDataVersion] = useState(0);
-  // The Dashboard's Rider/Driver toggle lives here, not in the page: the page is
-  // remounted after every write (see afterRideChange) and on the way back from
-  // a ride's details, which would otherwise flip it back to Rider each time.
-  const [dashboardMode, setDashboardMode] = useState<DashboardMode>('rider');
+  // Whether the user has a drive offer that isn't cancelled - from the offers
+  // listener below. Anyone can post a drive from the booking page, registered
+  // driver or not, so this keeps My Drives for them too.
+  const [hasDrives, setHasDrives] = useState(false);
   const lastScrollY = useRef(0);
   const wasLoggedIn = useRef(false);
 
   const {
     user,
+    profileData,
     loading,
     submitting,
     error,
@@ -232,11 +234,20 @@ function AppContent() {
     handleSignup,
     handleLogout,
   } = useAuth();
+
+  // My Drives is its own tab for drivers - registered ones, and anyone with a
+  // drive posted. Everyone else gets no tab for it, and is moved off it if it
+  // goes (their last drive was removed, say).
+  const showDrives = Boolean(profileData?.isDriver) || hasDrives;
+  useEffect(() => {
+    if (!showDrives && activeTab === 'drives') setActiveTab('home');
+  }, [showDrives, activeTab]);
   
   // Global persistent Firestore listeners for real-time notifications
   useEffect(() => {
     if (!user?.uid) {
       setNotificationsList([]);
+      setHasDrives(false);
       return;
     }
 
@@ -355,6 +366,7 @@ function AppContent() {
     // Listener for Ride Offers
     const unsubOffers = onSnapshot(offersQuery, (snapshot) => {
       currentOfferDocs = snapshot.docs;
+      setHasDrives(snapshot.docs.some((d) => d.data()['status'] !== 'cancelled'));
 
       snapshot.docChanges().forEach((change) => {
         if (
@@ -467,15 +479,15 @@ function AppContent() {
           />
         );
       case 'rides':
+      case 'drives':
         return (
           <DashboardPage
-            key={dataVersion}
+            key={`${activeTab}-${dataVersion}`}
             onScroll={handleScroll}
-            onSeeRideDetails={(ride) => openRideDetails(ride, 'My Rides')}
+            onSeeRideDetails={(ride) => openRideDetails(ride, activeTab === 'drives' ? 'My Drives' : 'My Rides')}
             onOpenDriverProfile={setViewingDriver}
             rideActions={rideActionsFor}
-            mode={dashboardMode}
-            onModeChange={setDashboardMode}
+            mode={activeTab === 'drives' ? 'driver' : 'rider'}
           />
         );
       case 'profile':
@@ -536,6 +548,7 @@ function AppContent() {
       <AppNavigation
         activeTab={activeTab}
         onChange={changeTab}
+        showDrives={showDrives}
         hidden={navHidden || !!selectedRide || !!viewingDriver || showBooking || showDriverRegistration}
       />
     </SafeAreaView>

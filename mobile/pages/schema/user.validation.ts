@@ -109,6 +109,13 @@ export const getFormValidationError = ({
   return null;
 };
 
+/** The most passenger seats a car can be registered with, and so the most any
+ *  ride offer can have - a people mover's worth. */
+export const MAX_CAR_SEATS = 7;
+
+/** The longest number plate allowed: up to 7 letters and numbers, "1ABC234". */
+export const MAX_PLATE_LENGTH = 7;
+
 export interface DriverFormValues {
   isDriver: boolean;
   vehicleMake: string;
@@ -134,8 +141,16 @@ export const getDriverValidationError = ({
     return 'Please fill in all vehicle details.';
   }
 
+  if (!new RegExp(`^[A-Za-z0-9]{1,${MAX_PLATE_LENGTH}}$`).test(licensePlate.trim())) {
+    return `License plate must be up to ${MAX_PLATE_LENGTH} letters and numbers, with no spaces.`;
+  }
+
   if (!Number.isInteger(Number(seatsAvailable)) || Number(seatsAvailable) < 1) {
     return 'Please enter a valid number of seats available.';
+  }
+
+  if (Number(seatsAvailable) > MAX_CAR_SEATS) {
+    return `A car can have at most ${MAX_CAR_SEATS} passenger seats.`;
   }
 
   return null;

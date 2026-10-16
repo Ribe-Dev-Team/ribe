@@ -8,7 +8,8 @@ import NewRideButton from '../components/NewRideButton';
 import CalendarRideRow from '../components/CalendarRideRow';
 import { useAuth } from '../auth/useAuth';
 import { RideCardProps } from '../components/RideCard';
-import { fetchUserRides, rideTimeSummary } from '../services/rideData';
+import { fetchUserRides, rideTimeSummary, watchUserRides } from '../services/rideData';
+import { RideCostSplit } from '../utility/costDisplay';
 
 export type RideStatus = 'pending' | 'awaiting' | 'confirmed' | 'cancelled';
 
@@ -31,6 +32,8 @@ export interface Ride {
   vehicle: string;
   id?: string;
   co2SavedKg?: number;
+  /** Read from Firestore; worked out by the matching runner. */
+  costSplit?: RideCostSplit;
 }
 
 const monthNames = [
@@ -82,11 +85,14 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
     }
 
     let isMounted = true;
+    // Only the latest of overlapping loads may set the rides (see DashboardPage).
+    let latestLoad = 0;
 
     const loadCalendarRides = async () => {
+      const thisLoad = ++latestLoad;
       try {
         const { requests, offers } = await fetchUserRides(user.uid);
-        if (!isMounted) return;
+        if (!isMounted || thisLoad !== latestLoad) return;
 
         const allTrips: Ride[] = [
           ...requests.map((ride: RideCardProps) => ({
@@ -102,6 +108,7 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             vehicle: ride.driver.vehicle,
             co2SavedKg: ride.co2SavedKg,
             id: ride.id,
+            costSplit: ride.costSplit,
           })),
           ...offers.map((ride: RideCardProps) => ({
             rideId: ride.rideId,
@@ -116,6 +123,7 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             vehicle: ride.driver.vehicle,
             co2SavedKg: ride.co2SavedKg,
             id: ride.id,
+            costSplit: ride.costSplit,
           })),
         ];
 
@@ -134,9 +142,11 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
       }
     };
 
-    loadCalendarRides();
+    // Rebuilt whenever the user's rides change, not only on mount.
+    const stopWatching = watchUserRides(user.uid, loadCalendarRides);
     return () => {
       isMounted = false;
+      stopWatching();
     };
   }, [user?.uid, selectedDate]);
 
