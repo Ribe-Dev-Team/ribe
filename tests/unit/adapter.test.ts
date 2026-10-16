@@ -99,6 +99,22 @@ describe('groupIntoBatches', () => {
       { kind: 'offer', id: 'gone', reason: 'DEPARTED' },
     ]);
   });
+
+  it("keeps done cars apart from the matcher's, locked ones included, so only their timetables are kept up to date", () => {
+    const { batches, skipped } = groupIntoBatches(
+      [],
+      [
+        offerDoc({ id: 'open' }),
+        offerDoc({ id: 'full', status: 'confirmed' }),
+        offerDoc({ id: 'locked', status: 'confirmed', acceptingMore: false }),
+        offerDoc({ id: 'over', status: 'confirmed', date: stored(1), departureTime: '08:00' }),
+      ],
+      NOW,
+    );
+    expect(batches[0].offers.map((o) => o.id)).toEqual(['open']);
+    expect(batches[0].settledOffers.map((o) => o.id)).toEqual(['full', 'locked']);
+    expect(skipped).toEqual([{ kind: 'offer', id: 'over', reason: 'DEPARTED' }]);
+  });
 });
 
 describe('toMatchInputs', () => {
@@ -147,9 +163,10 @@ describe('toMatchInputs', () => {
     const toCampus = toMatchInputs(batchOf([], [offerDoc({ id: 'o' })]), new Map(), t).offers[0];
     expect(toCampus.travelWindow).toEqual({ start: melb(5, '08:00'), end: melb(5, '09:00') });
 
-    // Leaving campus, everyone boards at departure.
+    // Leaving campus, everyone boards at departure - and the car can wait at
+    // campus for a rider ready later than the driver, up to the driver's arrival.
     const fromCampus = toMatchInputs(batchOf([], [offerDoc({ id: 'o', toUni: false })]), new Map(), t).offers[0];
-    expect(fromCampus.travelWindow).toEqual({ start: melb(5, '08:00'), end: melb(5, '08:00') });
+    expect(fromCampus.travelWindow).toEqual({ start: melb(5, '08:00'), end: melb(5, '09:00') });
   });
 
   it("gives the driver a deadline with the same margin riders get", () => {

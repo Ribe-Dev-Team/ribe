@@ -21,6 +21,7 @@ import DatePickerModal from '../components/DatePickerModal';
 import PressableScale from '../components/PressableScale';
 import {
   getDriverValidationError,
+  MAX_PLATE_LENGTH,
   isValidDob,
   isValidEmail,
   isValidName,
@@ -565,6 +566,7 @@ export default function AuthPage({
                       <TextInput
                         autoCapitalize="characters"
                         onBlur={() => setFocusedField(null)}
+                        maxLength={MAX_PLATE_LENGTH}
                         onChangeText={setLicensePlate}
                         onFocus={() => setFocusedField('licensePlate')}
                         placeholder="1ABC234"
@@ -576,6 +578,7 @@ export default function AuthPage({
                       <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
                       <TextInput
                         keyboardType="number-pad"
+                        maxLength={1}
                         onBlur={() => setFocusedField(null)}
                         onChangeText={setSeatsAvailable}
                         onFocus={() => setFocusedField('seatsAvailable')}

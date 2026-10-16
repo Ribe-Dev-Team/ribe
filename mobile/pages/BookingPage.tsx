@@ -25,6 +25,7 @@ import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import RouteMapPreview from '../components/RouteMapPreview';
 import { geocodeAddress, ResolvedPlace } from '../services/googlePlaces';
 import { useAuth } from '../auth/useAuth';
+import { MAX_CAR_SEATS } from './schema/user.validation';
 
 interface BookingPageProps {
   onDone: () => void;
@@ -41,9 +42,17 @@ function toTitleCase(value: string): string {
 }
 
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
-  const { user } = useAuth();
+  const { user, profileData } = useAuth();
+  // Passenger seats in the user's registered car - null when they have no car
+  // registered, and so can't offer a ride (addRideOffer checks this too).
+  const carSeats = profileData?.isDriver && profileData.licensePlate
+    && Number.isInteger(profileData.seatsAvailable) && (profileData.seatsAvailable ?? 0) >= 1
+    ? profileData.seatsAvailable as number
+    : null;
+  const canDrive = carSeats !== null;
   const [step, setStep] = useState<Step>('trip');
   const [isDriving, setIsDriving] = useState<boolean>(false);
+  const [showDriveNote, setShowDriveNote] = useState(false);
   const [toUni, setToUni] = useState<boolean>(true);
   const [address, setAddress] = useState<string>('');
   const [addrErr, setAddrErr] = useState<string>('');
@@ -128,8 +137,19 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     return addrErr === '';
   };
 
+  // A draft saved while offering a ride can't stay one for someone with no car
+  // registered, and the seats can't stay above what the car holds.
+  useEffect(() => {
+    if (isDriving && !canDrive) setIsDriving(false);
+  }, [isDriving, canDrive]);
+  useEffect(() => {
+    if (carSeats !== null && numSeats > carSeats) setNumSeats(carSeats);
+  }, [carSeats, numSeats]);
+
   const validateDetailsStep = (): boolean => {
-    const result = validateDetailsStepFields({ travelDate, isDriving, detourTime, numSeats, depTime, arrTime });
+    const result = validateDetailsStepFields({
+      travelDate, isDriving, detourTime, numSeats, depTime, arrTime, carSeats: carSeats ?? undefined,
+    });
     setTravelDateErr(result.travelDateErr);
     setDetourTimeErr(result.detourTimeErr);
     setNumSeatsErr(result.numSeatsErr);
@@ -330,12 +350,18 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                     <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a ride</Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => setIsDriving(true)}
-                    style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive]}
+                    accessibilityState={{ disabled: !canDrive }}
+                    onPress={() => (canDrive ? setIsDriving(true) : setShowDriveNote(true))}
+                    style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive, !canDrive && localStyles.segmentOptionDisabled]}
                   >
                     <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a ride</Text>
                   </Pressable>
                 </View>
+                {!canDrive && showDriveNote && (
+                  <Text style={[localStyles.warningText, { marginTop: 8 }]}>
+                    To offer a ride, register as a driver with your car in your Profile first.
+                  </Text>
+                )}
 
                 <Text style={[localStyles.cardLabel, { marginTop: 16 }]}>Direction</Text>
                 <View style={localStyles.segmentRow}>
@@ -464,7 +490,10 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 {detourTimeErr === '' && detourWarning !== '' && <Text style={localStyles.warningText}>{detourWarning}</Text>}
 
                 <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
-                <NumberStepper max={12} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
+                {carSeats !== null && (
+                  <Text style={localStyles.fieldHint}>Up to {carSeats} - the passenger seats in your car.</Text>
+                )}
+                <NumberStepper max={carSeats ?? MAX_CAR_SEATS} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
                 {numSeatsErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{numSeatsErr}</Text>}
               </View>
             )}
@@ -615,6 +644,9 @@ const localStyles = StyleSheet.create({
   },
   segmentOptionActive: {
     backgroundColor: colors.darkBlue,
+  },
+  segmentOptionDisabled: {
+    opacity: 0.5,
   },
   segmentText: {
     color: colors.white,
