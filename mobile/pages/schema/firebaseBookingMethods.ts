@@ -16,7 +16,6 @@ import { BOOKING_STATUSES, BookingStatus, isBookingStatus } from './matchStatus'
 import { timePattern, toMinutes } from '../../utility/times';
 import { MAX_CAR_SEATS } from './user.validation';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
-import { estimateEmissionsSaved } from '../../utility/emissions';
 
 // convert DD-MM-YYYY string to Firestore Timestamp
 const parseDateToTimestamp = (dateStr: string): Timestamp => {
@@ -136,15 +135,6 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     throw new Error('arrivalTime must be later than departureTime');
   }
 
-  try {
-    const emissions = await estimateEmissionsSaved(req.address, 1, coord, req.toUni);
-    if (emissions !== null) {
-      req.emissionsSavedKg = emissions;
-    }
-  } catch (e) {
-    console.warn('Failed to estimate emissions:', e);
-  }
-
   const docRef = await addDoc(collectionRef, req);
   await updateDoc(doc(db, 'rideRequests', docRef.id), { requestID: docRef.id });
 
@@ -242,16 +232,6 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error(`Your car has ${carSeats} passenger seat${carSeats === 1 ? '' : 's'}, so offer ${carSeats} or fewer.`);
   }
 
-  try {
-    const driverEmission = await estimateEmissionsSaved(offer.address, 1, coord, offer.toUni);
-    if (driverEmission !== null) {
-      offer.driverEmissionsKg = driverEmission;
-      offer.emissionsSavedKg = 0;
-    }
-  } catch (e) {
-    console.warn('Failed to estimate emissions:', e);
-  }
-
   const docRef = await addDoc(collectionRef, offer);
   await updateDoc(doc(db, 'rideOffers', docRef.id), { offerID: docRef.id });
 
@@ -309,16 +289,7 @@ export async function acceptMatch(requestID: string): Promise<void> {
     const at = Math.min(Math.max(request.routeIndex ?? confirmed.length, 0), confirmed.length);
     const ordered = [...confirmed.slice(0, at), requestID, ...confirmed.slice(at)];
 
-    const otherConfirmedSnaps = await Promise.all(
-      confirmed.map((id) => tx.get(doc(db, 'rideRequests', id))),
-    );
-    const otherRiderEmissions = otherConfirmedSnaps
-      .filter((s) => s.exists())
-      .map((s) => (s.data() as RideRequest).emissionsSavedKg ?? 0);
-    const currentRiderEmission = request.emissionsSavedKg ?? 0;
-    const allRiderEmissions = [...otherRiderEmissions, currentRiderEmission];
-
-    const emissionsSavedKg = Math.round(allRiderEmissions.reduce((a, b) => a + b, 0) * 10) / 10;
+    const emissionsSavedKg = offer.pendingSchedule?.emissionsSavedKg ?? 0;
 
     tx.update(requestRef, { status: 'confirmed' });
     tx.update(offerRef, {

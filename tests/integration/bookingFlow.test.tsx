@@ -42,20 +42,12 @@ jest.mock('../../mobile/auth/useAuth', () => {
   const useAuth = () => ({ user: { uid: 'test-user-123' }, profileData: mockProfile });
   return { __esModule: true, useAuth, default: useAuth };
 });
-jest.mock('../../mobile/auth/useAuth', () => ({
-  useAuth: () => ({ user: { uid: 'test-user-id' } }),
-}));
-
-jest.mock('../../mobile/utility/emissions', () => ({
-  estimateEmissionsSaved: async () => 2.4,
-}));
 
 // The Firestore/AsyncStorage mocks use real setTimeout delays internally;
 // jest.setup.js switches the suite to fake timers by default, which would
 // hang these awaits forever.
 jest.useRealTimers();
 
-const TEST_USER_ID = 'test-user-id';
 const BOOKING_DRAFT_KEY = 'ribe:bookingDraftV1';
 
 function futureDateStr(daysFromNow: number): string {

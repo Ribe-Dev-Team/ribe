@@ -62,6 +62,7 @@ export interface TripSchedule {
   arriveAt: Timestamp; // the driver reaches their own destination
   stops: TripStop[];   // every rider, in pickup order
   costs?: TripCosts;
+  emissionsSavedKg?: number;
 }
 
 export interface RideOffer {

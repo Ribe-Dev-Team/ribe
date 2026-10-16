@@ -3,19 +3,6 @@ import { db } from '../../mobile/firebaseConfig';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { fetchUserRides } from '../../mobile/services/rideData';
 
-jest.mock('../../mobile/utility/emissions', () => {
-  const actual = jest.requireActual('../../mobile/utility/emissions');
-  return {
-    ...actual,
-    estimateEmissionsSaved: jest.fn(async (address: string) => {
-      if (address.includes('Driver')) return 3.4;
-      if (address.includes('Rider 1')) return 2.5;
-      if (address.includes('Rider 2')) return 1.8;
-      return 2.0;
-    }),
-  };
-});
-
 jest.useRealTimers();
 
 describe('Driver emissions saved when getting riders', () => {
@@ -35,6 +22,7 @@ describe('Driver emissions saved when getting riders', () => {
       matchedRiderId: 'rider-1-uid',
       driverEmissionsKg: 3.4,
       emissionsSavedKg: 0,
+      pendingSchedule: { emissionsSavedKg: 2.5 },
     });
 
     // Seed rider 1 request with emissionsSavedKg = 2.5
@@ -63,6 +51,7 @@ describe('Driver emissions saved when getting riders', () => {
       status: 'awaiting',
       pendingRequestId: req2Id,
       matchedRiderId: 'rider-2-uid',
+      pendingSchedule: { emissionsSavedKg: 4.3 },
     });
 
     await setDoc(doc(db, 'rideRequests', req2Id), {

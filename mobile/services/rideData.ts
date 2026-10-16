@@ -51,6 +51,7 @@ interface StoredSchedule {
   arriveAt: StoredTime;
   stops: { requestId: string; pickupAt: StoredTime; arriveAt: StoredTime; cost?: RiderCost }[];
   costs?: Omit<TripCosts, 'calculatedAt'>;
+  emissionsSavedKg?: number;
 }
 
 type OfferView = Pick<
@@ -280,7 +281,6 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
        
         address: request.address || undefined,
         emissionsSavedKg: request.emissionsSavedKg,
-     ,
         coord: request.coord,
         photoUrl: text('profilePhotoUrl'),
         bio: text('bio'),
@@ -449,6 +449,9 @@ function buildRideCard(
   const status = kind === 'offer' && record.status === 'pending' && (seats?.filled ?? 0) > 0
     ? 'confirmed'
     : record.status;
+  const co2SavedKg = kind === 'request'
+    ? record.emissionsSavedKg ?? 0
+    : scheduleFor(record, kind, docId, offer)?.emissionsSavedKg ?? record.emissionsSavedKg ?? 0;
 
   return {
     rideId: docId,
@@ -473,9 +476,7 @@ function buildRideCard(
     stops: middleStops(record, kind, docId, offer, stopPeople),
     cost: costLabel(costSplit),
     costSplit,
-    // PLACEHOLDER: there is no distance-to-CO2 calculation in the codebase
-    // yet, so this is a constant rather than data. It is NOT derived from the match.
-    co2SavedKg: 2.4,
+    co2SavedKg,
     driver: {
       uid: kind === 'request' ? record.matchedDriverId : record.userId,
       name: resolved.name,
@@ -577,9 +578,7 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
         .flatMap((row) => [
           ...(row.data.confirmedRequestIds ?? []),
           ...(scheduleFor(row.data, 'offer', row.id)?.stops.map((stop) => stop.requestId) ?? []),
-        ]),
-        .flatMap((row) => scheduleFor(row.data, 'offer', row.id)?.stops ?? [])
-        .map((stop) => stop.requestId),
+        ])
     ),
   ]);
 

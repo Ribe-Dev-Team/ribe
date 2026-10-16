@@ -16,7 +16,8 @@ runner/firestore.ts makes these same decisions inside its transactions.
 
 import { OFFER_SLOT_FIELDS, planMatchWrite, planScheduleWrite, planSettle, MatchWrite, REQUEST_MATCH_FIELDS, ScheduleWrite, settledOfferStatus, StoredOffer, StoredRequest, toMatchWrites } from '../../backend/server/matching/writes';
 import { ProposedMatch } from '../../backend/server/matching/types';
-import { makeOffer, CAMPUS } from '../fixtures';
+import { makeOffer, makeRequest, CAMPUS } from '../fixtures';
+import { SyntheticTravelTime } from '../../backend/server/matching/travelTime';
 
 const matchedAt = new Date('2026-10-04T20:00:00Z');
 const acceptDeadline = new Date('2026-10-04T21:00:00Z');
@@ -28,6 +29,8 @@ const write: MatchWrite = {
   reqId: 'r', offerId: 'o', riderId: 'rider', driverId: 'd', matchedAt, acceptDeadline,
   riderDetourMinutes: 3.5, routeIndex: 1, baseline: ['c1', 'c2'],
   pickupAt: at(15), arriveAt: at(30),
+  riderEmissionsKg: 0,
+  driverEmissionsKg: 0,
   schedule: {
     departAt,
     arriveAt: at(30),
@@ -36,6 +39,7 @@ const write: MatchWrite = {
       { requestId: 'r', pickupAt: at(15), arriveAt: at(30) },
       { requestId: 'c2', pickupAt: at(20), arriveAt: at(30) },
     ],
+    emissionsSavedKg: 0,
   },
 };
 const request: StoredRequest = { status: 'pending' };
@@ -50,6 +54,7 @@ describe('planMatchWrite', () => {
         set: {
           status: 'awaiting', matchedOfferId: 'o', matchedDriverId: 'd', matchedAt, acceptDeadline,
           riderDetourMinutes: 3.5, routeIndex: 1, pickupAt: at(15), arriveAt: at(30),
+          emissionsSavedKg: 0,
         },
         remove: [],
       },
@@ -57,6 +62,7 @@ describe('planMatchWrite', () => {
         set: {
           status: 'awaiting', pendingRequestId: 'r', matchedRiderId: 'rider', matchedAt, acceptDeadline,
           pendingSchedule: write.schedule,
+          driverEmissionsKg: 0,
         },
         remove: [],
       },
@@ -97,7 +103,9 @@ describe('toMatchWrites', () => {
       ],
       matchedAt, acceptDeadline,
     } as ProposedMatch;
-    expect(toMatchWrites([m], [o])).toEqual([write]);
+    const request = makeRequest({ reqId: 'r', start: CAMPUS });
+    const distances = new SyntheticTravelTime({ roadFactor: 1, avgSpeedKmh: 60, jitter: 0 });
+    expect(toMatchWrites([m], [o], [request], distances)).toEqual([write]);
   });
 });
 
@@ -196,7 +204,10 @@ describe('planScheduleWrite — filling in a confirmed car timetable', () => {
   const w: ScheduleWrite = { offerId: 'o', baseline: ['c1', 'c2'], schedule: write.schedule };
 
   it('writes it while the car still carries exactly those riders', () => {
-    expect(planScheduleWrite(offer, w)).toEqual({ set: { schedule: write.schedule }, remove: [] });
+    expect(planScheduleWrite(offer, w)).toEqual({
+      set: { schedule: write.schedule, emissionsSavedKg: 0 },
+      remove: [],
+    });
     // A rider deciding on a new match doesn't matter: that's pendingSchedule.
     expect(planScheduleWrite({ ...offer, status: 'awaiting', pendingRequestId: 'r' }, w)).not.toBeNull();
   });
