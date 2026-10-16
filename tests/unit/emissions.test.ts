@@ -1,6 +1,5 @@
 import {
   EMISSIONS_PER_KM,
-  ROAD_DISTANCE_FACTOR,
   getRoadDistanceKm,
   estimateEmissionsSaved,
   calculateDriverEmissionsSaved,
@@ -27,12 +26,12 @@ jest.mock('../../mobile/services/googleRoutes', () => ({
 describe('emissions calculator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (googleRoutes.computeRoute as jest.Mock).mockResolvedValue({ routes: [{ distanceMeters: 10000 }] });
   });
 
   describe('constants', () => {
-    it('uses standard Australian petrol emissions and road detour factor', () => {
+    it('uses standard Australian petrol emissions', () => {
       expect(EMISSIONS_PER_KM).toBe(0.17);
-      expect(ROAD_DISTANCE_FACTOR).toBe(1.35);
     });
   });
 
@@ -43,17 +42,16 @@ describe('emissions calculator', () => {
       expect(dist).toBeNull();
     });
 
-    it('calculates road distance using straight-line distance times 1.35', async () => {
-      // Point at approx 10 km straight-line distance north of Clayton campus
+    it('returns null when the route response has no distance', async () => {
       (googlePlaces.geocodeAddress as jest.Mock).mockResolvedValue({
         lat: -37.8206,
         lng: 145.1361,
         description: 'Test Location',
       });
+      (googleRoutes.computeRoute as jest.Mock).mockResolvedValue({ routes: [] });
+
       const dist = await getRoadDistanceKm('123 North St');
-      expect(dist).not.toBeNull();
-      expect(dist!).toBeGreaterThan(12);
-      expect(dist!).toBeLessThan(15);
+      expect(dist).toBeNull();
     });
 
     it('uses Google Routes distance in km when the route is available', async () => {
@@ -75,7 +73,7 @@ describe('emissions calculator', () => {
       }));
     });
 
-    it('uses the existing road-factor estimate if route lookup fails', async () => {
+    it('returns null if route lookup fails', async () => {
       (googlePlaces.geocodeAddress as jest.Mock).mockResolvedValue({
         lat: -37.8206,
         lng: 145.1361,
@@ -83,9 +81,7 @@ describe('emissions calculator', () => {
       });
       (googleRoutes.computeRoute as jest.Mock).mockRejectedValue(new Error('Routes API unavailable'));
 
-      const dist = await getRoadDistanceKm('123 North St');
-      expect(dist).toBeGreaterThan(12);
-      expect(dist).toBeLessThan(15);
+      await expect(getRoadDistanceKm('123 North St')).resolves.toBeNull();
     });
 
     it('uses stored coordinates without geocoding', async () => {
