@@ -69,6 +69,8 @@ service cloud.firestore {
       // With nobody left, or no timetable to begin with, there is none after.
       // Otherwise only the leaver's stop may come out (the rest unchanged),
       // the driver's own times stay, and it is marked for the runner to re-plan.
+      // The stops' order can't be checked here; the app's cards sort them by
+      // pickup time instead (middleStops in mobile/services/rideData.ts).
       function scheduleAfterLeaving(leaverId, ridersLeft) {
         let hadOne = 'schedule' in resource.data;
         let hasOne = 'schedule' in request.resource.data;

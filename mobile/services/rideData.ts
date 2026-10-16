@@ -202,16 +202,23 @@ function middleStops(
   const schedule = scheduleFor(record, kind, docId, offer);
   if (!record.toUni || !schedule) return undefined;
 
+  // Route order is pickup-time order. Sorted rather than trusting the stored
+  // order: a cancelling rider writes the timetable (firestore.rules
+  // → stopCutOut), and the rules can protect each stop's times but not their
+  // order in the list.
+  const stops = [...schedule.stops]
+    .sort((a, b) => toDate(a.pickupAt).getTime() - toDate(b.pickupAt).getTime());
+
   if (kind === 'request') {
-    const own = schedule.stops.findIndex((s) => s.requestId === docId);
+    const own = stops.findIndex((s) => s.requestId === docId);
     if (own < 0) return undefined;
-    return schedule.stops.slice(own + 1).map((s) => ({
+    return stops.slice(own + 1).map((s) => ({
       label: 'Pickup · another passenger',
       time: '~' + formatClock(toDate(s.pickupAt)),
     }));
   }
 
-  return schedule.stops.map((s, index) => {
+  return stops.map((s, index) => {
     const person = people?.get(s.requestId);
     // The rider still deciding on this drive is on the proposal, not yet aboard.
     const name = person?.name && s.requestId === record.pendingRequestId

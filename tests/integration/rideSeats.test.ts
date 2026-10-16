@@ -226,6 +226,16 @@ describe('stops on the way to campus', () => {
     expect(last.stops).toEqual([]); // nobody between them and campus
   });
 
+  it('orders the pickups by time, whatever order the timetable stores them in', async () => {
+    await seedFullCar({ schedule: { ...timetable, stops: [...timetable.stops].reverse() } });
+
+    const [card] = (await fetchUserRides('driver-uid')).offers;
+    const [first] = (await fetchUserRides('req-1-uid')).requests;
+
+    expect(card.stops?.map((s) => s.label)).toEqual(['Ann · 1 First St', 'Yass · 2 Second Rd']);
+    expect(first.stops).toEqual([{ label: 'Pickup · another passenger', time: '~08:31' }]);
+  });
+
   it("marks the rider still deciding on the driver's proposed timetable", async () => {
     await seedFullCar({
       status: 'awaiting',
