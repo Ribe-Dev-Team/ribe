@@ -1,10 +1,10 @@
 // Median fuel price lookup via the Victorian Government's Servo Saver public API.
-// The key isn't issued yet, so without one every call returns FALLBACK_FUEL_PRICE
-// and cost splitting still works end to end. The runner looks the price up once
-// per run (runner/run.ts) and prices every car in that run with it.
+// Without a key every call returns FALLBACK_FUEL_PRICE, so cost splitting still
+// works end to end. The runner looks the price up once per run (runner/run.ts)
+// and prices every car in that run with it.
 //
-// TODO: once the key arrives, check the endpoint, headers and response shape below against the
-// Servo Saver API docs - they're written from the published spec but haven't been exercised yet.
+// The endpoint, headers and response shape below are checked against the real
+// API by tests/integration/fuelPrices.live.test.ts (`npm run test:live`).
 
 const SERVO_SAVER_PRICES_URL = 'https://api.fuel.service.vic.gov.au/open-data/v1/fuel/prices';
 
