@@ -181,16 +181,58 @@ describe('declineMatch', () => {
 });
 
 describe('cancelConfirmedRequest', () => {
-  it("cancels the rider's request, keeping the offer id for the runner, and leaves the offer alone", async () => {
+  it("takes the rider's seat and stop off the car at once, leaving the others' times to be re-planned", async () => {
+    const { reqId, offerId } = await seedMatch({ confirmed: ['a'] });
+    await acceptMatch(reqId); // a, then this rider
+
+    await cancelConfirmedRequest(reqId);
+
+    // Not deleted, so the cancellation is still on record - but done with the car.
+    const request = await read('rideRequests', reqId);
+    expect(request.status).toBe('cancelled');
+    expect(request).not.toHaveProperty('matchedOfferId');
+
+    const offer = await read('rideOffers', offerId);
+    expect(offer).toMatchObject({ confirmedRequestIds: ['a'], status: 'pending' });
+    expect(offer.schedule.stops.map((s: { requestId: string }) => s.requestId)).toEqual(['a']);
+    expect(offer.schedule.needsReplan).toBe(true);
+  });
+
+  it('puts a car its only rider left straight back into matching, with no timetable', async () => {
+    const { reqId, offerId } = await seedMatch({ seatCapacity: 1 });
+    await acceptMatch(reqId); // 1 of 1, full
+    expect((await read('rideOffers', offerId)).status).toBe('confirmed');
+
+    await cancelConfirmedRequest(reqId);
+
+    const offer = await read('rideOffers', offerId);
+    expect(offer).toMatchObject({ confirmedRequestIds: [], status: 'pending' });
+    expect(offer).not.toHaveProperty('schedule');
+  });
+
+  it('keeps a locked car done while others are still aboard', async () => {
     const { reqId, offerId } = await seedMatch({ confirmed: ['a'] });
     await acceptMatch(reqId);
+    await setOfferLocked(offerId, true);
+
+    await cancelConfirmedRequest(reqId);
+
+    expect(await read('rideOffers', offerId)).toMatchObject({ confirmedRequestIds: ['a'], status: 'confirmed' });
+  });
+
+  it('leaves the offer to the runner while another rider is deciding on the car', async () => {
+    const { reqId, offerId } = await seedMatch({ confirmed: ['a'] });
+    await acceptMatch(reqId);
+    // The next run offers the car to someone else, whose route includes this rider.
+    await setDoc(doc(db, 'rideOffers', offerId), {
+      ...(await read('rideOffers', offerId)), status: 'awaiting', pendingRequestId: 'deciding',
+    });
     const offerBefore = await read('rideOffers', offerId);
 
     await cancelConfirmedRequest(reqId);
 
-    // Not deleted: the runner finds the car through matchedOfferId and frees the seat.
+    // The runner finds the car through matchedOfferId once they've answered.
     expect(await read('rideRequests', reqId)).toMatchObject({ status: 'cancelled', matchedOfferId: offerId });
-    // The rider's phone can't write the driver's offer once they've accepted.
     expect(await read('rideOffers', offerId)).toEqual(offerBefore);
   });
 
