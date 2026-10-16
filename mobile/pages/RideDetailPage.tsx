@@ -7,6 +7,7 @@ import RideMap, { markerColor } from '../components/RideMap';
 import CostSplitPanel from '../components/CostSplitPanel';
 import { fetchRideDetails, JourneyStop, RideCar, RideDetails, RidePerson } from '../services/rideData';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
+import GreenhouseEmissionCard from '../components/GreenhouseEmissionCard';
 
 interface RideDetailPageProps {
 	ride: Ride;
@@ -192,7 +193,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 				</>
 			)}
 
-			<View style={styles.savingsPanel}><Text style={styles.savingsKicker}>CO2 SAVINGS</Text><Text style={styles.savingsValue}>2.4 kg saved</Text><Text style={styles.savingsText}>Sharing this ride keeps another car off the road.</Text></View>
+			<GreenhouseEmissionCard co2SavedKg={ride.co2SavedKg ?? 0} />
 			<CostSplitPanel costSplit={ride.costSplit} />
 
 			{ride.status === 'awaiting' && (onAccept || onDecline) && (
