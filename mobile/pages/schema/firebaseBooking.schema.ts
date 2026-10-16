@@ -60,6 +60,12 @@ export interface TripSchedule {
   departAt: Timestamp; // the driver sets off
   arriveAt: Timestamp; // the driver reaches their own destination
   stops: TripStop[];   // every rider, in pickup order
+  /*
+  Set when a rider cancelled and their stop was simply taken out
+  (cancelConfirmedRequest): the others' times are still the old route's, so the
+  runner re-plans it on its next run, which also clears this.
+  */
+  needsReplan?: boolean;
 }
 
 export interface RideOffer {

@@ -72,7 +72,9 @@ function toOfferDoc(snap: DocumentSnapshot): OfferDoc {
     pendingRequestId: d['pendingRequestId'] ?? null,
     confirmedRequestIds: d['confirmedRequestIds'] ?? [],
     acceptingMore: d['acceptingMore'] !== false,
-    scheduledRiders: Array.isArray(d['schedule']?.stops)
+    // A timetable a cancelling rider's stop was cut out of still has the old
+    // route's times, so it counts as missing and gets re-planned.
+    scheduledRiders: Array.isArray(d['schedule']?.stops) && !d['schedule'].needsReplan
       ? d['schedule'].stops.map((s: { requestId: string }) => s.requestId)
       : undefined,
   };

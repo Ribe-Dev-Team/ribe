@@ -357,10 +357,13 @@ whatever schedules `npm run match`.
    ends) and the driver's slot is freed. A rider whose driver removed the offer
    — awaiting or already confirmed — goes back to `pending` with the match
    cleared; the driver's phone can't write the rider's booking, so the runner
-   does. A confirmed rider who cancelled (`cancelConfirmedRequest`) comes off
-   their driver's `confirmedRequestIds` the same way, the other way round: the
-   rider's phone can't write the offer. That waits while another rider is
-   deciding on the car, since their proposed route includes the departed rider.
+   does. A confirmed rider who cancels (`cancelConfirmedRequest`) takes their
+   own seat off the driver's offer at once, from their phone - the one change
+   the Firestore rules let a confirmed rider make to it - and cuts their stop
+   out of the timetable, marked `needsReplan` so the next run re-times it. The
+   runner only does it for them (`VACATED`) when that couldn't happen: another
+   rider was deciding on the car, since their proposed route includes the
+   departed rider, or the published rules refused the write.
    All of this happens before matching, so everyone freed can be matched again
    in the same run.
 2. **Read** every request and offer whose stored status is `pending` (the app's
@@ -585,9 +588,10 @@ Two ways to poke at the algorithm without writing a Jest test:
   so an early arrival is treated as infeasible rather than under-reporting
   detour. This costs some matches where the driver lives further out and leaves
   early.
-- Only the rider can accept. Driver-side approval and `firestore.rules` do not
-  exist yet.
-- When a confirmed rider cancels, their seat is freed on the next run, not at
-  once. Until then the driver's card still counts them. A car the driver has
-  locked loses its stored timetable, because the runner only re-plans cars that
-  are still being matched. Its cards fall back to each rider's own times.
+- Only the rider can accept. Driver-side approval does not exist yet.
+  `firestore.rules` at the repo root is a copy of the published rules; changing
+  it doesn't deploy it - publish it in the Firebase console too.
+- When a confirmed rider cancels, the riders left keep their old pickup times
+  until the next run re-plans the route (a little early, never late, without
+  the departed rider's detour). The runner only re-plans cars that are still
+  being matched, so a locked car keeps those times.
