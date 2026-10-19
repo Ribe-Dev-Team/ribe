@@ -4,12 +4,13 @@
 // suite never makes a real (billed) network call to the Google Maps API.
 
 import * as React from 'react';
+import { Alert, AlertButton } from 'react-native';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, doc, getDocs, query, setDoc } from 'firebase/firestore';
 import * as firestoreMock from 'firebase/firestore';
 import { db } from '../../mobile/firebaseConfig';
-import BookingPage from '../../mobile/pages/BookingPage';
+import BookingPage, { draftHasProgress } from '../../mobile/pages/BookingPage';
 
 // Ionicons tries to load real font assets on mount, which isn't available
 // under Jest and isn't relevant to the booking flow being tested here.
@@ -89,6 +90,100 @@ beforeEach(async () => {
   // addRideOffer checks the driver's registered car in Firestore, too.
   await setDoc(doc(db, 'users', TEST_USER_ID), DRIVER_PROFILE);
   (global as any).alert = jest.fn();
+  answerDraftPrompt('Yes');
+});
+
+/** Answer "Continue where you left off?" with `answer` whenever it's asked,
+ *  noting each time it was. */
+let draftPrompts: string[] = [];
+function answerDraftPrompt(answer: 'Yes' | 'No') {
+  draftPrompts = [];
+  jest.spyOn(Alert, 'alert').mockImplementation((title, _message, buttons?: AlertButton[]) => {
+    draftPrompts.push(title);
+    buttons?.find((button) => button.text === answer)?.onPress?.();
+  });
+}
+
+/** The draft as last saved - the form's state once the user has answered. */
+async function savedDraft() {
+  await flushHydration();
+  return JSON.parse((await AsyncStorage.getItem(BOOKING_DRAFT_KEY)) ?? 'null');
+}
+
+describe('BookingPage - continuing a saved draft', () => {
+  const draft = {
+    isDriving: false, toUni: false, address: '123 Main St', travelDate: futureDateStr(7),
+    depTime: '08:00', arrTime: '09:00', detourTime: 0, capacity: 1,
+  };
+
+  test('asks whether to continue, and restores the draft on Yes', async () => {
+    await seedDraft(draft);
+    await render(<BookingPage onDone={() => {}} />);
+    await flushHydration();
+
+    expect(draftPrompts).toEqual(['Continue where you left off?']);
+    await screen.findByDisplayValue('123 Main St');
+    expect(await savedDraft()).toMatchObject(draft);
+  });
+
+  test('starts a blank form on No, keeping the day picked on the calendar', async () => {
+    answerDraftPrompt('No');
+    await seedDraft(draft);
+    const calendarDay = new Date();
+    calendarDay.setDate(calendarDay.getDate() + 3);
+    await render(<BookingPage onDone={() => {}} initialDate={calendarDay} />);
+    await flushHydration();
+
+    expect(draftPrompts).toEqual(['Continue where you left off?']);
+    expect(screen.queryByDisplayValue('123 Main St')).toBeNull();
+    // The old draft is saved over with the fresh form.
+    expect(await savedDraft()).toEqual({
+      isDriving: false, toUni: true, address: '', travelDate: futureDateStr(3),
+      detourTime: 0, capacity: 1, depTime: '', arrTime: '',
+    });
+  });
+
+  test("keeps the calendar day on Yes when the draft hadn't picked one", async () => {
+    await seedDraft({ ...draft, travelDate: '' });
+    const calendarDay = new Date();
+    calendarDay.setDate(calendarDay.getDate() + 3);
+    await render(<BookingPage onDone={() => {}} initialDate={calendarDay} />);
+
+    expect(await savedDraft()).toMatchObject({ address: '123 Main St', travelDate: futureDateStr(3) });
+  });
+
+  test("doesn't ask when there's nothing to continue", async () => {
+    await render(<BookingPage onDone={() => {}} />);
+    await flushHydration();
+    expect(draftPrompts).toEqual([]);
+
+    // The blank form it saved - just a date at most - doesn't bring it up next time.
+    await seedDraft({ isDriving: false, toUni: true, address: '', travelDate: futureDateStr(2), detourTime: 0, capacity: 1, depTime: '', arrTime: '' });
+    await render(<BookingPage onDone={() => {}} />);
+    await flushHydration();
+    expect(draftPrompts).toEqual([]);
+  });
+});
+
+describe('draftHasProgress', () => {
+  const blank = { isDriving: false, toUni: true, address: '', travelDate: '', detourTime: 0, capacity: 1, depTime: '', arrTime: '' };
+
+  it('is false for a blank form, or one with just a date', () => {
+    expect(draftHasProgress(blank)).toBe(false);
+    expect(draftHasProgress({ ...blank, travelDate: futureDateStr(1) })).toBe(false);
+    expect(draftHasProgress({ ...blank, address: '   ' })).toBe(false);
+  });
+
+  it.each([
+    ['an address', { address: '1 Home St' }],
+    ['a time', { depTime: '08:00' }],
+    ['offering a ride', { isDriving: true }],
+    ['going home', { toUni: false }],
+    ['a detour', { detourTime: 10 }],
+    ['seats', { capacity: 2 }],
+  ])('is true once the form has %s', (_label, change) => {
+    expect(draftHasProgress({ ...blank, ...change })).toBe(true);
+  });
 });
 
 describe('BookingPage - rider requesting a ride', () => {

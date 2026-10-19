@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -36,6 +37,21 @@ type Step = 'trip' | 'details' | 'confirm';
 type FieldName = 'address' | 'travelDate' | 'depTime' | 'arrTime' | 'detourTime' | 'numSeats';
 
 const BOOKING_DRAFT_KEY = 'ribe:bookingDraftV1';
+
+/** Whether a saved draft holds anything the user filled in, beyond a blank
+ *  form. A date alone doesn't count: one is filled in for them when they start
+ *  from a day on the calendar, and is quick to pick again. */
+export function draftHasProgress(draft: Partial<Booking>): boolean {
+  return Boolean(
+    (typeof draft.address === 'string' && draft.address.trim())
+    || draft.depTime
+    || draft.arrTime
+    || draft.isDriving === true
+    || draft.toUni === false
+    || (typeof draft.detourTime === 'number' && draft.detourTime !== 0)
+    || (typeof draft.capacity === 'number' && draft.capacity !== 1),
+  );
+}
 
 function toTitleCase(value: string): string {
   return value.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
@@ -74,31 +90,49 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [activePicker, setActivePicker] = useState<'date' | 'dep' | 'arr' | null>(null);
   const [hydrated, setHydrated] = useState<boolean>(false);
 
-  // Restore any in-progress draft so a user doesn't lose their inputs if they navigate away mid-form.
+  // A user who navigated away mid-form is asked whether to pick up their
+  // draft or start again. Nothing is saved over it until they've answered.
   useEffect(() => {
     let isMounted = true;
+    const restore = (draft: Partial<Booking>) => {
+      if (typeof draft.isDriving === 'boolean') setIsDriving(draft.isDriving);
+      if (typeof draft.toUni === 'boolean') setToUni(draft.toUni);
+      if (typeof draft.address === 'string') setAddress(draft.address);
+      if (typeof draft.detourTime === 'number') setDetourTime(draft.detourTime);
+      if (typeof draft.capacity === 'number') setNumSeats(draft.capacity);
+      if (typeof draft.depTime === 'string') setDepTime(draft.depTime);
+      if (typeof draft.arrTime === 'string') setArrTime(draft.arrTime);
+      // The draft's date if it's still ahead, else the calendar day they came from.
+      const parsed = typeof draft.travelDate === 'string' ? parseDateAsStr(draft.travelDate) : null;
+      if (parsed && isFutureDate(parsed)) setTravelDate(draft.travelDate as string);
+    };
+    const finish = () => { if (isMounted) setHydrated(true); };
+
     (async () => {
+      let draft: Partial<Booking> | null = null;
       try {
         const raw = await AsyncStorage.getItem(BOOKING_DRAFT_KEY);
-        if (raw && isMounted) {
-          const draft: Partial<Booking> = JSON.parse(raw);
-          if (typeof draft.isDriving === 'boolean') setIsDriving(draft.isDriving);
-          if (typeof draft.toUni === 'boolean') setToUni(draft.toUni);
-          if (typeof draft.address === 'string') setAddress(draft.address);
-          if (typeof draft.detourTime === 'number') setDetourTime(draft.detourTime);
-          if (typeof draft.capacity === 'number') setNumSeats(draft.capacity);
-          if (typeof draft.depTime === 'string') setDepTime(draft.depTime);
-          if (typeof draft.arrTime === 'string') setArrTime(draft.arrTime);
-          if (typeof draft.travelDate === 'string') {
-            const parsed = parseDateAsStr(draft.travelDate);
-            setTravelDate(parsed && isFutureDate(parsed) ? draft.travelDate : '');
-          }
-        }
+        draft = raw ? JSON.parse(raw) : null;
       } catch (err) {
         console.warn('Failed to restore booking draft:', err);
-      } finally {
-        if (isMounted) setHydrated(true);
       }
+      if (!isMounted) return;
+      if (!draft || !draftHasProgress(draft)) {
+        finish();
+        return;
+      }
+      const saved = draft;
+      Alert.alert(
+        'Continue where you left off?',
+        'You have a ride you started but didn\'t submit.',
+        [
+          // Start again: the blank form, with the calendar day if they came
+          // from one. The old draft is saved over once they start.
+          { text: 'No', style: 'cancel', onPress: finish },
+          { text: 'Yes', onPress: () => { if (isMounted) restore(saved); finish(); } },
+        ],
+        { cancelable: false },
+      );
     })();
     return () => {
       isMounted = false;
