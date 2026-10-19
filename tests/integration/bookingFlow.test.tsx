@@ -94,6 +94,8 @@ beforeEach(async () => {
   await setDoc(doc(db, 'users', TEST_USER_ID), DRIVER_PROFILE);
   (global as any).alert = jest.fn();
   answerDraftPrompt('Yes');
+  // BookingPage logs each booking it creates; not something to print here.
+  jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 
 /** Answer "Continue where you left off?" with `answer` whenever it's asked,
@@ -351,6 +353,7 @@ describe('BookingPage - trip step validation blocks incomplete submissions', () 
 describe('BookingPage - Firestore write failure', () => {
   test('surfaces an error and does not clear the draft when the write fails', async () => {
     const addDocSpy = jest.spyOn(firestoreMock, 'addDoc').mockRejectedValueOnce(new Error('network down'));
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     await seedDraft({
       isDriving: false,
@@ -378,6 +381,8 @@ describe('BookingPage - Firestore write failure', () => {
     expect(onDone).not.toHaveBeenCalled();
     // the draft survives so the user doesn't lose their in-progress booking
     expect(await AsyncStorage.getItem(BOOKING_DRAFT_KEY)).not.toBeNull();
+    // and the failure is logged for debugging
+    expect(consoleError).toHaveBeenCalledWith('Failed to create ride request/offer:', expect.objectContaining({ message: 'network down' }));
 
     addDocSpy.mockRestore();
   });

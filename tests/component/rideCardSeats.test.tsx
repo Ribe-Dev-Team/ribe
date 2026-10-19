@@ -29,11 +29,6 @@ const base: RideCardProps = {
   arriveBy: '09:00',
 };
 
-/** The buttons of the most recent Alert.alert call. */
-function lastAlertButtons(spy: jest.SpyInstance) {
-  return spy.mock.calls[spy.mock.calls.length - 1][2] as Array<{ text: string; onPress?: () => void }>;
-}
-
 describe('the essentials', () => {
   it("puts a rider's ready-by time first, with the date, price, trip ends and their driver's car", async () => {
     await render(<RideCard {...base} kind="request" readyBy="~08:35" />);

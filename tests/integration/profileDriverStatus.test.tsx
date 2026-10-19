@@ -4,7 +4,7 @@
 // registration used to wipe the degree and bio - every save wrote every field.
 
 import * as React from 'react';
-import { render, waitFor } from '@testing-library/react-native';
+import { act, render, waitFor } from '@testing-library/react-native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../../mobile/firebaseConfig';
 
@@ -25,8 +25,15 @@ async function signIn() {
   const Probe = () => { hook = useAuth(); return null; };
   await render(<AuthProvider><Probe /></AuthProvider>);
   await waitFor(() => expect(hook.loading).toBe(false));
-  return () => hook;
+  currentHook = () => hook;
+  return currentHook;
 }
+
+/** Save through the hook inside act(), so the provider's state updates -
+ *  submitting on, then off - are applied before the test looks. */
+let currentHook: () => ReturnType<typeof useAuth>;
+const save = (data: Parameters<ReturnType<typeof useAuth>['updateProfileDetails']>[0]) =>
+  act(() => currentHook().updateProfileDetails(data));
 
 const stored = async (collection: string) => (await getDoc(doc(db, collection, UID))).data();
 
@@ -38,7 +45,7 @@ it('keeps a driver a driver, with their car, when they edit their profile', asyn
   await setDoc(doc(db, 'users', UID), { name: 'Dana', isDriver: true, degree: 'Law', bio: 'Hi', onboardingComplete: true, ...car });
   const hook = await signIn();
 
-  await hook().updateProfileDetails({ degree: 'Engineering', bio: 'Drives in most days.' });
+  await save({ degree: 'Engineering', bio: 'Drives in most days.' });
 
   expect(await stored('users')).toMatchObject({ isDriver: true, degree: 'Engineering', bio: 'Drives in most days.', ...car });
   await waitFor(() => expect(hook().profileData).toMatchObject({ isDriver: true, vehicleMake: 'Toyota', degree: 'Engineering' }));
@@ -48,7 +55,7 @@ it("keeps someone's degree and bio when they register as a driver", async () => 
   await setDoc(doc(db, 'users', UID), { name: 'Dana', isDriver: false, degree: 'Law', bio: 'Hi', onboardingComplete: true });
   const hook = await signIn();
 
-  await hook().updateProfileDetails({ isDriver: true, ...car });
+  await save({ isDriver: true, ...car });
 
   expect(await stored('users')).toMatchObject({ isDriver: true, degree: 'Law', bio: 'Hi', ...car });
   expect(await stored('drivers')).toMatchObject({ uid: UID, ...car });
@@ -58,7 +65,7 @@ it('still clears a field the person emptied on purpose', async () => {
   await setDoc(doc(db, 'users', UID), { name: 'Dana', isDriver: true, degree: 'Law', bio: 'Hi', onboardingComplete: true, ...car });
   const hook = await signIn();
 
-  await hook().updateProfileDetails({ degree: '', bio: 'Hi' });
+  await save({ degree: '', bio: 'Hi' });
 
   expect(await stored('users')).toMatchObject({ degree: null, isDriver: true });
 });
@@ -67,11 +74,11 @@ it('updates the phone number from the profile page, and keeps it when another sa
   await setDoc(doc(db, 'users', UID), { name: 'Dana', phoneNumber: '0400000000', onboardingComplete: true });
   const hook = await signIn();
 
-  await hook().updateProfileDetails({ phoneNumber: ' 0412345678 ', bio: 'Hi' });
+  await save({ phoneNumber: ' 0412345678 ', bio: 'Hi' });
   expect(await stored('users')).toMatchObject({ phoneNumber: '0412345678' });
   await waitFor(() => expect(hook().profileData).toMatchObject({ phoneNumber: '0412345678' }));
 
-  await hook().updateProfileDetails({ isDriver: true, ...car });
+  await save({ isDriver: true, ...car });
   expect(await stored('users')).toMatchObject({ phoneNumber: '0412345678' });
 });
 
