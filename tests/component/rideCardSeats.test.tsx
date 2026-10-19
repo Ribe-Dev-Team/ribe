@@ -165,12 +165,15 @@ describe('times', () => {
 });
 
 describe('layout', () => {
-  it('has no "See More Information" link - the whole card opens the details', async () => {
+  it.each(['confirmed', 'awaiting', 'pending'] as const)('ends a %s card with "See More Information"', async (status) => {
     const onSeeDetails = jest.fn();
-    await render(<RideCard {...base} kind="request" onSeeDetails={onSeeDetails} />);
+    await render(<RideCard {...base} kind="request" status={status} matchedAt={new Date()} onAccept={jest.fn()} onSeeDetails={onSeeDetails} />);
 
-    expect(screen.queryByText('See More Information')).toBeNull();
-    await fireEvent.press(screen.getByTestId('ride-card'));
+    const rendered = JSON.stringify(screen.toJSON());
+    const last = ['ABC123', 'Accept', 'Searching for driver...'].map((t) => rendered.indexOf(t)).filter((i) => i >= 0);
+    expect(rendered.indexOf('See More Information')).toBeGreaterThan(Math.max(...last));
+
+    await fireEvent.press(screen.getByText('See More Information'));
     expect(onSeeDetails).toHaveBeenCalled();
   });
 });

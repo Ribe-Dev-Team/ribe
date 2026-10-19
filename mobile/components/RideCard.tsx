@@ -190,8 +190,8 @@ export default function RideCard({
   // card only shows where things stand.
   const seatLabel = !seats ? '' : seats.open ? 'Still looking' : seats.locked ? 'Locked' : 'Full';
 
-  // The whole card opens the details. The buttons inside it still take their
-  // own presses - the innermost one wins.
+  // The whole card opens the details, as "See More Information" does. The
+  // buttons inside it still take their own presses - the innermost one wins.
   const openDetails = () => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true));
   // "Toyota Corolla · Blue" - colour is left off when the driver hasn't added it.
   const vehicleLine = [driver.vehicle, driver.colour].filter(Boolean).join(' · ');
@@ -211,18 +211,13 @@ export default function RideCard({
       testID="ride-card"
       onPress={openDetails}
       // Not one accessible element: that would hide the buttons inside from
-      // screen readers. Their way to the details is the summary below.
+      // screen readers. Their way to the details is the "See More Information" link.
       accessible={false}
       style={({ pressed }) => [styles.card, { borderLeftColor: accent }, pressed && styles.cardPressed]}
     >
       {/* Date and price up top, quieter than the time below them. The rest -
           stops on the way, full addresses, CO2, the cost breakdown - is on the
-          details page. One button for screen readers, read as a whole. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${formatRideDate(date)}. ${hero.label} ${hero.value}. See details`}
-        onPress={openDetails}
-      >
+          details page. */}
       <View style={styles.topRow}>
         <Text style={styles.dateText}>{formatRideDate(date)}</Text>
         <View style={styles.priceRow}>
@@ -247,7 +242,6 @@ export default function RideCard({
           <Text style={styles.stopTime}>{timeWindow ? `by ${timeWindow.to}` : `ETA ${destination.eta}`}</Text>
         </View>
       </View>
-      </Pressable>
 
       {status === 'awaiting' && matchedAt && (
         <View style={styles.countdownBanner}>
@@ -318,6 +312,13 @@ export default function RideCard({
           <Text style={styles.searchingText}>{isDriver ? 'Searching for riders...' : 'Searching for driver...'}</Text>
         </View>
       )}
+
+      {/* The whole card opens the details too; this says so, and is the way in
+          for screen readers. */}
+      <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
+        <Text style={styles.seeMoreLinkText}>See More Information</Text>
+        <Ionicons name="chevron-forward" size={13} color={colors.white} />
+      </TouchableOpacity>
 
       <Modal
         visible={detailsVisible}
@@ -586,6 +587,19 @@ const styles = StyleSheet.create({
   searchingText: {
     color: colors.white,
     fontSize: 13,
+    fontWeight: '600',
+    opacity: 0.85,
+  },
+  seeMoreLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 12,
+  },
+  seeMoreLinkText: {
+    color: colors.white,
+    fontSize: 12,
     fontWeight: '600',
     opacity: 0.85,
   },

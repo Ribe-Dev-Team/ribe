@@ -1,6 +1,6 @@
 // Component tests for tapping a ride card (mobile/components/RideCard.tsx):
-// anywhere on the card opens its details, while the buttons inside it still do
-// only their own job.
+// anywhere on the card opens its details, as "See More Information" does,
+// while the buttons inside it still do only their own job.
 
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
@@ -33,11 +33,11 @@ it.each(['confirmed', 'awaiting', 'pending'] as const)('opens the details when a
   expect(onSeeDetails).toHaveBeenCalledTimes(2);
 });
 
-it('opens the details from its summary, one button for screen readers', async () => {
+it('still opens the details from the "See More Information" link', async () => {
   const onSeeDetails = jest.fn();
   await render(<RideCard {...base} onSeeDetails={onSeeDetails} />);
 
-  await fireEvent.press(screen.getByRole('button', { name: /See details/ }));
+  await fireEvent.press(screen.getByText('See More Information'));
 
   expect(onSeeDetails).toHaveBeenCalledTimes(1);
 });
