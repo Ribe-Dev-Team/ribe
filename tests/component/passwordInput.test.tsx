@@ -30,6 +30,13 @@ it('hides the password until the eye button is pressed, and hides it again', asy
   expect(input().props.secureTextEntry).toBe(true);
 });
 
+/** What iOS sends for a key pressed in a hidden field it has wiped: the key,
+ *  then the field's text - just that key, or nothing for backspace. */
+const wipedKey = async (key: string) => {
+  await fireEvent(input(), 'keyPress', { nativeEvent: { key } });
+  await fireEvent.changeText(input(), key === 'Backspace' ? '' : key);
+};
+
 describe('on iOS, coming back to a rejected password', () => {
   const os = Platform.OS;
   beforeAll(() => { Platform.OS = 'ios'; });
@@ -37,26 +44,41 @@ describe('on iOS, coming back to a rejected password', () => {
 
   it('adds the next letter to the end instead of starting over', async () => {
     await render(<Controlled initial="Password" />);
-    await fireEvent(input(), 'focus');
-    await fireEvent.changeText(input(), '1'); // iOS reports only the new key
+    await wipedKey('1');
     expect(input().props.value).toBe('Password1');
+  });
 
-    // Later keys arrive whole, as normal.
-    await fireEvent.changeText(input(), 'Password12');
-    expect(input().props.value).toBe('Password12');
+  it('keeps the password through every wipe, not just the first', async () => {
+    // Restoring the text arms iOS's wipe again, so each key arrives wiped.
+    await render(<Controlled initial="Password" />);
+    await wipedKey('1');
+    await wipedKey('2');
+    await wipedKey('Backspace');
+    await wipedKey('3');
+    expect(input().props.value).toBe('Password13');
   });
 
   it('removes one letter on backspace instead of emptying the field', async () => {
     await render(<Controlled initial="Password1" />);
-    await fireEvent(input(), 'focus');
-    await fireEvent.changeText(input(), '');
+    await wipedKey('Backspace');
     expect(input().props.value).toBe('Password');
+  });
+
+  it('passes ordinary typing and deleting straight through', async () => {
+    await render(<Controlled />);
+    let previous = '';
+    for (const text of ['P', 'Pa', 'Pas', 'Pa', 'P', '']) {
+      const key = text.length < previous.length ? 'Backspace' : text.slice(-1);
+      await fireEvent(input(), 'keyPress', { nativeEvent: { key } });
+      await fireEvent.changeText(input(), text);
+      previous = text;
+      expect(input().props.value).toBe(text);
+    }
   });
 
   it('leaves a shown password alone - iOS only wipes hidden ones', async () => {
     await render(<Controlled initial="Password" />);
     await fireEvent.press(screen.getByLabelText('Show password'));
-    await fireEvent(input(), 'focus');
     await fireEvent.changeText(input(), 'P');
     expect(input().props.value).toBe('P');
   });
