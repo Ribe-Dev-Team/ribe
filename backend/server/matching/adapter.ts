@@ -9,6 +9,7 @@ import {
   CalendarDate, CAMPUS_TIME_ZONE, calendarDateIn, dateKey, isHhMm, zonedDateTime,
 } from './melbourneTime';
 import { MONASH_CLAYTON_LOCATION } from '../../../mobile/services/googlePlaces';
+import { BOOKING_HORIZON_DAYS } from '../../../mobile/pages/schema/booking.schema';
 
 /**
  * Firestore bookings -> matcher inputs.
@@ -66,6 +67,7 @@ export type SkipReason =
   | 'NO_COORD'                 // address never resolved to a point
   | 'BAD_TIME'                 // missing date or a malformed HH:mm
   | 'DEPARTED'                 // the trip is already over or under way
+  | 'TOO_FAR_AHEAD'            // beyond BOOKING_HORIZON_DAYS; matched once it's within
   | 'SLOT_TAKEN'               // offer already holds a rider awaiting approval
   | 'LOCKED'                   // the driver stopped taking passengers
   | 'CONFIRMED_RIDER_UNKNOWN'; // a confirmed rider's request can't be read back
@@ -95,6 +97,11 @@ const directionOf = (doc: RequestDoc): Direction => (doc.toUni ? 'TO_CAMPUS' : '
 /** Rider or driver: [own start, own end]. One end is always campus. */
 function endpoints(doc: RequestDoc & { coord: Coord; }, campus: Coord): [Coord, Coord] {
   return doc.toUni ? [doc.coord, campus] : [campus, doc.coord];
+}
+
+/** Whole calendar days from `from` to `to`: 1 for tomorrow. */
+function daysBetween(from: CalendarDate, to: CalendarDate): number {
+  return (Date.UTC(to.year, to.month - 1, to.day) - Date.UTC(from.year, from.month - 1, from.day)) / 86_400_000;
 }
 
 function hasValidTimes(doc: RequestDoc): boolean {
@@ -133,6 +140,10 @@ export function groupIntoBatches(
     // they needed to arrive by has passed.
     const endsAt = zonedDateTime(date, kind === 'offer' ? doc.departureTime : doc.arrivalTime, timeZone);
     if (endsAt <= now) return skip('DEPARTED');
+    // The app books at most BOOKING_HORIZON_DAYS ahead; anything further out
+    // (booked before that limit, or written some other way) waits until it's
+    // within reach. A done car is past matching, so it's never held back.
+    if (!settled && daysBetween(calendarDateIn(now, timeZone), date) > BOOKING_HORIZON_DAYS) return skip('TOO_FAR_AHEAD');
 
     const direction = directionOf(doc);
     const batchKey = `${dateKey(date)}_${direction}`;

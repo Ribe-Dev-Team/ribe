@@ -3,7 +3,10 @@ import {
   validateDetailsStep,
   getTimeOrderWarning,
   getDetourWarning,
+  isBookableDate,
+  latestBookingDate,
 } from '../../mobile/pages/validation/bookingValidation';
+import { BOOKING_HORIZON_DAYS } from '../../mobile/pages/schema/booking.schema';
 
 /* Helper to build a valid future-dated string, so date-window tests don't go stale. */
 function futureDateStr(daysFromNow: number): string {
@@ -205,5 +208,28 @@ describe("validateDetailsStep - seats against the driver's car", () => {
 
   test("doesn't apply to a ride request", () => {
     expect(validateDetailsStep({ ...validRiderDetails, numSeats: 5, carSeats: 1 }).numSeatsErr).toBe('');
+  });
+});
+
+describe('booking horizon', () => {
+  test(`accepts a ride ${BOOKING_HORIZON_DAYS} days ahead, but not a day later`, () => {
+    expect(validateDetailsStep({ ...validRiderDetails, travelDate: futureDateStr(BOOKING_HORIZON_DAYS) }).travelDateErr).toBe('');
+    const tooFar = validateDetailsStep({ ...validRiderDetails, travelDate: futureDateStr(BOOKING_HORIZON_DAYS + 1) });
+    expect(tooFar.travelDateErr).toBe(`Rides can be booked up to ${BOOKING_HORIZON_DAYS} days ahead`);
+    expect(tooFar.valid).toBe(false);
+  });
+
+  test('the last bookable day is the horizon after today, at midnight', () => {
+    const now = new Date(2026, 9, 15, 18, 30);
+    expect(latestBookingDate(now)).toEqual(new Date(2026, 9, 15 + BOOKING_HORIZON_DAYS));
+  });
+
+  test('a day is bookable from tomorrow to the horizon', () => {
+    const now = new Date(2026, 9, 15, 18, 30);
+    const day = (n: number) => new Date(2026, 9, n, 9);
+    expect(isBookableDate(day(15), now)).toBe(false); // today
+    expect(isBookableDate(day(16), now)).toBe(true);
+    expect(isBookableDate(day(15 + BOOKING_HORIZON_DAYS), now)).toBe(true);
+    expect(isBookableDate(day(16 + BOOKING_HORIZON_DAYS), now)).toBe(false);
   });
 });

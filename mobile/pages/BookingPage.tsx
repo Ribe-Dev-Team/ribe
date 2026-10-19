@@ -14,11 +14,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import styles, { colors } from '../styles';
-import { Booking } from './schema/booking.schema';
+import { Booking, BOOKING_HORIZON_DAYS } from './schema/booking.schema';
 import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
 import { formatTime12h } from '../utility/times';
-import { isFutureDate, formatDateToStr, parseDateAsStr } from '../utility/dates';
-import { validateTripStep as validateTripStepFields, validateDetailsStep as validateDetailsStepFields, getTimeOrderWarning, getDetourWarning } from './validation/bookingValidation';
+import { formatDateToStr, parseDateAsStr } from '../utility/dates';
+import { validateTripStep as validateTripStepFields, validateDetailsStep as validateDetailsStepFields, getTimeOrderWarning, getDetourWarning, isBookableDate, latestBookingDate } from './validation/bookingValidation';
 import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
 import NumberStepper from '../components/NumberStepper';
@@ -74,7 +74,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [addrErr, setAddrErr] = useState<string>('');
   const [addressPlace, setAddressPlace] = useState<ResolvedPlace | null>(null);
   const [travelDate, setTravelDate] = useState<string>(
-    initialDate && isFutureDate(initialDate) ? formatDateToStr(initialDate) : '',
+    initialDate && isBookableDate(initialDate) ? formatDateToStr(initialDate) : '',
   ); // Format: DD-MM-YYYY
   const [travelDateErr, setTravelDateErr] = useState<string>('');
   const [detourTime, setDetourTime] = useState<number>(0);
@@ -102,9 +102,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       if (typeof draft.capacity === 'number') setNumSeats(draft.capacity);
       if (typeof draft.depTime === 'string') setDepTime(draft.depTime);
       if (typeof draft.arrTime === 'string') setArrTime(draft.arrTime);
-      // The draft's date if it's still ahead, else the calendar day they came from.
+      // The draft's date if it can still be booked, else the calendar day they came from.
       const parsed = typeof draft.travelDate === 'string' ? parseDateAsStr(draft.travelDate) : null;
-      if (parsed && isFutureDate(parsed)) setTravelDate(draft.travelDate as string);
+      if (parsed && isBookableDate(parsed)) setTravelDate(draft.travelDate as string);
     };
     const finish = () => { if (isMounted) setHydrated(true); };
 
@@ -459,6 +459,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <View style={localStyles.card}>
               <Text style={localStyles.cardLabel}>When</Text>
               <Text style={localStyles.fieldLabel}>Travel date</Text>
+              <Text style={localStyles.fieldHint}>Up to {BOOKING_HORIZON_DAYS} days ahead.</Text>
               <Pressable
                 onPress={() => {
                   setFocusedField('travelDate');
@@ -535,6 +536,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
           <DatePickerModal
             initialDate={parseDateAsStr(travelDate)}
+            maxDate={latestBookingDate()}
             onClose={() => {
               setActivePicker(null);
               setFocusedField(null);

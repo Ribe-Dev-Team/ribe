@@ -3,6 +3,13 @@ import { BookingStatus } from './matchStatus';
 export type { BookingStatus };
 
 /*
+How many days ahead a ride can be requested or offered: up to this many days
+after today. The matcher (backend/server/matching/adapter.ts) reads this same
+constant and holds back anything further out, so the two can't disagree.
+*/
+export const BOOKING_HORIZON_DAYS = 14;
+
+/*
 Geographic point, stored alongside the free-text address so the matching module
 (backend/server/matching/types.ts) can consume a booking without re-geocoding it.
 

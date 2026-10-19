@@ -1,6 +1,6 @@
 // Component tests for the New Ride button on mobile/pages/CalendarPage.tsx:
-// shown for today and later days, gone on a past day - those are greyed out,
-// and a ride can't be booked for them.
+// shown from today to the booking horizon, gone on a past day (greyed out)
+// and past the horizon - a ride can't be booked for either.
 
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
@@ -38,4 +38,14 @@ it('offers New Ride today, not on a past day, and again on a later one', async (
   await selectOctober(16);
   await fireEvent.press(screen.getByText('New Ride'));
   expect(onNewRide.mock.calls[0][0].getDate()).toBe(16);
+});
+
+it('takes New Ride away past the booking horizon', async () => {
+  await render(<CalendarPage onOpenRide={() => {}} onNewRide={() => {}} />);
+
+  await selectOctober(29); // 14 days after the 15th
+  expect(screen.getByText('New Ride')).toBeTruthy();
+
+  await selectOctober(30);
+  expect(screen.queryByText('New Ride')).toBeNull();
 });
