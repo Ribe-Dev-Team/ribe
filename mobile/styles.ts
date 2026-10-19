@@ -109,6 +109,7 @@ export default StyleSheet.create({
   todayDay: { backgroundColor: colors.darkBlue },
   dayText: { color: colors.white, fontFamily: 'Marcellus_400Regular', fontSize: 15 },
   outsideMonthText: { color: colors.whiteA35 },
+  pastDayText: { color: colors.whiteA20 },
   dotRow: { flexDirection: 'row', minHeight: 8, marginTop: 3 },
   dayDot: { width: 5, height: 5, borderRadius: 3, marginHorizontal: 2 },
   ridesHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 26, marginBottom: 12 },
