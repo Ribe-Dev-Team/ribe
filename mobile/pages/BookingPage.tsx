@@ -27,6 +27,7 @@ import RouteMapPreview from '../components/RouteMapPreview';
 import { geocodeAddress, ResolvedPlace } from '../services/googlePlaces';
 import { useAuth } from '../auth/useAuth';
 import { MAX_CAR_SEATS } from './schema/user.validation';
+import { formatPhone } from '../utility/phone';
 
 interface BookingPageProps {
   onDone: () => void;
@@ -284,11 +285,37 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <Ionicons name="chevron-back" size={24} color={colors.white} />
             <Text style={localStyles.backButtonLabel}>Back</Text>
           </Pressable>
-          <Text style={localStyles.headerTitle}>Confirm your request</Text>
+          <Text style={localStyles.headerTitle}>{isDriving ? 'Confirm Your Offer' : 'Confirm Your Request'}</Text>
           {progressIndicator}
         </View>
 
         <ScrollView contentContainerStyle={localStyles.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* Who's going: the car a driver is offering, or the details a rider's
+              driver will see - in place of a "Role" row in the table below. */}
+          <View style={localStyles.card}>
+            <View>
+              <Text style={localStyles.youTitle}>{isDriving ? "You're offering a ride" : "You're requesting a ride"}</Text>
+              <Text style={localStyles.youDetail}>
+                {[profileData?.name, profileData?.phoneNumber ? formatPhone(profileData.phoneNumber) : null].filter(Boolean).join('  ·  ')}
+              </Text>
+              {isDriving ? (
+                <>
+                  <View style={localStyles.youCarRow}>
+                    <Text style={[localStyles.youDetail, { marginTop: 0 }]}>
+                      {[profileData?.vehicleColor, profileData?.vehicleMake, profileData?.vehicleModel].filter(Boolean).join(' ') || 'Your car'}
+                    </Text>
+                    {profileData?.licensePlate ? <Text style={styles.plateBadge}>{profileData.licensePlate}</Text> : null}
+                  </View>
+                  <Text style={localStyles.youNote}>Riders matched to you will see your car and plate as well as your personal profile details.</Text>
+                </>
+              ) : (
+                <Text style={localStyles.youNote}>
+                  Your driver will see your first name, photo, degree, bio and pickup address once you're matched, and your number once the ride is confirmed.
+                </Text>
+              )}
+            </View>
+          </View>
+
           <View style={localStyles.card}>
             <View style={localStyles.summaryRow}>
               <Text style={localStyles.summaryLabel}>Travel date</Text>
@@ -298,13 +325,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               <Text style={localStyles.summaryLabel}>Earliest departure</Text>
               <Text style={localStyles.summaryValue}>{formatTime12h(depTime)}</Text>
             </View>
-            <View style={localStyles.summaryRow}>
+            <View style={[localStyles.summaryRow, !isDriving && { borderBottomWidth: 0 }]}>
               <Text style={localStyles.summaryLabel}>Latest arrival</Text>
               <Text style={localStyles.summaryValue}>{formatTime12h(arrTime)}</Text>
-            </View>
-            <View style={localStyles.summaryRow}>
-              <Text style={localStyles.summaryLabel}>Role</Text>
-              <Text style={localStyles.summaryValue}>{isDriving ? 'Offering a ride' : 'Requesting a ride'}</Text>
             </View>
             {isDriving && (
               <>
@@ -343,7 +366,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               style={[localStyles.actionButton, isSubmitting && localStyles.actionButtonDisabled]}
               disabled={isSubmitting}
             >
-              <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : 'Submit request'}</Text>
+              <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : isDriving ? 'Submit offer' : 'Submit request'}</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -359,7 +382,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <Ionicons name="chevron-back" size={24} color={colors.white} />
             <Text style={localStyles.backButtonLabel}>Back</Text>
           </Pressable>
-          <Text style={localStyles.headerTitle}>Request a ride</Text>
+          <Text style={localStyles.headerTitle}>Request a Ride</Text>
           {progressIndicator}
         </View>
 
@@ -445,7 +468,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           <Ionicons name="chevron-back" size={24} color={colors.white} />
           <Text style={localStyles.backButtonLabel}>Back</Text>
         </Pressable>
-        <Text style={localStyles.headerTitle}>Trip details</Text>
+        <Text style={localStyles.headerTitle}>Trip Details</Text>
         {progressIndicator}
       </View>
 
@@ -757,6 +780,30 @@ const localStyles = StyleSheet.create({
     fontWeight: '600',
     maxWidth: '60%',
     textAlign: 'right',
+  },
+  youTitle: {
+    fontFamily: 'Marcellus_400Regular',
+    fontSize: 16,
+    color: colors.white,
+  },
+  youCarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  youDetail: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  youNote: {
+    color: colors.whiteA75,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6,
   },
   infoCard: {
     borderRadius: 16,

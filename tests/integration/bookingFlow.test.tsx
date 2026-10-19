@@ -37,7 +37,10 @@ jest.mock('../../mobile/services/googlePlaces', () => ({
 const TEST_USER_ID = 'test-user-123';
 // The profile is a registered driver with a 4-seat car unless a test sets
 // mockProfile - jest.mock factories may only use variables named mock*.
-const DRIVER_PROFILE = { isDriver: true, licensePlate: 'ABC123', seatsAvailable: 4 };
+const DRIVER_PROFILE = {
+  isDriver: true, licensePlate: 'ABC123', seatsAvailable: 4,
+  name: 'Dana Driver', phoneNumber: '0412345678', vehicleColor: 'Blue', vehicleMake: 'Toyota', vehicleModel: 'Corolla',
+};
 let mockProfile: Record<string, unknown> = DRIVER_PROFILE;
 jest.mock('../../mobile/auth/useAuth', () => {
   const useAuth = () => ({ user: { uid: 'test-user-123' }, profileData: mockProfile });
@@ -79,7 +82,7 @@ async function flushHydration() {
 // an outer act() and keep it open until the submit has settled.
 async function pressSubmit() {
   await act(async () => {
-    await fireEvent.press(screen.getByText('Submit request'));
+    await fireEvent.press(screen.getByText(/^Submit (request|offer)$/));
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
 }
@@ -205,10 +208,16 @@ describe('BookingPage - rider requesting a ride', () => {
     await screen.findByDisplayValue('123 Main St');
 
     await fireEvent.press(screen.getByText('Next')); // trip -> details
-    await screen.findByText('Trip details');
+    await screen.findByText('Trip Details');
 
     await fireEvent.press(screen.getByText('Next')); // details -> confirm
-    await screen.findByText('Confirm your request');
+    await screen.findByText('Confirm Your Request');
+
+    // A card with what their driver will see of them, in place of a "Role" row.
+    expect(screen.getByText("You're requesting a ride")).toBeTruthy();
+    expect(screen.getByText('Dana Driver  ·  0412 345 678')).toBeTruthy();
+    expect(screen.getByText(/Your driver will see your first name/)).toBeTruthy();
+    expect(screen.queryByText('Role')).toBeNull();
 
     await pressSubmit();
 
@@ -245,10 +254,19 @@ describe('BookingPage - driver offering a ride', () => {
     await screen.findByDisplayValue('456 Example Ave');
 
     await fireEvent.press(screen.getByText('Next')); // trip -> details
-    await screen.findByText('Trip details');
+    await screen.findByText('Trip Details');
 
     await fireEvent.press(screen.getByText('Next')); // details -> confirm
-    await screen.findByText('Confirm your request');
+    await screen.findByText('Confirm Your Offer');
+
+    // A card for the car they're offering, in place of a "Role" row.
+    expect(screen.getByText("You're offering a ride")).toBeTruthy();
+    expect(screen.getByText('Blue Toyota Corolla')).toBeTruthy();
+    expect(screen.getByText('ABC123')).toBeTruthy();
+    expect(screen.getByText('Dana Driver  ·  0412 345 678')).toBeTruthy(); // shared with riders too
+    expect(screen.getByText(/Riders matched to you will see your car and plate/)).toBeTruthy();
+    expect(screen.queryByText('Role')).toBeNull();
+    expect(screen.getByText('Submit offer')).toBeTruthy();
 
     await pressSubmit();
 
@@ -286,7 +304,7 @@ describe('BookingPage - offering a ride needs a registered car', () => {
     await screen.findByDisplayValue('456 Example Ave');
 
     await fireEvent.press(screen.getByText('Next'));
-    await screen.findByText('Trip details');
+    await screen.findByText('Trip Details');
 
     expect(screen.queryByText('Driver details')).toBeNull();
   });
@@ -301,7 +319,7 @@ describe('BookingPage - offering a ride needs a registered car', () => {
     await flushHydration();
     await screen.findByDisplayValue('456 Example Ave');
     await fireEvent.press(screen.getByText('Next'));
-    await screen.findByText('Trip details');
+    await screen.findByText('Trip Details');
 
     expect(screen.getByText('Up to 2 - the passenger seats in your car.')).toBeTruthy();
     // The draft's 3 is brought down to the car's 2.
@@ -316,12 +334,12 @@ describe('BookingPage - trip step validation blocks incomplete submissions', () 
     await render(<BookingPage onDone={onDone} />);
     await flushHydration();
 
-    await screen.findByText('Request a ride');
+    await screen.findByText('Request a Ride');
     await fireEvent.press(screen.getByText('Next'));
 
     expect(await screen.findByText('Address is required.')).toBeTruthy();
     // still on the trip step
-    expect(screen.queryByText('Trip details')).toBeNull();
+    expect(screen.queryByText('Trip Details')).toBeNull();
   });
 });
 
@@ -344,9 +362,9 @@ describe('BookingPage - Firestore write failure', () => {
 
     await screen.findByDisplayValue('123 Main St');
     await fireEvent.press(screen.getByText('Next'));
-    await screen.findByText('Trip details');
+    await screen.findByText('Trip Details');
     await fireEvent.press(screen.getByText('Next'));
-    await screen.findByText('Confirm your request');
+    await screen.findByText('Confirm Your Request');
     await pressSubmit();
 
     await waitFor(() =>
