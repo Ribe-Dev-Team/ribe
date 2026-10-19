@@ -109,6 +109,8 @@ export default StyleSheet.create({
   todayDay: { backgroundColor: colors.darkBlue },
   dayText: { color: colors.white, fontFamily: 'Marcellus_400Regular', fontSize: 15 },
   outsideMonthText: { color: colors.whiteA35 },
+  /** A car's number plate - on ride cards and the profile page. */
+  plateBadge: { color: colors.darkBlue, backgroundColor: colors.white, fontSize: 12, fontWeight: '700', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
   pastDayText: { color: colors.whiteA20 },
   dotRow: { flexDirection: 'row', minHeight: 8, marginTop: 3 },
   dayDot: { width: 5, height: 5, borderRadius: 3, marginHorizontal: 2 },

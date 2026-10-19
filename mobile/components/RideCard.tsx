@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../styles';
+import sharedStyles, { colors } from '../styles';
 import NumberStepper from './NumberStepper';
 import { RideCostSplit } from '../utility/costDisplay';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
@@ -422,7 +422,7 @@ export default function RideCard({
                 <Text style={styles.vehicleText}>{vehicleLine}</Text>
               </View>
             </TouchableOpacity>
-            <Text style={styles.plateBadge}>{plate}</Text>
+            <Text style={sharedStyles.plateBadge}>{plate}</Text>
           </View>
           {/* "See more information" for an upcoming ride is at the very
               bottom of the card, below the seats - see after the seat section. */}
@@ -847,16 +847,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 12,
     opacity: 0.78,
-  },
-  plateBadge: {
-    color: colors.darkBlue,
-    backgroundColor: colors.white,
-    fontSize: 12,
-    fontWeight: '700',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    overflow: 'hidden',
   },
   seeMoreLink: {
     flexDirection: 'row',

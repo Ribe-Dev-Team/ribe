@@ -291,10 +291,6 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         <ScrollView contentContainerStyle={localStyles.scrollContent} showsVerticalScrollIndicator={false}>
           <View style={localStyles.card}>
             <View style={localStyles.summaryRow}>
-              <Text style={localStyles.summaryLabel}>{toUni ? 'Pickup' : 'Destination'}</Text>
-              <Text style={localStyles.summaryValue} numberOfLines={1}>{address}</Text>
-            </View>
-            <View style={localStyles.summaryRow}>
               <Text style={localStyles.summaryLabel}>Travel date</Text>
               <Text style={localStyles.summaryValue}>{travelDate}</Text>
             </View>
@@ -325,7 +321,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           </View>
 
           <View style={localStyles.card}>
-            <Text style={localStyles.cardLabel}>Route preview</Text>
+            <Text style={localStyles.cardLabel}>Route Preview</Text>
             <RouteMapPreview address={addressPlace} toUni={toUni} />
           </View>
 

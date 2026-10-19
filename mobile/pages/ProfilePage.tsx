@@ -261,10 +261,12 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
                         : 'Add your vehicle details to start giving rides'}
                     </Text>
                   </View>
-                  {isDriver ? (
-                    <View style={localStyles.driverBadge}>
-                      <Text style={localStyles.driverBadgeText}>Driver</Text>
-                    </View>
+                  {/* The plate, not a "Driver" pill - it tells their car apart, and
+                      the pill looked like a button but did nothing. */}
+                  {isDriver && profileData?.licensePlate ? (
+                    <Text accessibilityLabel={`Number plate ${profileData.licensePlate}`} style={styles.plateBadge}>
+                      {profileData.licensePlate}
+                    </Text>
                   ) : null}
                 </View>
               )}
@@ -323,17 +325,6 @@ const localStyles = StyleSheet.create({
   driverModeSubtitle: {
     color: colors.whiteA70,
     fontSize: 12,
-  },
-  driverBadge: {
-    backgroundColor: colors.confirmed,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  driverBadgeText: {
-    color: colors.white,
-    fontSize: 12,
-    fontWeight: '700',
   },
   driverActionButton: {
     alignSelf: 'center',
