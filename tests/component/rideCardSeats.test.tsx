@@ -6,7 +6,7 @@
 
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import RideCard, { RideCardProps, shortAddress } from '../../mobile/components/RideCard';
+import RideCard, { formatRideDate, RideCardProps, shortAddress } from '../../mobile/components/RideCard';
 
 // A View carrying the icon's testID, so the rider icons can be counted.
 jest.mock('@expo/vector-icons', () => ({
@@ -35,7 +35,8 @@ describe('the essentials', () => {
 
     expect(screen.getByText('Be ready by')).toBeTruthy();
     expect(screen.getByText('~08:35')).toBeTruthy();
-    expect(screen.getByText('Mon, October 5th 2026')).toBeTruthy();
+    // On this machine's clock, as the card shows it - CI runs in UTC, where it's still the 4th.
+    expect(screen.getByText(formatRideDate(base.date))).toBeTruthy();
     expect(screen.getByText('$8.50')).toBeTruthy();
     expect(screen.getByText('~08:40')).toBeTruthy();
     expect(screen.getByText('ETA ~08:50')).toBeTruthy();
