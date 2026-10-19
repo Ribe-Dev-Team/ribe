@@ -36,9 +36,9 @@ beforeEach(async () => {
     profilePhotoUrl: 'data:image/jpeg;base64,DANA',
     vehicleMake: 'Toyota', vehicleModel: 'Corolla', vehicleColor: 'Blue', licensePlate: 'ABC123',
   });
-  await setDoc(doc(db, 'users', 'ana-uid'), { name: 'Ana Rider', degree: 'Law', profilePhotoUrl: 'data:image/png;base64,ANA' });
-  await setDoc(doc(db, 'users', 'ben-uid'), { name: 'Ben Rider', bio: 'Quiet rides please.' });
-  await setDoc(doc(db, 'users', 'cal-uid'), { name: 'Cal Rider' });
+  await setDoc(doc(db, 'users', 'ana-uid'), { name: 'Ana Rider', degree: 'Law', profilePhotoUrl: 'data:image/png;base64,ANA', phoneNumber: '0411111111' });
+  await setDoc(doc(db, 'users', 'ben-uid'), { name: 'Ben Rider', bio: 'Quiet rides please.', phoneNumber: '0422222222' });
+  await setDoc(doc(db, 'users', 'cal-uid'), { name: 'Cal Rider', phoneNumber: '0433333333' });
 
   // Dana's car: Ana and Ben confirmed, Cal deciding on the third seat.
   const stop = (requestId: string, min: number) => ({ requestId, pickupAt: at(`2026-10-04T21:${min}:00Z`), arriveAt: at('2026-10-04T21:50:00Z') });
@@ -69,8 +69,9 @@ describe("a rider's details", () => {
       degree: 'Engineering', phone: '0412345678',
     });
     expect(details.car).toEqual({ make: 'Toyota', model: 'Corolla', colour: 'Blue', plate: 'ABC123' });
-    // Ben, not Ana herself - and not Cal, who hasn't accepted.
+    // Ben, not Ana herself - and not Cal, who hasn't accepted. Never Ben's number.
     expect(details.passengers).toEqual([{ name: 'Ben', photoUrl: undefined, bio: 'Quiet rides please.', degree: undefined }]);
+    expect(details.passengers[0]).not.toHaveProperty('phone');
     expect(details.startsAt).toEqual(new Date('2026-10-04T21:20:00Z'));
   });
 
@@ -120,6 +121,12 @@ describe("a driver's details", () => {
     expect(details.passengers.map((p) => [p.name, p.awaiting ?? false])).toEqual([
       ['Ana', false], ['Ben', false], ['Cal', true],
     ]);
+  });
+
+  it("gives them their confirmed passengers' numbers, but not one still deciding", async () => {
+    const details = await fetchRideDetails('car', 'offer');
+
+    expect(details.passengers.map((p) => p.phone)).toEqual(['0411111111', '0422222222', undefined]);
   });
 
   it('lists and maps their whole route: departure, each pickup, drop-off', async () => {

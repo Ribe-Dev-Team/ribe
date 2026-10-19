@@ -124,10 +124,32 @@ it('describes the car in full', async () => {
 
 it("masks the driver's number until 12 hours before pickup, as the ride card does", async () => {
   await show(ride, details());
-  expect(screen.getByText(/0412 •• •• ••/)).toBeTruthy();
+  expect(screen.getByText(/0412 ••• •••/)).toBeTruthy();
 
   await show(ride, details({ startsAt: new Date(Date.now() + 3_600_000) }));
   expect(screen.getByText('Contact  ·  0412 345 678')).toBeTruthy();
+});
+
+it("lets a rider call or text their driver once the number is shown", async () => {
+  await show(ride, details());
+  expect(screen.queryByLabelText('Call Dana Driver')).toBeNull();
+
+  await show(ride, details({ startsAt: new Date(Date.now() + 3_600_000) }));
+  expect(screen.getByLabelText('Call Dana Driver')).toBeTruthy();
+  expect(screen.getByLabelText('Text Dana Driver')).toBeTruthy();
+});
+
+it("shows a driver their confirmed passengers' numbers, masked until 12 hours before", async () => {
+  const offer = { ...ride, kind: 'offer' as const, rideId: 'offer-1' };
+  const passengers = [{ name: 'Ben', phone: '0422222222' }, { name: 'Cal', awaiting: true }];
+
+  await show(offer, details({ driver: undefined, passengers }));
+  expect(screen.getByText(/0422 ••• •••/)).toBeTruthy();
+  expect(screen.getAllByText(/Contact/)).toHaveLength(1); // not Cal, still deciding
+
+  await show(offer, details({ driver: undefined, passengers, startsAt: new Date(Date.now() + 3_600_000) }));
+  expect(screen.getByText('Contact  ·  0422 222 222')).toBeTruthy();
+  expect(screen.getByLabelText('Text Ben')).toBeTruthy();
 });
 
 it('shows a driver their passengers and their own car, not a driver', async () => {

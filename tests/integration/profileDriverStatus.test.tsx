@@ -63,6 +63,18 @@ it('still clears a field the person emptied on purpose', async () => {
   expect(await stored('users')).toMatchObject({ degree: null, isDriver: true });
 });
 
+it('updates the phone number from the profile page, and keeps it when another save leaves it out', async () => {
+  await setDoc(doc(db, 'users', UID), { name: 'Dana', phoneNumber: '0400000000', onboardingComplete: true });
+  const hook = await signIn();
+
+  await hook().updateProfileDetails({ phoneNumber: ' 0412345678 ', bio: 'Hi' });
+  expect(await stored('users')).toMatchObject({ phoneNumber: '0412345678' });
+  await waitFor(() => expect(hook().profileData).toMatchObject({ phoneNumber: '0412345678' }));
+
+  await hook().updateProfileDetails({ isDriver: true, ...car });
+  expect(await stored('users')).toMatchObject({ phoneNumber: '0412345678' });
+});
+
 it('shows a driver whose profile an older save reset as a driver again, with their car', async () => {
   // What the old save left behind: users/{uid} reset, drivers/{uid} intact.
   await setDoc(doc(db, 'users', UID), {

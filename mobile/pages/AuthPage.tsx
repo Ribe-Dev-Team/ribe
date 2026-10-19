@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import styles, { colors } from '../styles';
 import DatePickerModal from '../components/DatePickerModal';
 import PressableScale from '../components/PressableScale';
+import { formatPhone } from '../utility/phone';
 import {
   getDriverValidationError,
   MAX_PLATE_LENGTH,
@@ -378,13 +379,14 @@ export default function AuthPage({
                   <TextInput
                     autoCapitalize="none"
                     keyboardType="phone-pad"
+                    maxLength={15}
                     onBlur={() => setFocusedField(null)}
                     onChangeText={(value) => {
-                      setPhoneNumber(value);
+                      setPhoneNumber(formatPhone(value));
                       if (error) clearError();
                     }}
                     onFocus={() => setFocusedField('phone')}
-                    placeholder="04XX XXX XXX"
+                    placeholder="0412 345 678"
                     placeholderTextColor={colors.whiteA40}
                     style={[localStyles.fieldInput, focusedField === 'phone' && localStyles.fieldInputFocused]}
                     value={phoneNumber}

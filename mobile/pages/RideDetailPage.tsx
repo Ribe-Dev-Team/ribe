@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Image, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
@@ -37,15 +37,43 @@ function Avatar({ person }: { person: RidePerson }) {
 		: <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(person.name)}</Text></View>;
 }
 
-function PersonRow({ person, subtitle }: { person: RidePerson; subtitle?: string }) {
+function PersonRow({ person, subtitle, children }: { person: RidePerson; subtitle?: string; children?: React.ReactNode }) {
 	return (
 		<View style={styles.personRow}>
 			<Avatar person={person} />
 			<View style={styles.personCopy}>
 				<Text style={styles.personName}>{person.name}{person.awaiting ? '  ·  awaiting' : ''}</Text>
 				{subtitle ? <Text style={styles.personBio}>{subtitle}</Text> : null}
+				{children}
 			</View>
 		</View>
+	);
+}
+
+/** Someone's number, masked until 12 hours before the trip as on the ride
+ *  card; once shown, buttons to call or text them - say, where the car is
+ *  parked at uni. */
+function ContactLine({ name, phone, revealed }: { name: string; phone?: string; revealed: boolean }) {
+	if (!phone) return <Text style={styles.infoLine}>Contact  ·  Not shared</Text>;
+	const digits = phone.replace(/[^\d+]/g, '');
+	return (
+		<>
+			<Text style={styles.infoLine}>
+				Contact  ·  {revealed ? formatPhone(phone) : `${maskPhone(phone)} (shown 12h before pickup)`}
+			</Text>
+			{revealed && (
+				<View style={styles.contactActions}>
+					<Pressable accessibilityLabel={`Call ${name}`} onPress={() => Linking.openURL(`tel:${digits}`)} style={styles.contactButton}>
+						<Ionicons name="call-outline" size={13} color={colors.white} />
+						<Text style={styles.contactButtonText}>Call</Text>
+					</Pressable>
+					<Pressable accessibilityLabel={`Text ${name}`} onPress={() => Linking.openURL(`sms:${digits}`)} style={styles.contactButton}>
+						<Ionicons name="chatbubble-outline" size={13} color={colors.white} />
+						<Text style={styles.contactButtonText}>Text</Text>
+					</Pressable>
+				</View>
+			)}
+		</>
 	);
 }
 
@@ -133,8 +161,9 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			{ kind: 'start', title: isDriver ? 'Departure' : 'Pickup', address: ride.start, time: ride.time },
 			{ kind: 'end', title: 'Drop-off', address: ride.destination },
 		];
-	// As on the ride card: a confirmed rider sees their driver's number in full
-	// from 12 hours before pickup, and only its first digits before that.
+	// As on the ride card: numbers show in full from 12 hours before the trip,
+	// and only their first digits before that. A confirmed rider sees their
+	// driver's; a driver, each confirmed passenger's.
 	const phoneRevealed = details?.startsAt !== undefined
 		&& details.startsAt.getTime() - Date.now() <= PHONE_REVEAL_WINDOW_MS;
 
@@ -158,7 +187,11 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 					<Section title="Your passengers">
 						{loading ? <Text style={styles.mutedDetail}>Loading passengers...</Text>
 							: details.passengers.length === 0 ? <Text style={styles.mutedDetail}>Passengers will appear here once riders are matched to your drive.</Text>
-							: details.passengers.map((person, index) => <PersonRow key={index} person={person} subtitle={aboutOf(person)} />)}
+							: details.passengers.map((person, index) => (
+								<PersonRow key={index} person={person} subtitle={aboutOf(person)}>
+									{person.phone ? <ContactLine name={person.name} phone={person.phone} revealed={phoneRevealed} /> : null}
+								</PersonRow>
+							))}
 					</Section>
 					{!loading && <CarSection title="Your car" car={details.car} />}
 				</>
@@ -173,11 +206,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 								<>
 									<PersonRow person={driver} subtitle={driver.bio ?? 'This driver has not added a bio yet.'} />
 									<Text style={styles.infoLine}>Degree  ·  {driver.degree ?? 'Not added'}</Text>
-									{isConfirmed && (
-										<Text style={styles.infoLine}>
-											Contact  ·  {driver.phone ? (phoneRevealed ? formatPhone(driver.phone) : `${maskPhone(driver.phone)} (shown 12h before pickup)`) : 'Not shared'}
-										</Text>
-									)}
+									{isConfirmed && <ContactLine name={driver.name} phone={driver.phone} revealed={phoneRevealed} />}
 								</>
 							)}
 					</Section>

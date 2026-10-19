@@ -18,6 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../auth/useAuth';
 import styles, { colors } from '../styles';
 import PressableScale from '../components/PressableScale';
+import { isValidPhoneNumber } from './schema/user.validation';
+import { formatPhone } from '../utility/phone';
 
 interface ProfilePageProps {
   onLogout: () => void;
@@ -29,6 +31,8 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
   const [isEditing, setIsEditing] = useState(false);
   const [degree, setDegree] = useState(profileData?.degree || '');
   const [bio, setBio] = useState(profileData?.bio || '');
+  const [phoneNumber, setPhoneNumber] = useState(formatPhone(profileData?.phoneNumber || ''));
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [profilePhotoUri, setProfilePhotoUri] = useState<string | null>(profileData?.profilePhotoUrl || null);
   const [profilePhotoBase64, setProfilePhotoBase64] = useState<string | null>(null);
   const [profilePhotoMimeType, setProfilePhotoMimeType] = useState<string | null>(null);
@@ -68,12 +72,19 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
       return;
     }
 
+    if (!isValidPhoneNumber(phoneNumber.trim())) {
+      setPhoneError('Please enter a valid phone number.');
+      return;
+    }
+    setPhoneError(null);
+
     try {
       await updateProfileDetails({
         profilePhotoBase64: profilePhotoBase64 ?? undefined,
         profilePhotoMimeType: profilePhotoMimeType ?? undefined,
         degree: degree.trim(),
         bio: bio.trim(),
+        phoneNumber: phoneNumber.trim(),
       });
       setIsEditing(false);
     } catch {
@@ -84,6 +95,8 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
   const handleCancel = () => {
     setDegree(profileData?.degree || '');
     setBio(profileData?.bio || '');
+    setPhoneNumber(formatPhone(profileData?.phoneNumber || ''));
+    setPhoneError(null);
     setProfilePhotoUri(profileData?.profilePhotoUrl || null);
     setProfilePhotoBase64(null);
     setProfilePhotoMimeType(null);
@@ -147,6 +160,22 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
               {isEditing ? (
                 <>
                   <View style={styles.profileInfoBlock}>
+                    <Text style={styles.profileLabel}>Phone number</Text>
+                    <TextInput
+                      keyboardType="phone-pad"
+                      maxLength={15}
+                      onChangeText={(value) => { setPhoneNumber(formatPhone(value)); setPhoneError(null); }}
+                      placeholder="0412 345 678"
+                      placeholderTextColor={colors.whiteA40}
+                      style={styles.editInput}
+                      textContentType="telephoneNumber"
+                      value={phoneNumber}
+                    />
+                    {phoneError ? <Text style={localStyles.fieldError}>{phoneError}</Text> : null}
+                    <Text style={localStyles.fieldHint}>Shared with the people in your car once a ride is confirmed.</Text>
+                  </View>
+
+                  <View style={styles.profileInfoBlock}>
                     <Text style={styles.profileLabel}>Degree</Text>
                     <TextInput
                       autoCapitalize="words"
@@ -200,6 +229,11 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
                 </>
               ) : (
                 <>
+                  <View style={styles.profileInfoBlock}>
+                    <Text style={styles.profileLabel}>Phone number</Text>
+                    <Text style={styles.profileValue}>{profileData?.phoneNumber ? formatPhone(profileData.phoneNumber) : 'Not added'}</Text>
+                  </View>
+
                   <View style={styles.profileInfoBlock}>
                     <Text style={styles.profileLabel}>Degree</Text>
                     <Text style={styles.profileValue}>{profileData?.degree || 'Not added'}</Text>
@@ -316,6 +350,16 @@ const localStyles = StyleSheet.create({
     color: colors.white,
     fontSize: 13,
     fontWeight: '600',
+  },
+  fieldError: {
+    color: colors.pendingLight,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  fieldHint: {
+    color: colors.whiteA60,
+    fontSize: 11,
+    marginTop: 4,
   },
   charCount: {
     alignSelf: 'flex-end',

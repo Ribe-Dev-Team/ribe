@@ -252,6 +252,8 @@ interface StopPerson {
   photoUrl?: string;
   bio?: string;
   degree?: string;
+  /** users/{uid}.phoneNumber - only ever passed on to the car's driver. */
+  phone?: string;
 }
 
 /**
@@ -296,7 +298,7 @@ function middleStops(
 }
 
 /**
- * The passengers at a car's stops: first name, photo, bio and degree from
+ * The passengers at a car's stops: first name, photo, bio, degree and phone from
  * users/{uid}, pickup address and point from their request. Once per request;
  * one that can't be read is left out, and the card labels that stop
  * "Passenger N" instead.
@@ -325,6 +327,7 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
         photoUrl: text('profilePhotoUrl'),
         bio: text('bio'),
         degree: text('degree'),
+        phone: text('phoneNumber'),
       });
     } catch (error) {
       console.warn('Failed to load a passenger on this trip', id, error);
@@ -714,6 +717,9 @@ export interface RidePerson {
   photoUrl?: string;
   bio?: string;
   degree?: string;
+  /** Their number, for whoever needs to reach them about the trip: a rider's
+   *  driver, or a driver's confirmed passengers. Never another rider's. */
+  phone?: string;
   /** A rider still deciding on a match to this car - not aboard yet. */
   awaiting?: boolean;
 }
@@ -728,7 +734,7 @@ export interface RideCar {
 /** Everything the details page shows beyond the ride's own card. */
 export interface RideDetails {
   /** A rider's driver, once matched. Absent for a driver's own offer. */
-  driver?: RidePerson & { phone?: string };
+  driver?: RidePerson;
   /** The car the ride is in: the matched driver's, or a driver's own. */
   car?: RideCar;
   /** Everyone else in the car, in pickup order. A rider sees the confirmed
@@ -741,7 +747,7 @@ export interface RideDetails {
   /** The journey's stops that go on the map, marked as `journey` names them. */
   mapPoints: RideMapPoint[];
   /** When this person's trip starts - pickup or departure - for revealing
-   *  the driver's phone number. */
+   *  phone numbers. */
   startsAt?: Date;
 }
 
@@ -813,6 +819,11 @@ export async function fetchRideDetails(rideId: string, kind: 'request' | 'offer'
     degree: p?.degree,
     ...(awaiting ? { awaiting } : {}),
   });
+  // A driver can reach the passengers who've accepted - not one still deciding.
+  const toPassenger = (p: StopPerson | undefined, fallback: string, awaiting: boolean): RidePerson => ({
+    ...toPerson(p, fallback, awaiting),
+    ...(!awaiting && p?.phone ? { phone: p.phone } : {}),
+  });
 
   if (kind === 'offer') {
     const schedule = scheduleFor(record, 'offer', rideId);
@@ -837,7 +848,7 @@ export async function fetchRideDetails(rideId: string, kind: 'request' | 'offer'
 
     return {
       car: carOf(profile),
-      passengers: ids.map((id, i) => toPerson(people.get(id), `Passenger ${i + 1}`, id === record.pendingRequestId)),
+      passengers: ids.map((id, i) => toPassenger(people.get(id), `Passenger ${i + 1}`, id === record.pendingRequestId)),
       ...finishJourney([
         // The driver sets the departure, so it isn't an estimate.
         { kind: 'start', title: 'Departure', ...from, time: schedule ? formatClock(toDate(schedule.departAt)) : undefined },

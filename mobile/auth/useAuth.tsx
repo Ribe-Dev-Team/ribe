@@ -19,6 +19,7 @@ type ProfileExtras = {
   profilePhotoMimeType?: string;
   degree?: string;
   bio?: string;
+  phoneNumber?: string;
   isDriver?: boolean;
   vehicleMake?: string;
   vehicleModel?: string;
@@ -353,6 +354,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         given !== undefined ? given.trim() || null : stored ?? null;
       const trimmedDegree = text(data.degree, profileData?.degree);
       const trimmedBio = text(data.bio, profileData?.bio);
+      // Required at sign-up, so it's changed but never cleared.
+      const phoneNumber = data.phoneNumber?.trim() || profileData?.phoneNumber || '';
       const isDriverValue = data.isDriver ?? profileData?.isDriver ?? false;
       const vehicleMake = text(data.vehicleMake, profileData?.vehicleMake);
       const vehicleModel = text(data.vehicleModel, profileData?.vehicleModel);
@@ -364,6 +367,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profilePayload = {
         degree: trimmedDegree,
         bio: trimmedBio,
+        phoneNumber,
         profilePhotoUrl,
         isDriver: isDriverValue,
         vehicleMake,
@@ -399,7 +403,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...(currentProfile ?? {}),
         name: currentProfile?.name ?? currentUser.displayName ?? '',
         dob: currentProfile?.dob ?? '',
-        phoneNumber: currentProfile?.phoneNumber ?? '',
         email: currentProfile?.email ?? currentUser.email ?? '',
         ...profilePayload,
       }));
