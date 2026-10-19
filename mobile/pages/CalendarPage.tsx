@@ -36,6 +36,8 @@ export interface Ride {
   id?: string;
   /** Read from Firestore; worked out by the matching runner. */
   costSplit?: RideCostSplit;
+  /** The car's seats, for a driver's seat and lock controls on the details page. */
+  seats?: RideCardProps['seats'];
 }
 
 const monthNames = [
@@ -110,6 +112,7 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             vehicle: ride.driver.vehicle,
             id: ride.id,
             costSplit: ride.costSplit,
+            seats: ride.seats,
           })),
           ...offers.map((ride: RideCardProps) => ({
             rideId: ride.rideId,
@@ -124,6 +127,7 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             vehicle: ride.driver.vehicle,
             id: ride.id,
             costSplit: ride.costSplit,
+            seats: ride.seats,
           })),
         ];
 

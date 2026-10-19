@@ -5,6 +5,7 @@ import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import RideMap, { markerColor } from '../components/RideMap';
 import CostSplitPanel from '../components/CostSplitPanel';
+import DriveControls from '../components/DriveControls';
 import { fetchRideDetails, JourneyStop, RideCar, RideDetails, RidePerson } from '../services/rideData';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
 
@@ -16,6 +17,12 @@ interface RideDetailPageProps {
 	onAccept?: () => Promise<void> | void;
 	onDecline?: () => Promise<void> | void;
 	onCancel?: () => Promise<void> | void;
+	/** A booking still searching: change it. */
+	onEdit?: () => void;
+	/** A driver's own drive: stop (true) or resume (false) taking passengers. */
+	onSetLocked?: (locked: boolean) => void;
+	/** A driver's own drive: change how many passengers it takes. */
+	onChangeSeats?: (seats: number) => void;
 }
 
 function formatDate(date: Date) {
@@ -122,7 +129,9 @@ function CarSection({ title, car }: { title: string; car?: RideCar }) {
 	);
 }
 
-export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel }: RideDetailPageProps) {
+export default function RideDetailPage({
+	ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel, onEdit, onSetLocked, onChangeSeats,
+}: RideDetailPageProps) {
 	const [details, setDetails] = useState<RideDetails | null>(null);
 	const isConfirmed = ride.status === 'confirmed';
 	// Drivers don't answer matches, so their awaiting offer reads as a rider found.
@@ -192,6 +201,15 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 									{person.phone ? <ContactLine name={person.name} phone={person.phone} revealed={phoneRevealed} /> : null}
 								</PersonRow>
 							))}
+						{/* How many seats it offers, and whether it's still taking riders. */}
+						{ride.seats && (
+							<DriveControls
+								seats={ride.seats}
+								riderDeciding={ride.status === 'awaiting'}
+								onSetLocked={onSetLocked}
+								onChangeSeats={onChangeSeats}
+							/>
+						)}
 					</Section>
 					{!loading && <CarSection title="Your Car" car={details.car} />}
 				</>
@@ -245,6 +263,12 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 						<Text style={styles.successButtonText}>Accept</Text>
 					</Pressable>
 				</View>
+			)}
+
+			{ride.status === 'pending' && onEdit && (
+				<Pressable onPress={onEdit} style={[styles.secondaryButton, { flex: 0, marginTop: 14 }]}>
+					<Text style={styles.secondaryButtonText}>{isDriver ? 'Edit Offer' : 'Edit Request'}</Text>
+				</Pressable>
 			)}
 
 			{(isConfirmed || ride.status === 'pending' || isDriver) && onCancel && (

@@ -50,6 +50,7 @@ function toDetailRide(ride: RideCardProps): Ride {
     driverUid: ride.driver.uid,
     vehicle: ride.driver.vehicle,
     costSplit: ride.costSplit,
+    seats: ride.seats,
   };
 }
 
@@ -65,13 +66,21 @@ function errorMessage(error: unknown): string {
 }
 
 // Shared across Calendar, Home, and Dashboard so the ride details page always offers
-// the same Accept/Decline (awaiting) or Cancel (confirmed/pending) actions, regardless
+// the same Accept/Decline (awaiting), Edit/Cancel, or a driver's Seats/Lock actions, regardless
 // of which page you opened it from.
 //
 // Accept and Decline write to Firestore and then call `onChanged`, which sends the
 // user back to the list AND remounts it. Without the remount the list keeps
 // rendering the status it fetched on mount, so an accepted ride would appear to
 // stay in Awaiting Approval until the app was restarted.
+// Editing a booking isn't built yet; the details page's Edit button says so.
+function editComingSoon(kind?: 'request' | 'offer') {
+  Alert.alert(
+    kind === 'offer' ? 'Edit driving offer' : 'Edit ride request',
+    kind === 'offer' ? 'Editing this drive offer is coming soon.' : 'Editing this request is coming soon.',
+  );
+}
+
 function buildRideActions(
   ride: ActionableRide,
   driverName: string,
@@ -81,6 +90,7 @@ function buildRideActions(
   // whatever state the offer is in, is remove it.
   if (ride.kind === 'offer') {
     return {
+      onEdit: () => editComingSoon('offer'),
       onCancel: async () => {
         if (!ride.rideId) {
           Alert.alert('Not available yet', 'Removing an offer from this view is not wired up.');
@@ -160,6 +170,7 @@ function buildRideActions(
   // above, which the matcher relies on.
   const confirmed = ride.status === 'confirmed';
   return {
+    onEdit: () => editComingSoon('request'),
     onCancel: async () => {
       if (!ride.rideId) {
         Alert.alert('Not available yet', 'Cancelling a ride from this view is not wired up.');
@@ -208,6 +219,9 @@ function AppContent() {
     onAccept?: () => void;
     onDecline?: () => void;
     onCancel?: () => void;
+    onEdit?: () => void;
+    onSetLocked?: (locked: boolean) => void;
+    onChangeSeats?: (seats: number) => void;
   } | null>(null);
   const [viewingDriver, setViewingDriver] = useState<RideCardProps | null>(null);
   const [showBooking, setShowBooking] = useState(false);
@@ -460,6 +474,9 @@ function AppContent() {
           onAccept={selectedRide.onAccept}
           onDecline={selectedRide.onDecline}
           onCancel={selectedRide.onCancel}
+          onEdit={selectedRide.onEdit}
+          onSetLocked={selectedRide.onSetLocked}
+          onChangeSeats={selectedRide.onChangeSeats}
         />
       );
     }

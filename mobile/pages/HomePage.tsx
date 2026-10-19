@@ -24,7 +24,7 @@ interface HomePageProps {
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
   /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
-  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline'>;
 }
 
 function ridesDescription(count: number, noun: 'ride' | 'drive') {

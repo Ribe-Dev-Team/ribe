@@ -1,5 +1,5 @@
 // Integration test for the Dashboard staying current after a driver locks a
-// drive or changes its seats (mobile/pages/DashboardPage.tsx). It used to read
+// drive or changes its seats on the details page (mobile/pages/DashboardPage.tsx). It used to read
 // the rides once, on mount, and so showed the drive as it was until the user
 // changed pages. It now rebuilds its cards whenever the user's rides change
 // (watchUserRides in mobile/services/rideData.ts).
@@ -8,10 +8,8 @@
 // Real rideData and booking methods, against the in-memory Firestore mock.
 
 import * as React from 'react';
-import { Alert } from 'react-native';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { render, screen, waitFor } from '@testing-library/react-native';
 import DashboardPage from '../../mobile/pages/DashboardPage';
-import { RideCardProps } from '../../mobile/components/RideCard';
 import { setOfferLocked, updateOfferSeats } from '../../mobile/pages/schema/firebaseBookingMethods';
 import { db } from '../../mobile/firebaseConfig';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
@@ -22,11 +20,9 @@ jest.mock('../../mobile/auth/useAuth', () => ({ useAuth: () => ({ user: { uid: '
 // The mocked Firestore uses real setTimeout delays internally.
 jest.useRealTimers();
 
-// The write handlers, without App's remount afterwards.
-const rideActions = (ride: RideCardProps) => ({
-  onSetLocked: (locked: boolean) => setOfferLocked(ride.rideId!, locked),
-  onChangeSeats: (seats: number) => updateOfferSeats(ride.rideId!, seats),
-});
+// The card has no actions of its own here: locking and seats are on the
+// details page now, so the tests write them as it would.
+const rideActions = () => ({});
 
 beforeEach(async () => {
   const day = Timestamp.fromDate(new Date(Date.now() + 3 * 24 * 3_600_000));
@@ -39,49 +35,35 @@ beforeEach(async () => {
   });
 });
 
-/** Press a control on the first card showing it, and confirm its dialog. */
-async function pressAndConfirm(label: string, confirm: string) {
-  const alert = jest.spyOn(Alert, 'alert');
-  await fireEvent.press(screen.getAllByLabelText(label)[0]);
-  const buttons = alert.mock.calls[alert.mock.calls.length - 1][2] as Array<{ text: string; onPress?: () => void }>;
-  await buttons.find((b) => b.text === confirm)!.onPress!();
-}
-
 const show = () => render(
   <DashboardPage onSeeRideDetails={() => {}} onOpenDriverProfile={() => {}} rideActions={rideActions} mode="driver" />,
 );
 
-it('shows a drive as locked as soon as the lock is written, and takes the Seats button away', async () => {
+it('shows a drive as locked as soon as the lock is written', async () => {
   await show();
-  await screen.findAllByText('1/3 seats');
-  expect(screen.getAllByLabelText('Change number of seats').length).toBeGreaterThan(0);
+  await screen.findAllByText('Still looking');
 
-  await pressAndConfirm('Stop taking passengers', 'Lock Drive');
+  await setOfferLocked('car', true);
 
-  await waitFor(() => expect(screen.getByText('1/1 seats')).toBeTruthy());
-  expect(screen.getByText('Locked')).toBeTruthy();
-  expect(screen.queryByText('1/3 seats')).toBeNull();
-  expect(screen.queryByLabelText('Change number of seats')).toBeNull();
+  await waitFor(() => expect(screen.getByText('Locked')).toBeTruthy());
+  expect(screen.queryByText('Still looking')).toBeNull();
 });
 
-it('shows it taking passengers again as soon as it is unlocked, Seats button back', async () => {
+it('shows it taking passengers again as soon as it is unlocked', async () => {
   await setOfferLocked('car', true);
   await show();
-  await screen.findByText('1/1 seats');
+  await screen.findByText('Locked');
 
-  await pressAndConfirm('Take more passengers', 'Unlock');
+  await setOfferLocked('car', false);
 
-  await waitFor(() => expect(screen.getAllByText('1/3 seats').length).toBeGreaterThan(0));
-  expect(screen.getAllByLabelText('Change number of seats').length).toBeGreaterThan(0);
+  await waitFor(() => expect(screen.getAllByText('Still looking').length).toBeGreaterThan(0));
 });
 
 it('shows a change of seats as soon as it is written', async () => {
   await show();
-  await screen.findAllByText('1/3 seats');
+  await screen.findAllByText('Still looking');
 
-  await fireEvent.press(screen.getAllByLabelText('Change number of seats')[0]);
-  await fireEvent.press(screen.getByLabelText('Increase'));
-  await fireEvent.press(screen.getByText('Save'));
+  await updateOfferSeats('car', 1); // one rider aboard fills a one-seat car
 
-  await waitFor(() => expect(screen.getAllByText('1/4 seats').length).toBeGreaterThan(0));
+  await waitFor(() => expect(screen.getByText('Full')).toBeTruthy());
 });
