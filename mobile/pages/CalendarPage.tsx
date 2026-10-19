@@ -10,6 +10,7 @@ import { useAuth } from '../auth/useAuth';
 import { RideCardProps } from '../components/RideCard';
 import { fetchUserRides, rideTimeSummary, watchUserRides } from '../services/rideData';
 import { RideCostSplit } from '../utility/costDisplay';
+import { startOfDay } from '../utility/dates';
 
 export type RideStatus = 'pending' | 'awaiting' | 'confirmed' | 'cancelled';
 
@@ -177,7 +178,8 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
 
       <View style={styles.ridesHeadingRow}>
         <Text style={styles.ridesHeading}>Rides on {monthNames[selectedDate.getMonth()]} {selectedDate.getDate()}</Text>
-        <NewRideButton onPress={() => onNewRide(selectedDate)} />
+        {/* No booking a ride on a day that's gone - those are greyed out above. */}
+        {startOfDay(selectedDate) >= startOfDay(new Date()) && <NewRideButton onPress={() => onNewRide(selectedDate)} />}
       </View>
       {loading ? (
         <View style={{ paddingVertical: 18, alignItems: 'center' }}>
