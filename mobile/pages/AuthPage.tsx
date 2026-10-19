@@ -19,6 +19,7 @@ import * as ImagePicker from 'expo-image-picker';
 import styles, { colors } from '../styles';
 import DatePickerModal from '../components/DatePickerModal';
 import PressableScale from '../components/PressableScale';
+import PasswordInput from '../components/PasswordInput';
 import { formatPhone } from '../utility/phone';
 import {
   getDriverValidationError,
@@ -418,7 +419,7 @@ export default function AuthPage({
                   {emailErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{emailErr}</Text>}
 
                   <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Password</Text>
-                  <TextInput
+                  <PasswordInput
                     onBlur={() => setFocusedField(null)}
                     onChangeText={(value) => {
                       setPassword(value);
@@ -426,15 +427,13 @@ export default function AuthPage({
                     }}
                     onFocus={() => setFocusedField('password')}
                     placeholder="Password"
-                    placeholderTextColor={colors.whiteA40}
-                    secureTextEntry
                     style={[localStyles.fieldInput, focusedField === 'password' && localStyles.fieldInputFocused]}
                     value={password}
                   />
                   {passwordErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{passwordErr}</Text>}
 
                   <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Confirm password</Text>
-                  <TextInput
+                  <PasswordInput
                     onBlur={() => setFocusedField(null)}
                     onChangeText={(value) => {
                       setConfirmPassword(value);
@@ -442,8 +441,6 @@ export default function AuthPage({
                     }}
                     onFocus={() => setFocusedField('confirm')}
                     placeholder="Confirm password"
-                    placeholderTextColor={colors.whiteA40}
-                    secureTextEntry
                     style={[localStyles.fieldInput, focusedField === 'confirm' && localStyles.fieldInputFocused]}
                     value={confirmPassword}
                   />
@@ -731,7 +728,7 @@ export default function AuthPage({
               />
 
               <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Password</Text>
-              <TextInput
+              <PasswordInput
                 onBlur={() => setFocusedField(null)}
                 onChangeText={(value) => {
                   setPassword(value);
@@ -739,8 +736,6 @@ export default function AuthPage({
                 }}
                 onFocus={() => setFocusedField('password')}
                 placeholder="Password"
-                placeholderTextColor={colors.whiteA40}
-                secureTextEntry
                 style={[localStyles.fieldInput, focusedField === 'password' && localStyles.fieldInputFocused]}
                 value={password}
               />
