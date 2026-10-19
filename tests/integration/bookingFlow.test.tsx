@@ -267,6 +267,11 @@ describe('BookingPage - driver offering a ride', () => {
     expect(screen.getByText(/Riders matched to you will see your car and plate/)).toBeTruthy();
     expect(screen.queryByText('Role')).toBeNull();
     expect(screen.getByText('Submit Offer')).toBeTruthy();
+    // The travel date with its day of the week.
+    const day = new Date();
+    day.setDate(day.getDate() + 7);
+    const weekday = day.toLocaleDateString('en-AU', { weekday: 'long' });
+    expect(screen.getByText(`${weekday} ${futureDateStr(7).replace(/-/g, '/')}`)).toBeTruthy();
 
     await pressSubmit();
 

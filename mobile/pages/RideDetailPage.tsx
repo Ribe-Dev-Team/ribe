@@ -112,7 +112,7 @@ function CarSection({ title, car }: { title: string; car?: RideCar }) {
 	return (
 		<Section title={title}>
 			<View style={styles.carRow}>
-				<Text style={styles.carIcon}>▣</Text>
+				<Ionicons name="car-outline" size={30} color={colors.white} style={styles.carIcon} />
 				<View>
 					<Text style={styles.personName}>{name || 'Vehicle details not added yet'}</Text>
 					<Text style={styles.infoLine}>Plate  ·  {car?.plate ?? 'Not shared'}</Text>

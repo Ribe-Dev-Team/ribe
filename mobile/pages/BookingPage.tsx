@@ -17,7 +17,7 @@ import styles, { colors } from '../styles';
 import { Booking, BOOKING_HORIZON_DAYS } from './schema/booking.schema';
 import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
 import { formatTime12h } from '../utility/times';
-import { formatDateToStr, parseDateAsStr } from '../utility/dates';
+import { formatDateToStr, formatWeekdayDate, parseDateAsStr } from '../utility/dates';
 import { validateTripStep as validateTripStepFields, validateDetailsStep as validateDetailsStepFields, getTimeOrderWarning, getDetourWarning, isBookableDate, latestBookingDate } from './validation/bookingValidation';
 import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
@@ -278,6 +278,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   );
 
   if (step === 'confirm') {
+    const travelDay = parseDateAsStr(travelDate);
     return (
       <View style={localStyles.pageContainer}>
         <View style={localStyles.fixedHeader}>
@@ -319,7 +320,9 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           <View style={localStyles.card}>
             <View style={localStyles.summaryRow}>
               <Text style={localStyles.summaryLabel}>Travel Date</Text>
-              <Text style={localStyles.summaryValue}>{travelDate}</Text>
+              <Text style={localStyles.summaryValue}>
+                {travelDay ? formatWeekdayDate(travelDay) : travelDate}
+              </Text>
             </View>
             <View style={localStyles.summaryRow}>
               <Text style={localStyles.summaryLabel}>Earliest Departure</Text>

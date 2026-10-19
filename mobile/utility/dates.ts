@@ -10,6 +10,7 @@ export {
   monthNames,
   weekdayLabels,
   formatDateToStr,
+  formatWeekdayDate,
   formatDateTimeToStr,
   parseDateAsStr,
   startOfDay,
@@ -47,6 +48,12 @@ function formatDateToStr(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   return `${day}-${month}-${date.getFullYear()}`;
+}
+
+/* The day of the week, then the date: "Monday 02/11/2026" */
+function formatWeekdayDate(date: Date): string {
+  const weekday = date.toLocaleDateString('en-AU', { weekday: 'long' });
+  return `${weekday} ${formatDateToStr(date).replace(/-/g, '/')}`;
 }
 
 /* Convert a date object into a human-readable string (using HH:MM:SS DD-MM-YYYY format) */

@@ -391,7 +391,7 @@ export default StyleSheet.create({
   contactButtonText: { color: colors.white, fontFamily: 'Marcellus_400Regular', fontSize: 12 },
   mutedDetail: { color: colors.white, opacity: 0.7, fontFamily: 'Marcellus_400Regular', fontSize: 13, lineHeight: 19 },
   carRow: { flexDirection: 'row', alignItems: 'center' },
-  carIcon: { color: colors.confirmedLight, fontSize: 30, marginRight: 13 },
+  carIcon: { marginRight: 13 },
   savingsPanel: { borderRadius: 20, padding: 18, marginBottom: 12, backgroundColor: colors.confirmed },
   savingsKicker: { color: colors.white, fontFamily: 'Marcellus_400Regular', fontSize: 11, letterSpacing: 1 },
   savingsValue: { color: colors.white, fontFamily: 'Marcellus_400Regular', fontSize: 25, marginTop: 5 },
