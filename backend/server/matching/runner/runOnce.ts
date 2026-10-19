@@ -11,6 +11,7 @@ import {
   MatchWrite, MatchWriteSkip, ScheduleWrite, Settled, StoredSchedule, toMatchWrites, toStoredSchedule,
 } from '../writes';
 import { priceSchedule, Pricing } from '../../costSplitting/tripCosts';
+import { emissionsForRiders } from '../../emissions';
 
 /**
  * One matching run, start to finish:
@@ -157,7 +158,7 @@ export async function runOnce(store: MatchingStore, opts: RunOptions): Promise<R
         batch.batchKey, inputs.requests, inputs.offers, offerDeparture, opts.now, t,
       );
       const offerById = new Map(inputs.offers.map((o) => [o.offerId, o]));
-      const writes = toMatchWrites(result.matches, inputs.offers)
+      const writes = toMatchWrites(result.matches, inputs.offers, inputs.requests, t)
         .map((w) => ({ ...w, schedule: price(w.schedule, offerById.get(w.offerId)!) }));
 
       report.matches = result.matches.map((m, i) => ({
@@ -197,12 +198,19 @@ function waypointsOf(requests: MatchRequest[], offers: MatchOffer[]): Map<string
 }
 
 /** The timetable of a car's confirmed riders, planned the way a match's is. */
-function confirmedTimetable(offer: MatchOffer, t: TravelTimeMatrix): ScheduleWrite {
+function confirmedTimetable(offer: MatchOffer, t: TravelTimeMatrix & RoadDistanceMatrix): ScheduleWrite {
   const departAt = offerDeparture(offer);
   const ev = evaluateRoute(offer.start, offer.onBoard.map((r) => r.waypoint), offer.end, departAt, t, offer.direction);
+  const campus = offer.direction === 'TO_CAMPUS' ? offer.end : offer.start;
+  const emissionsSavedKg = emissionsForRiders(
+    offer.onBoard.map((rider) => rider.waypoint),
+    campus,
+    offer.direction === 'TO_CAMPUS',
+    t,
+  );
   return {
     offerId: offer.offerId,
     baseline: offer.onBoard.map((r) => r.reqId),
-    schedule: toStoredSchedule(timetableFor(offer, offer.onBoard, ev, departAt)),
+    schedule: toStoredSchedule(timetableFor(offer, offer.onBoard, ev, departAt), emissionsSavedKg),
   };
 }
