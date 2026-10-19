@@ -221,7 +221,7 @@ describe('stops on the way to campus', () => {
     const [last] = (await fetchUserRides('req-2-uid')).requests;
 
     expect(first.pickup.time).toBe('~08:22');
-    expect(first.stops).toEqual([{ label: 'Pickup · another passenger', time: '~08:31' }]);
+    expect(first.stops).toEqual([{ label: 'Pickup · Another Passenger', time: '~08:31' }]);
     expect(JSON.stringify(first)).not.toMatch(/Yass|Second Rd/);
     expect(last.stops).toEqual([]); // nobody between them and campus
   });

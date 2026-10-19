@@ -121,7 +121,7 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
                 <View style={localStyles.topActionsRow}>
                   <PressableScale onPress={onLogout} style={localStyles.signOutButton}>
                     <Ionicons name="log-out-outline" size={14} color={colors.white} />
-                    <Text style={localStyles.signOutText}>Sign out</Text>
+                    <Text style={localStyles.signOutText}>Sign Out</Text>
                   </PressableScale>
 
                   <PressableScale onPress={() => setIsEditing(true)} style={styles.editButton}>
@@ -153,14 +153,14 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
               <Text style={styles.profileEmail}>{profileEmail}</Text>
 
               <View style={styles.profileInfoBlock}>
-                <Text style={styles.profileLabel}>Date of birth</Text>
+                <Text style={styles.profileLabel}>Date of Birth</Text>
                 <Text style={styles.profileValue}>{profileDob}</Text>
               </View>
 
               {isEditing ? (
                 <>
                   <View style={styles.profileInfoBlock}>
-                    <Text style={styles.profileLabel}>Phone number</Text>
+                    <Text style={styles.profileLabel}>Phone Number</Text>
                     <TextInput
                       keyboardType="phone-pad"
                       maxLength={15}
@@ -205,7 +205,7 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
 
                   <PressableScale onPress={onOpenDriverRegistration} style={localStyles.driverActionButton}>
                     <Text style={localStyles.driverActionButtonText}>
-                      {isDriver ? 'Update Driver Details' : 'Become A Driver'}
+                      {isDriver ? 'Update Driver Details' : 'Become a Driver'}
                     </Text>
                   </PressableScale>
 
@@ -230,7 +230,7 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
               ) : (
                 <>
                   <View style={styles.profileInfoBlock}>
-                    <Text style={styles.profileLabel}>Phone number</Text>
+                    <Text style={styles.profileLabel}>Phone Number</Text>
                     <Text style={styles.profileValue}>{profileData?.phoneNumber ? formatPhone(profileData.phoneNumber) : 'Not added'}</Text>
                   </View>
 
@@ -251,7 +251,7 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
                   <View style={localStyles.driverModeCopy}>
                     <View style={localStyles.driverModeTitleRow}>
                       <Ionicons name="car-sport-outline" size={16} color={colors.white} />
-                      <Text style={localStyles.driverModeTitle}>Driver status</Text>
+                      <Text style={localStyles.driverModeTitle}>Driver Status</Text>
                     </View>
                     <Text style={localStyles.driverModeSubtitle}>
                       {isDriver

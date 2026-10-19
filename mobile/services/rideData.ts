@@ -279,7 +279,7 @@ function middleStops(
     const own = schedule.stops.findIndex((s) => s.requestId === docId);
     if (own < 0) return undefined;
     return schedule.stops.slice(own + 1).map((s) => ({
-      label: 'Pickup · another passenger',
+      label: 'Pickup · Another Passenger',
       time: '~' + formatClock(toDate(s.pickupAt)),
     }));
   }
@@ -698,7 +698,7 @@ export interface RideMapPoint {
 /** One stop on a ride's journey, in route order, as the details page lists it. */
 export interface JourneyStop {
   kind: 'start' | 'stop' | 'end';
-  /** "Departure", "Your pickup", "Pickup · Ana", "Drop-off"... */
+  /** "Departure", "Your Pickup", "Pickup · Ana", "Drop-off"... */
   title: string;
   address?: string;
   /** The planned time, "~07:41"; absent until the matcher has planned the trip. */
@@ -869,19 +869,19 @@ export async function fetchRideDetails(rideId: string, kind: 'request' | 'offer'
   // The other riders' stops between this rider's two ends: pickups after
   // theirs going to campus, drop-offs before theirs coming home.
   const othersOnTheWay: DraftStop[] = !schedule || ownIndex < 0 ? [] : (record.toUni
-    ? schedule.stops.slice(ownIndex + 1).map((s) => ({ kind: 'stop' as const, title: 'Pickup · another passenger', time: estimated(s.pickupAt) }))
-    : schedule.stops.slice(0, ownIndex).map((s) => ({ kind: 'stop' as const, title: 'Drop-off · another passenger', time: estimated(s.arriveAt) })));
+    ? schedule.stops.slice(ownIndex + 1).map((s) => ({ kind: 'stop' as const, title: 'Pickup · Another Passenger', time: estimated(s.pickupAt) }))
+    : schedule.stops.slice(0, ownIndex).map((s) => ({ kind: 'stop' as const, title: 'Drop-off · Another Passenger', time: estimated(s.arriveAt) })));
 
   const route = finishJourney(record.toUni
     ? [
-      { kind: 'start', title: 'Your pickup', ...own, time: estimated(ownStop?.pickupAt ?? record.pickupAt) },
+      { kind: 'start', title: 'Your Pickup', ...own, time: estimated(ownStop?.pickupAt ?? record.pickupAt) },
       ...othersOnTheWay,
       { kind: 'end', title: 'Drop-off', ...campus, time: estimated(ownStop?.arriveAt ?? record.arriveAt) },
     ]
     : [
       { kind: 'start', title: 'Pickup', ...campus, time: estimated(ownStop?.pickupAt ?? record.pickupAt) },
       ...othersOnTheWay,
-      { kind: 'end', title: 'Your drop-off', ...own, time: estimated(ownStop?.arriveAt ?? record.arriveAt) },
+      { kind: 'end', title: 'Your Drop-off', ...own, time: estimated(ownStop?.arriveAt ?? record.arriveAt) },
     ]);
   if (!matched) return { ...empty, ...route };
 

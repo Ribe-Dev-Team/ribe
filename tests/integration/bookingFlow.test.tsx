@@ -82,7 +82,7 @@ async function flushHydration() {
 // an outer act() and keep it open until the submit has settled.
 async function pressSubmit() {
   await act(async () => {
-    await fireEvent.press(screen.getByText(/^Submit (request|offer)$/));
+    await fireEvent.press(screen.getByText(/^Submit (Request|Offer)$/));
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
 }
@@ -214,7 +214,7 @@ describe('BookingPage - rider requesting a ride', () => {
     await screen.findByText('Confirm Your Request');
 
     // A card with what their driver will see of them, in place of a "Role" row.
-    expect(screen.getByText("You're requesting a ride")).toBeTruthy();
+    expect(screen.getByText("You're Requesting a Ride")).toBeTruthy();
     expect(screen.getByText('Dana Driver  ·  0412 345 678')).toBeTruthy();
     expect(screen.getByText(/Your driver will see your first name/)).toBeTruthy();
     expect(screen.queryByText('Role')).toBeNull();
@@ -260,13 +260,13 @@ describe('BookingPage - driver offering a ride', () => {
     await screen.findByText('Confirm Your Offer');
 
     // A card for the car they're offering, in place of a "Role" row.
-    expect(screen.getByText("You're offering a ride")).toBeTruthy();
+    expect(screen.getByText("You're Offering a Ride")).toBeTruthy();
     expect(screen.getByText('Blue Toyota Corolla')).toBeTruthy();
     expect(screen.getByText('ABC123')).toBeTruthy();
     expect(screen.getByText('Dana Driver  ·  0412 345 678')).toBeTruthy(); // shared with riders too
     expect(screen.getByText(/Riders matched to you will see your car and plate/)).toBeTruthy();
     expect(screen.queryByText('Role')).toBeNull();
-    expect(screen.getByText('Submit offer')).toBeTruthy();
+    expect(screen.getByText('Submit Offer')).toBeTruthy();
 
     await pressSubmit();
 
@@ -287,10 +287,10 @@ describe('BookingPage - offering a ride needs a registered car', () => {
     await render(<BookingPage onDone={() => {}} />);
     await flushHydration();
 
-    await fireEvent.press(screen.getByText('Offering a ride'));
+    await fireEvent.press(screen.getByText('Offering a Ride'));
 
     expect(screen.getByText(/register as a driver with your car in your Profile/)).toBeTruthy();
-    expect(screen.queryByText('Driver details')).toBeNull();
+    expect(screen.queryByText('Driver Details')).toBeNull();
   });
 
   test('turns a saved draft offer back into a request for someone with no car registered', async () => {
@@ -306,7 +306,7 @@ describe('BookingPage - offering a ride needs a registered car', () => {
     await fireEvent.press(screen.getByText('Next'));
     await screen.findByText('Trip Details');
 
-    expect(screen.queryByText('Driver details')).toBeNull();
+    expect(screen.queryByText('Driver Details')).toBeNull();
   });
 
   test("caps the seats at the car's passenger seats", async () => {

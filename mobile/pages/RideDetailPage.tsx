@@ -128,9 +128,9 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 	// Drivers don't answer matches, so their awaiting offer reads as a rider found.
 	const isDriver = ride.kind === 'offer';
 	const isMatched = ride.status === 'confirmed' || ride.status === 'awaiting';
-	const status = ride.status === 'confirmed' ? 'Confirmed ride'
-		: ride.status === 'awaiting' ? (isDriver ? 'Rider found - awaiting their confirmation' : 'Awaiting confirmation')
-		: 'Pending ride';
+	const status = ride.status === 'confirmed' ? 'Confirmed Ride'
+		: ride.status === 'awaiting' ? (isDriver ? 'Rider Found - Awaiting Their Confirmation' : 'Awaiting Confirmation')
+		: 'Pending Ride';
 	// What the time at the top is: once the trip is planned, when the driver
 	// leaves or the rider is collected; until then, the window they booked.
 	const timeLabel = !ride.duration ? 'travel window' : isDriver ? 'leave time' : 'pick-up time';
@@ -172,7 +172,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			<Pressable accessibilityLabel={`Back to ${backLabel}`} onPress={onBack} style={styles.backButton}><Text style={styles.backButtonText}>‹</Text><Text style={styles.backButtonLabel}>{backLabel}</Text></Pressable>
 			<View style={styles.detailTitleRow}>
 				{isDriver && <Ionicons name="car-sport" size={28} color={colors.white} accessibilityLabel="Driving" />}
-				<Text style={styles.detailTitle}>{isDriver ? 'Drive details' : 'Ride details'}</Text>
+				<Text style={styles.detailTitle}>{isDriver ? 'Drive Details' : 'Ride Details'}</Text>
 			</View>
 			<Text style={styles.detailDate}>{formatDate(date)}</Text>
 
@@ -184,7 +184,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 
 			{isDriver ? (
 				<>
-					<Section title="Your passengers">
+					<Section title="Your Passengers">
 						{loading ? <Text style={styles.mutedDetail}>Loading passengers...</Text>
 							: details.passengers.length === 0 ? <Text style={styles.mutedDetail}>Passengers will appear here once riders are matched to your drive.</Text>
 							: details.passengers.map((person, index) => (
@@ -193,13 +193,13 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 								</PersonRow>
 							))}
 					</Section>
-					{!loading && <CarSection title="Your car" car={details.car} />}
+					{!loading && <CarSection title="Your Car" car={details.car} />}
 				</>
 			) : !isMatched ? (
-				<Section title="Your driver"><Text style={styles.mutedDetail}>A driver will appear here once you're matched.</Text></Section>
+				<Section title="Your Driver"><Text style={styles.mutedDetail}>A driver will appear here once you're matched.</Text></Section>
 			) : (
 				<>
-					<Section title="Your driver">
+					<Section title="Your Driver">
 						{loading ? <Text style={styles.mutedDetail}>Loading driver details...</Text>
 							: !driver ? <Text style={styles.mutedDetail}>Driver details aren't available right now.</Text>
 							: (
@@ -210,9 +210,9 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 								</>
 							)}
 					</Section>
-					{!loading && driver && <CarSection title="Driver's car" car={details.car} />}
+					{!loading && driver && <CarSection title="Driver's Car" car={details.car} />}
 					{!loading && (
-						<Section title="Other riders">
+						<Section title="Other Riders">
 							{details.passengers.length === 0
 								? <Text style={styles.mutedDetail}>{isConfirmed ? "You're the only rider so far." : 'No other riders are confirmed in this car yet.'}</Text>
 								: details.passengers.map((person, index) => <PersonRow key={index} person={person} subtitle={aboutOf(person)} />)}
@@ -279,7 +279,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 					}
 					style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
 				>
-					<Text style={styles.dangerButtonText}>{isDriver ? 'Remove offer' : ride.status === 'pending' ? 'Cancel pending ride' : 'Cancel ride'}</Text>
+					<Text style={styles.dangerButtonText}>{isDriver ? 'Remove Offer' : ride.status === 'pending' ? 'Cancel Pending Ride' : 'Cancel Ride'}</Text>
 				</Pressable>
 			)}
 		</ScrollView>

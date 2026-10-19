@@ -263,7 +263,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const stepLabels: Record<Step, string> = {
     trip: 'Step 1 of 3 · Trip',
     details: 'Step 2 of 3 · Details',
-    confirm: 'Step 3 of 3 · Confirm & submit',
+    confirm: 'Step 3 of 3 · Confirm & Submit',
   };
 
   const progressIndicator = (
@@ -294,7 +294,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               driver will see - in place of a "Role" row in the table below. */}
           <View style={localStyles.card}>
             <View>
-              <Text style={localStyles.youTitle}>{isDriving ? "You're offering a ride" : "You're requesting a ride"}</Text>
+              <Text style={localStyles.youTitle}>{isDriving ? "You're Offering a Ride" : "You're Requesting a Ride"}</Text>
               <Text style={localStyles.youDetail}>
                 {[profileData?.name, profileData?.phoneNumber ? formatPhone(profileData.phoneNumber) : null].filter(Boolean).join('  ·  ')}
               </Text>
@@ -318,25 +318,25 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
           <View style={localStyles.card}>
             <View style={localStyles.summaryRow}>
-              <Text style={localStyles.summaryLabel}>Travel date</Text>
+              <Text style={localStyles.summaryLabel}>Travel Date</Text>
               <Text style={localStyles.summaryValue}>{travelDate}</Text>
             </View>
             <View style={localStyles.summaryRow}>
-              <Text style={localStyles.summaryLabel}>Earliest departure</Text>
+              <Text style={localStyles.summaryLabel}>Earliest Departure</Text>
               <Text style={localStyles.summaryValue}>{formatTime12h(depTime)}</Text>
             </View>
             <View style={[localStyles.summaryRow, !isDriving && { borderBottomWidth: 0 }]}>
-              <Text style={localStyles.summaryLabel}>Latest arrival</Text>
+              <Text style={localStyles.summaryLabel}>Latest Arrival</Text>
               <Text style={localStyles.summaryValue}>{formatTime12h(arrTime)}</Text>
             </View>
             {isDriving && (
               <>
                 <View style={localStyles.summaryRow}>
-                  <Text style={localStyles.summaryLabel}>Max detour</Text>
+                  <Text style={localStyles.summaryLabel}>Max Detour</Text>
                   <Text style={localStyles.summaryValue}>{detourTime} min</Text>
                 </View>
                 <View style={[localStyles.summaryRow, { borderBottomWidth: 0 }]}>
-                  <Text style={localStyles.summaryLabel}>Seats offered</Text>
+                  <Text style={localStyles.summaryLabel}>Seats Offered</Text>
                   <Text style={localStyles.summaryValue}>{numSeats}</Text>
                 </View>
               </>
@@ -351,7 +351,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           <View style={localStyles.infoCard}>
             <View style={localStyles.infoHeaderRow}>
               <Ionicons name="information-circle-outline" size={16} color={colors.white} />
-              <Text style={localStyles.infoTitle}>What happens next</Text>
+              <Text style={localStyles.infoTitle}>What Happens Next</Text>
             </View>
             <Text style={localStyles.infoText}>
               {isDriving
@@ -366,7 +366,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               style={[localStyles.actionButton, isSubmitting && localStyles.actionButtonDisabled]}
               disabled={isSubmitting}
             >
-              <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : isDriving ? 'Submit offer' : 'Submit request'}</Text>
+              <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : isDriving ? 'Submit Offer' : 'Submit Request'}</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -400,14 +400,14 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                     onPress={() => setIsDriving(false)}
                     style={[localStyles.segmentOption, !isDriving && localStyles.segmentOptionActive]}
                   >
-                    <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a ride</Text>
+                    <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a Ride</Text>
                   </Pressable>
                   <Pressable
                     accessibilityState={{ disabled: !canDrive }}
                     onPress={() => (canDrive ? setIsDriving(true) : setShowDriveNote(true))}
                     style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive, !canDrive && localStyles.segmentOptionDisabled]}
                   >
-                    <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a ride</Text>
+                    <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a Ride</Text>
                   </Pressable>
                 </View>
                 {!canDrive && showDriveNote && (
@@ -422,20 +422,20 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                     onPress={() => setToUni(true)}
                     style={[localStyles.segmentOption, toUni && localStyles.segmentOptionActive]}
                   >
-                    <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To uni</Text>
+                    <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To Uni</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => setToUni(false)}
                     style={[localStyles.segmentOption, !toUni && localStyles.segmentOptionActive]}
                   >
-                    <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From uni</Text>
+                    <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From Uni</Text>
                   </Pressable>
                 </View>
               </View>
 
               <View style={[localStyles.card, { zIndex: 5 }]}>
                 <Text style={localStyles.cardLabel}>Where</Text>
-                <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup address' : 'Destination address'}</Text>
+                <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup Address' : 'Destination Address'}</Text>
                 <AddressAutocompleteInput
                   inputStyle={[localStyles.fieldInput, focusedField === 'address' && localStyles.fieldInputFocused]}
                   onBlur={() => setFocusedField(null)}
@@ -447,7 +447,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 />
                 {addrErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{addrErr}</Text>}
 
-                <Text style={[localStyles.fieldLabel, { marginTop: 16 }]}>Route preview</Text>
+                <Text style={[localStyles.fieldLabel, { marginTop: 16 }]}>Route Preview</Text>
                 <RouteMapPreview address={addressPlace} toUni={toUni} />
               </View>
 
@@ -481,7 +481,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           >
             <View style={localStyles.card}>
               <Text style={localStyles.cardLabel}>When</Text>
-              <Text style={localStyles.fieldLabel}>Travel date</Text>
+              <Text style={localStyles.fieldLabel}>Travel Date</Text>
               <Text style={localStyles.fieldHint}>Up to {BOOKING_HORIZON_DAYS} days ahead.</Text>
               <Pressable
                 onPress={() => {
@@ -497,7 +497,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               </Pressable>
               {travelDateErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{travelDateErr}</Text>}
 
-              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest departure</Text>
+              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest Departure</Text>
               <Pressable
                 onPress={() => {
                   setFocusedField('depTime');
@@ -512,7 +512,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               </Pressable>
               {depTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{depTimeErr}</Text>}
 
-              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest arrival</Text>
+              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest Arrival</Text>
               <Pressable
                 onPress={() => {
                   setFocusedField('arrTime');
@@ -534,8 +534,8 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 (backend/server/matching/riderPolicy.ts). */}
             {isDriving && (
               <View style={localStyles.card}>
-                <Text style={localStyles.cardLabel}>Driver details</Text>
-                <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
+                <Text style={localStyles.cardLabel}>Driver Details</Text>
+                <Text style={localStyles.fieldLabel}>Max Detour (mins)</Text>
                 <Text style={localStyles.fieldHint}>
                   How much longer your trip can take to pick riders up.
                 </Text>
@@ -543,7 +543,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 {detourTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{detourTimeErr}</Text>}
                 {detourTimeErr === '' && detourWarning !== '' && <Text style={localStyles.warningText}>{detourWarning}</Text>}
 
-                <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
+                <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats Available</Text>
                 {carSeats !== null && (
                   <Text style={localStyles.fieldHint}>Up to {carSeats} - the passenger seats in your car.</Text>
                 )}
@@ -574,7 +574,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
           <TimePickerModal
             initialTime={depTime}
-            label="Earliest departure"
+            label="Earliest Departure"
             onClose={() => {
               setActivePicker(null);
               setFocusedField(null);
@@ -589,7 +589,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
           <TimePickerModal
             initialTime={arrTime}
-            label="Latest arrival"
+            label="Latest Arrival"
             onClose={() => {
               setActivePicker(null);
               setFocusedField(null);

@@ -79,13 +79,13 @@ describe("a rider's details", () => {
     const { journey, mapPoints } = await fetchRideDetails('ana', 'request');
 
     expect(journey).toEqual([
-      { kind: 'start', title: 'Your pickup', address: '2 Ana Rd', time: '~' + clock('2026-10-04T21:20:00Z'), marker: 'A' },
-      { kind: 'stop', title: 'Pickup · another passenger', time: '~' + clock('2026-10-04T21:30:00Z') },
+      { kind: 'start', title: 'Your Pickup', address: '2 Ana Rd', time: '~' + clock('2026-10-04T21:20:00Z'), marker: 'A' },
+      { kind: 'stop', title: 'Pickup · Another Passenger', time: '~' + clock('2026-10-04T21:30:00Z') },
       { kind: 'end', title: 'Drop-off', address: MONASH_CLAYTON_LOCATION.label, time: '~' + clock('2026-10-04T21:50:00Z'), marker: 'B' },
     ]);
     // Only their own two points go on the map.
     expect(mapPoints).toEqual([
-      { lat: ANA.lat, lng: ANA.lon, label: 'Your pickup', kind: 'start' },
+      { lat: ANA.lat, lng: ANA.lon, label: 'Your Pickup', kind: 'start' },
       { ...campus, label: 'Drop-off', kind: 'end' },
     ]);
   });
@@ -105,7 +105,7 @@ describe("a rider's details", () => {
     expect(details.passengers).toEqual([]);
     // Nothing planned yet, so no times - the page shows their booking window.
     expect(details.journey).toEqual([
-      { kind: 'start', title: 'Your pickup', address: '9 Solo St', marker: 'A' },
+      { kind: 'start', title: 'Your Pickup', address: '9 Solo St', marker: 'A' },
       { kind: 'end', title: 'Drop-off', address: MONASH_CLAYTON_LOCATION.label, marker: 'B' },
     ]);
     expect(details.mapPoints.map((p) => p.kind)).toEqual(['start', 'end']);

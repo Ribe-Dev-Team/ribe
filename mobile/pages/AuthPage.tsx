@@ -77,11 +77,11 @@ type FieldName =
   | 'seatsAvailable';
 
 const signupStepLabels: Record<SignupStep, string> = {
-  about: 'Step 1 of 5 · About you',
+  about: 'Step 1 of 5 · About You',
   account: 'Step 2 of 5 · Account',
   profile: 'Step 3 of 5 · Profile',
-  driver: 'Step 4 of 5 · Driver details',
-  confirm: 'Step 5 of 5 · Confirm & submit',
+  driver: 'Step 4 of 5 · Driver Details',
+  confirm: 'Step 5 of 5 · Confirm & Submit',
 };
 
 // dob is stored/validated as DD/MM/YYYY (see isValidDob), unlike the DD-MM-YYYY
@@ -346,9 +346,9 @@ export default function AuthPage({
             >
               {signupStep === 'about' && (
                 <View style={localStyles.card}>
-                  <Text style={localStyles.cardLabel}>Personal details</Text>
+                  <Text style={localStyles.cardLabel}>Personal Details</Text>
 
-                  <Text style={localStyles.fieldLabel}>Full name</Text>
+                  <Text style={localStyles.fieldLabel}>Full Name</Text>
                   <TextInput
                     autoCapitalize="words"
                     onBlur={() => setFocusedField(null)}
@@ -364,7 +364,7 @@ export default function AuthPage({
                   />
                   {nameErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{nameErr}</Text>}
 
-                  <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Date of birth</Text>
+                  <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Date of Birth</Text>
                   <PressableScale
                     onPress={() => setDobPickerVisible(true)}
                     style={[localStyles.fieldInput, localStyles.pickerField, dobPickerVisible && localStyles.fieldInputFocused]}
@@ -376,7 +376,7 @@ export default function AuthPage({
                   </PressableScale>
                   {dobErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{dobErr}</Text>}
 
-                  <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Phone number</Text>
+                  <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Phone Number</Text>
                   <TextInput
                     autoCapitalize="none"
                     keyboardType="phone-pad"
@@ -398,7 +398,7 @@ export default function AuthPage({
 
               {signupStep === 'account' && (
                 <View style={localStyles.card}>
-                  <Text style={localStyles.cardLabel}>Login details</Text>
+                  <Text style={localStyles.cardLabel}>Login Details</Text>
 
                   <Text style={localStyles.fieldLabel}>Email</Text>
                   <TextInput
@@ -432,7 +432,7 @@ export default function AuthPage({
                   />
                   {passwordErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{passwordErr}</Text>}
 
-                  <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Confirm password</Text>
+                  <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Confirm Password</Text>
                   <PasswordInput
                     onBlur={() => setFocusedField(null)}
                     onChangeText={(value) => {
@@ -440,7 +440,7 @@ export default function AuthPage({
                       if (error) clearError();
                     }}
                     onFocus={() => setFocusedField('confirm')}
-                    placeholder="Confirm password"
+                    placeholder="Confirm Password"
                     style={[localStyles.fieldInput, focusedField === 'confirm' && localStyles.fieldInputFocused]}
                     value={confirmPassword}
                   />
@@ -450,7 +450,7 @@ export default function AuthPage({
 
               {signupStep === 'profile' && (
                 <View style={localStyles.card}>
-                  <Text style={localStyles.cardLabel}>Profile (optional)</Text>
+                  <Text style={localStyles.cardLabel}>Profile (Optional)</Text>
                   <Text style={localStyles.stepHelperText}>
                     Add a few details to personalize your account. You can skip this and fill it in later.
                   </Text>
@@ -461,7 +461,7 @@ export default function AuthPage({
                     ) : (
                       <>
                         <Ionicons color={colors.whiteA70} name="camera-outline" size={26} />
-                        <Text style={localStyles.avatarButtonText}>Add photo</Text>
+                        <Text style={localStyles.avatarButtonText}>Add Photo</Text>
                       </>
                     )}
                   </PressableScale>
@@ -481,7 +481,7 @@ export default function AuthPage({
                     value={degree}
                   />
 
-                  <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Short bio</Text>
+                  <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Short Bio</Text>
                   <TextInput
                     multiline
                     numberOfLines={4}
@@ -499,7 +499,7 @@ export default function AuthPage({
 
               {signupStep === 'driver' && (
                 <View style={localStyles.card}>
-                  <Text style={localStyles.cardLabel}>Driver details (optional)</Text>
+                  <Text style={localStyles.cardLabel}>Driver Details (Optional)</Text>
                   <Text style={localStyles.stepHelperText}>
                     Are you planning to give rides? Add your vehicle details so passengers can book with you.
                   </Text>
@@ -525,7 +525,7 @@ export default function AuthPage({
 
                   {isDriver === true && (
                     <>
-                      <Text style={[localStyles.fieldLabel, { marginTop: 4 }]}>Vehicle make</Text>
+                      <Text style={[localStyles.fieldLabel, { marginTop: 4 }]}>Vehicle Make</Text>
                       <TextInput
                         autoCapitalize="words"
                         onBlur={() => setFocusedField(null)}
@@ -537,7 +537,7 @@ export default function AuthPage({
                         value={vehicleMake}
                       />
 
-                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Vehicle model</Text>
+                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Vehicle Model</Text>
                       <TextInput
                         autoCapitalize="words"
                         onBlur={() => setFocusedField(null)}
@@ -549,7 +549,7 @@ export default function AuthPage({
                         value={vehicleModel}
                       />
 
-                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Vehicle color</Text>
+                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Vehicle Color</Text>
                       <TextInput
                         autoCapitalize="words"
                         onBlur={() => setFocusedField(null)}
@@ -561,7 +561,7 @@ export default function AuthPage({
                         value={vehicleColor}
                       />
 
-                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>License plate</Text>
+                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>License Plate</Text>
                       <TextInput
                         autoCapitalize="characters"
                         onBlur={() => setFocusedField(null)}
@@ -574,7 +574,7 @@ export default function AuthPage({
                         value={licensePlate}
                       />
 
-                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
+                      <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats Available</Text>
                       <TextInput
                         keyboardType="number-pad"
                         maxLength={1}
@@ -604,11 +604,11 @@ export default function AuthPage({
                       <Text style={localStyles.summaryValue} numberOfLines={1}>{name}</Text>
                     </View>
                     <View style={localStyles.summaryRow}>
-                      <Text style={localStyles.summaryLabel}>Date of birth</Text>
+                      <Text style={localStyles.summaryLabel}>Date of Birth</Text>
                       <Text style={localStyles.summaryValue}>{dob}</Text>
                     </View>
                     <View style={localStyles.summaryRow}>
-                      <Text style={localStyles.summaryLabel}>Phone number</Text>
+                      <Text style={localStyles.summaryLabel}>Phone Number</Text>
                       <Text style={localStyles.summaryValue}>{phoneNumber}</Text>
                     </View>
                     <View style={localStyles.summaryRow}>

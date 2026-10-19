@@ -177,17 +177,17 @@ describe('times', () => {
 });
 
 describe('layout', () => {
-  it('puts "See more information" at the bottom of an upcoming ride, below the seats', async () => {
+  it('puts "See More Information" at the bottom of an upcoming ride, below the seats', async () => {
     const onSeeDetails = jest.fn();
     await render(
       <RideCard {...base} kind="request" seats={{ filled: 1, total: 3, open: true, locked: false }} onSeeDetails={onSeeDetails} />,
     );
 
     const rendered = JSON.stringify(screen.toJSON());
-    expect(rendered.indexOf('See more information')).toBeGreaterThan(rendered.indexOf("You'll still arrive by"));
-    expect(rendered.indexOf('See more information')).toBeGreaterThan(rendered.indexOf('seat-bar-taken'));
+    expect(rendered.indexOf('See More Information')).toBeGreaterThan(rendered.indexOf("You'll still arrive by"));
+    expect(rendered.indexOf('See More Information')).toBeGreaterThan(rendered.indexOf('seat-bar-taken'));
 
-    await fireEvent.press(screen.getByText('See more information'));
+    await fireEvent.press(screen.getByText('See More Information'));
     expect(onSeeDetails).toHaveBeenCalled();
   });
 

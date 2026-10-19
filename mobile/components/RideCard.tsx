@@ -248,7 +248,7 @@ export default function RideCard({
     }
   };
 
-  // The whole card opens the details, as "See more information" does. The
+  // The whole card opens the details, as "See More Information" does. The
   // buttons inside it still take their own presses - the innermost one wins.
   const openDetails = () => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true));
   // "Toyota Corolla · Blue" - colour is left off when the driver hasn't added it.
@@ -259,7 +259,7 @@ export default function RideCard({
       testID="ride-card"
       onPress={openDetails}
       // Not one accessible element: that would hide every button inside from
-      // screen readers. Their way to the details is the "See more information" link.
+      // screen readers. Their way to the details is the "See More Information" link.
       accessible={false}
       style={({ pressed }) => [styles.card, { borderLeftColor: accent }, pressed && styles.cardPressed]}
     >
@@ -396,7 +396,7 @@ export default function RideCard({
             </View>
           </View>
           <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
-            <Text style={styles.seeMoreLinkText}>See more information</Text>
+            <Text style={styles.seeMoreLinkText}>See More Information</Text>
             <Ionicons name="chevron-forward" size={13} color={colors.white} />
           </TouchableOpacity>
         </>
@@ -424,7 +424,7 @@ export default function RideCard({
             </TouchableOpacity>
             <Text style={sharedStyles.plateBadge}>{plate}</Text>
           </View>
-          {/* "See more information" for an upcoming ride is at the very
+          {/* "See More Information" for an upcoming ride is at the very
               bottom of the card, below the seats - see after the seat section. */}
         </>
       )}
@@ -490,7 +490,7 @@ export default function RideCard({
 
       {status === 'confirmed' && (
         <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
-          <Text style={styles.seeMoreLinkText}>See more information</Text>
+          <Text style={styles.seeMoreLinkText}>See More Information</Text>
           <Ionicons name="chevron-forward" size={13} color={colors.white} />
         </TouchableOpacity>
       )}
@@ -503,7 +503,7 @@ export default function RideCard({
       >
         <Pressable style={styles.modalBackdrop} onPress={() => setSeatEditorVisible(false)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalDriverName}>Seats for this drive</Text>
+            <Text style={styles.modalDriverName}>Seats for This Drive</Text>
             <Text style={styles.seatEditorHint}>
               {seatsTaken > 0
                 ? `${seatsTaken} already taken, so at least ${seatsTaken}.`
