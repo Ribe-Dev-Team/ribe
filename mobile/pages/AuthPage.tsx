@@ -21,6 +21,7 @@ import DatePickerModal from '../components/DatePickerModal';
 import PressableScale from '../components/PressableScale';
 import {
   getDriverValidationError,
+  MAX_PLATE_LENGTH,
   isValidDob,
   isValidEmail,
   isValidName,
@@ -55,7 +56,7 @@ interface AuthPageProps {
   error: string | null;
   clearError: () => void;
   handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
-  handleSignup: (fields: SignupFields, extra?: SignupProfileExtras) => Promise<void>;
+  handleSignup: (fields: SignupFields, extra?: SignupProfileExtras) => Promise<boolean>;
 }
 
 type SignupStep = 'about' | 'account' | 'profile' | 'driver' | 'confirm';
@@ -263,8 +264,8 @@ export default function AuthPage({
     if (validateDriverStep()) setSignupStep('confirm');
   };
 
-  const submitSignup = () => {
-    handleSignup(
+  const submitSignup = async () => {
+    const success = await handleSignup(
       { name, dob, phoneNumber, email, password, confirmPassword },
       {
         profilePhotoBase64: profilePhotoBase64 ?? undefined,
@@ -283,6 +284,14 @@ export default function AuthPage({
           : {}),
       },
     );
+    if (success) {
+      alert('Account created! Please check your email to verify your account, then log in.');
+      setMode('login');
+      setSignupStep('about');
+      // Clear fields to avoid logging in with password if user navigates back
+      setPassword('');
+      setConfirmPassword('');
+    }
   };
 
   const signupProgress = (
@@ -565,6 +574,7 @@ export default function AuthPage({
                       <TextInput
                         autoCapitalize="characters"
                         onBlur={() => setFocusedField(null)}
+                        maxLength={MAX_PLATE_LENGTH}
                         onChangeText={setLicensePlate}
                         onFocus={() => setFocusedField('licensePlate')}
                         placeholder="1ABC234"
@@ -576,6 +586,7 @@ export default function AuthPage({
                       <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
                       <TextInput
                         keyboardType="number-pad"
+                        maxLength={1}
                         onBlur={() => setFocusedField(null)}
                         onChangeText={setSeatsAvailable}
                         onFocus={() => setFocusedField('seatsAvailable')}

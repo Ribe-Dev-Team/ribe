@@ -37,11 +37,12 @@ APIs, billed — see "Testing").
 | `score.ts` | KEY-139 — `offerScore` / `reqScore`, via David's `calcDriverScore` / `calcPassengerScore`, including his slack |
 | `deferredAcceptance.ts` | KEY-41 — **the default matching loop**: Gale-Shapley within each run, one new rider per trip per run |
 | `riderPolicy.ts` | derives a rider's `maxDetour` — the app never asks for it |
-| `travelTime.ts` | the seam where Google Maps plugs in — Distance Matrix client (the runner's default) and the Routes API client that replaces it |
+| `travelTime.ts` | the seam where Google Maps plugs in — Distance Matrix client (the runner's default) and the Routes API client that replaces it; both keep each leg's road distance too, for cost splitting |
 | `adapter.ts` | stored bookings → matcher inputs; batching by date + direction (the `batchKey`) |
 | `melbourneTime.ts` | stored date + `"HH:mm"` → real instants, daylight saving included |
 | `writes.ts` | when a match may still be written, and how a matched request catches up with its offer (expiry, offer removed) — no SDK, so testable |
 | `runner/` | one matching run against Firestore (`npm run match`) |
+| `../costSplitting/` | the suggested cost split — formula, fuel price, and pricing a whole car (see [Cost splitting](#cost-splitting)) |
 
 ## The algorithm, in one paragraph
 
@@ -367,15 +368,19 @@ whatever schedules `npm run match`.
    All of this happens before matching, so everyone freed can be matched again
    in the same run.
 2. **Read** every request and offer whose stored status is `pending` (the app's
-   word for "not matched yet" — see `mobile/pages/schema/matchStatus.ts`).
+   word for "not matched yet" — see `mobile/pages/schema/matchStatus.ts`), and
+   every done car (`confirmed`: full, or locked with passengers). Done cars are
+   never matched; they're read so their timetable and costs stay up to date.
 3. **Batch** them by Melbourne date and direction, e.g. `2026-10-05_TO_CAMPUS`.
    Both come from fields that never change after submission, so the key is stable
    without being stored. Bookings with no coordinates, a malformed time, a trip
    already under way, or a driver still waiting on a rider are left out and
    counted in the output.
-4. **Per batch:** build one travel-time matrix, convert, run
-   `runMatchingProvisional` with each driver routed from their **own** departure
-   time, and write each match in its own transaction.
+4. **Per batch:** build one travel-time matrix (road distances included),
+   convert, fill in and price the timetable of any car whose confirmed riders it
+   doesn't list or that has no costs yet, run `runMatchingProvisional` with each
+   driver routed from their **own** departure time, price each match's proposed
+   timetable, and write each match in its own transaction.
 
 ```bash
 npm run match -- --dry-run      # compute and print; write nothing, expire nothing
@@ -400,6 +405,7 @@ same baselines the run used, so they explain the result without changing it.
 | `FIREBASE_PROJECT_ID` | falls back to `EXPO_PUBLIC_FIREBASE_PROJECT_ID` |
 | `GOOGLE_MAPS_API_KEY` | falls back to `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY`; the key's project needs the **Distance Matrix API** enabled, or the Routes API with `--routes`. Without a key, travel times are synthetic estimates and the run says so. |
 | `FIRESTORE_EMULATOR_HOST` | run against the local emulator; no credentials needed |
+| `SERVO_SAVER_API_KEY` | falls back to `EXPO_PUBLIC_SERVO_SAVER_API_KEY`; the fuel price for cost splits, looked up once per run. Without a key, or if the lookup fails, an estimated Melbourne median (190 c/L) and the run says so. |
 
 **Scheduling** is deliberately outside the code. Anything that can run a command
 on a timer works — cron, Windows Task Scheduler, a CI schedule. Since each run
@@ -430,7 +436,9 @@ before its cutoff.
   `pendingSchedule`, and `acceptMatch` moves it into `schedule`. It's stored on
   the offer rather than on each request because a rider's phone can't update
   another rider's booking. The request's own `pickupAt`/`arriveAt` are a
-  snapshot from match time, used only if the offer can't be read.
+  snapshot from match time, used only if the offer can't be read. Every
+  timetable the runner writes also carries the car's cost split — see
+  [Cost splitting](#cost-splitting).
 - **Locking and seats.** A driver can lock their drive (`acceptingMore: false`
   on the offer) or change `seatCapacity` from their ride card. A locked offer
   is skipped (`LOCKED`) and never written to, and once anyone is aboard it is
@@ -456,8 +464,46 @@ before its cutoff.
   every trip). It also matches more people: a rider who isn't ready until
   8:15 could never be collected by a driver timed from 7:00, but can once the
   trip is timed from 8:50 - "picked up before they're ready" is checked at the
-  slid times. Trips **from** campus don't slide: "leave from 5pm" means take me
-  home when class ends, so they keep the earliest departure.
+  slid times. Trips **from** campus leave at the driver's earliest - "leave
+  from 5pm" means take me home when class ends - unless a rider aboard isn't
+  ready until later; then the car waits at campus for them, as long as every
+  rider and the driver still get home by their arrival times. Without that, a
+  driver free from 4:00 could never take a rider free from 5:00 home, though
+  both are travelling in the same hours.
+
+### Cost splitting
+
+All of it is in `backend/server/costSplitting/`; the app only reads the result.
+
+```
+Base Trip Contribution   = fuel price x vehicle economy x trip distance / participants
+Detour Cost              = fuel price x vehicle economy x this rider's detour distance
+Suggested contribution   = Detour Cost + Base Trip Contribution
+```
+
+Trip distance is the driver's own trip with no detours, and participants count
+the driver. A rider's **detour distance** is what they add to the car's route:
+its length with everyone, less its length without them, everyone else keeping
+their order — the same marginal measure the matcher uses for added minutes.
+With one rider it is exactly "via their pickup, minus direct". Parking is not
+included, and the app says so.
+
+- **Distances** come from the matrix the run already builds for travel times —
+  Distance Matrix returns `distance` beside `duration`, and the Routes API
+  `distanceMeters` — so pricing makes no extra Google calls. With `--synthetic`
+  they are straight-line km x 1.4, like the synthetic times.
+- **Fuel price** is the Servo Saver median, looked up once per run
+  (`fuelPrices.ts`); **vehicle economy** is 11.1 L/100km until drivers can enter
+  their own.
+- **Stored on the timetable** (`tripCosts.ts` → `priceSchedule`): the car's
+  figures as `schedule.costs` (inputs included, so a stored amount can be
+  explained, plus `calculatedAt`), and each rider's as `stops[i].cost`. Everyone's
+  share changes when a rider joins, so a match's `pendingSchedule` is priced
+  with the new rider in it: they see their share before accepting, and
+  `acceptMatch` swaps it in with the times.
+- **Kept up to date:** a car whose stored timetable has no costs is re-planned
+  and priced on the next run, whether it's still being matched or done. A
+  stored split is a snapshot, though: it isn't re-priced when fuel prices move.
 
 ### Travel times: Distance Matrix by default, Routes ready
 
@@ -594,4 +640,6 @@ Two ways to poke at the algorithm without writing a Jest test:
 - When a confirmed rider cancels, the riders left keep their old pickup times
   until the next run re-plans the route (a little early, never late, without
   the departed rider's detour). The runner only re-plans cars that are still
-  being matched, so a locked car keeps those times.
+  being matched, so a locked car keeps those times. The cost split is hidden
+  until then - it was worked out with the departed rider in the car - and the
+  car's CO2 saving still counts them.

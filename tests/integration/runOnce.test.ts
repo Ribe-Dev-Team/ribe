@@ -13,11 +13,14 @@ everything except the SDK.
                           offered someone else in the same run
   rider cancels           a confirmed rider's seat comes off the car, which
                           goes back into matching
+  cost splits             every timetable the run writes carries the car's
+                          costs, and a done car's are kept up to date
   dry run                 matches are computed but nothing is written
   a failing batch         one batch failing (e.g. Google refusing) is reported
                           and doesn't stop the others
 
-Travel times: synthetic at exactly 1 minute per km.
+Travel times: synthetic at exactly 1 minute per km, and straight-line road
+distances. Fuel: 200 c/L at 10 L/100km, i.e. $0.20 a km.
 */
 
 import { MatchingStore, runOnce } from '../../backend/server/matching/runner/runOnce';
@@ -27,6 +30,7 @@ import { SyntheticTravelTime } from '../../backend/server/matching/travelTime';
 import { Coord } from '../../backend/server/matching.schema';
 import { FieldUpdate, planMatchWrite, planScheduleWrite, planSettle, Settled } from '../../backend/server/matching/writes';
 import { MONASH_CLAYTON_LOCATION } from '../../mobile/services/googlePlaces';
+import { Pricing } from '../../backend/server/costSplitting/tripCosts';
 
 type Doc = Record<string, any>;
 
@@ -56,13 +60,16 @@ class MemoryStore implements MatchingStore {
   }
 
   async loadPending() {
-    const pending = (m: Map<string, Doc>) => [...m.values()].filter((d) => d.status === 'pending').map((d) => ({ ...d }));
-    // Like runner/firestore.ts: which riders the stored timetable lists.
-    const offers = pending(this.offers).map((o) => ({
+    const withStatus = (m: Map<string, Doc>, statuses: string[]) =>
+      [...m.values()].filter((d) => statuses.includes(d.status)).map((d) => ({ ...d }));
+    // Like runner/firestore.ts: done cars too, and which riders the stored
+    // timetable lists and whether it's priced.
+    const offers = withStatus(this.offers, ['pending', 'confirmed']).map((o) => ({
       ...o,
       scheduledRiders: o.schedule?.stops?.map((s: { requestId: string; }) => s.requestId),
+      scheduleCosted: Boolean(o.schedule?.costs),
     }));
-    return { requests: pending(this.requests) as RequestDoc[], offers: offers as OfferDoc[] };
+    return { requests: withStatus(this.requests, ['pending']) as RequestDoc[], offers: offers as OfferDoc[] };
   }
 
   async loadRequestsById(ids: string[]) {
@@ -145,10 +152,13 @@ function seed(store: MemoryStore) {
   });
 }
 
+const pricing: Pricing = { fuel: { price: 200, fuelType: 'U91', source: 'fallback' }, vehicleEconomy: 10 };
+
 const options = (store: MemoryStore, now = NOW, dryRun = false) => ({
   now,
   dryRun,
   travelTimes: async (points: Coord[]) => { store.pointsPerBatch.push(points); return t; },
+  pricing,
 });
 
 describe('runOnce', () => {
@@ -166,7 +176,7 @@ describe('runOnce', () => {
     // The timetable the card shows: r1's pickup and arrival, planned to reach
     // campus by 8:50 for their stated 9:00 (arrivalMarginMinutes).
     const r1 = store.requests.get('r1')!;
-    expect(store.offers.get('d')!.pendingSchedule.stops).toEqual([
+    expect(store.offers.get('d')!.pendingSchedule.stops).toMatchObject([
       { requestId: 'r1', pickupAt: r1.pickupAt, arriveAt: r1.arriveAt },
     ]);
     expect(r1.pickupAt.getTime()).toBeGreaterThan(zonedDateTime({ year: 2026, month: 10, day: 5 }, '08:00').getTime());
@@ -361,5 +371,111 @@ describe('runOnce — confirmed cars missing a timetable', () => {
     await runOnce(store, options(store));
     const again = await runOnce(store, options(store));
     expect(again.batches[0].timetablesFilled).toEqual([]);
+  });
+});
+
+describe('runOnce — cost splits', () => {
+  // d drives about 20 km straight down to campus, and both riders are on that
+  // line, so neither adds any distance: each pays only their equal share of
+  // the ~$4 of fuel.
+  const DIRECT_KM = 20.1;
+
+  it("prices a match's proposed timetable, so the rider sees their share before accepting", async () => {
+    const store = new MemoryStore();
+    seed(store);
+
+    const report = await runOnce(store, options(store));
+
+    const { costs, stops } = store.offers.get('d')!.pendingSchedule;
+    expect(costs).toMatchObject({
+      medianFuelPrice: 200, fuelType: 'U91', fuelSource: 'fallback', vehicleEconomy: 10,
+      tripParticipants: 2, calculatedAt: NOW,
+    });
+    expect(costs.tripDistanceKm).toBeCloseTo(DIRECT_KM, 1);
+    expect(costs.fuelCost).toBeCloseTo(DIRECT_KM * 0.2, 1);
+    expect(stops[0].cost.detourDistanceKm).toBeCloseTo(0, 6);
+    expect(stops[0].cost.passengerContribution).toBeCloseTo(costs.fuelCost / 2, 6);
+    expect(report.batches[0].matches[0].contribution).toBeCloseTo(costs.fuelCost / 2, 6);
+  });
+
+  it('re-prices the whole car when another rider joins, and accepting puts that in place', async () => {
+    const store = new MemoryStore();
+    seed(store);
+    await runOnce(store, options(store));
+    store.accept('r1');
+    await runOnce(store, options(store)); // r2 offered the second seat
+
+    const proposal = store.offers.get('d')!.pendingSchedule;
+    expect(proposal.costs.tripParticipants).toBe(3);
+    // r1's share falls from a half to a third - on the proposal only, until r2 accepts.
+    const third = proposal.costs.fuelCost / 3;
+    for (const stop of proposal.stops) expect(stop.cost.passengerContribution).toBeCloseTo(third, 6);
+    expect(store.offers.get('d')!.schedule.costs.tripParticipants).toBe(2);
+
+    store.accept('r2');
+    expect(store.offers.get('d')!.schedule.costs.tripParticipants).toBe(3);
+  });
+
+  it("prices a done car's timetable that has no costs yet, without matching anyone to it", async () => {
+    const store = new MemoryStore();
+    seed(store);
+    // r1 confirmed in a full car with a timetable from before costs existed.
+    Object.assign(store.requests.get('r1')!, { status: 'confirmed', matchedOfferId: 'd' });
+    Object.assign(store.offers.get('d')!, {
+      status: 'confirmed', seatCapacity: 1, confirmedRequestIds: ['r1'],
+      schedule: { departAt: NOW, arriveAt: NOW, stops: [{ requestId: 'r1', pickupAt: NOW, arriveAt: NOW }] },
+    });
+
+    const report = await runOnce(store, options(store));
+
+    expect(report.batches[0]).toMatchObject({ offers: 0, timetablesFilled: ['d'], applied: [] });
+    expect(store.offers.get('d')).toMatchObject({ status: 'confirmed', confirmedRequestIds: ['r1'] });
+    expect(store.offers.get('d')!.schedule.costs.tripParticipants).toBe(2);
+    expect(store.offers.get('d')!.schedule.stops[0].cost).toBeDefined();
+
+    const again = await runOnce(store, options(store));
+    expect(again.batches[0].timetablesFilled).toEqual([]);
+  });
+});
+
+describe('runOnce — trips home from campus', () => {
+  // The car can't be sent off before its riders are ready, so a driver free
+  // from 16:00 used to be refused for a rider free from 17:00 ("travel times
+  // don't overlap"), though both were heading home in the same hours. It now
+  // waits at campus for them - if everyone still gets home in time.
+  const at = (hhmm: string) => zonedDateTime({ year: 2026, month: 10, day: 5 }, hhmm);
+  function seedHome(store: MemoryStore, rider: { departureTime: string; arrivalTime: string; }) {
+    store.requests.set('r', {
+      id: 'r', userId: 'u-r', status: 'pending', toUni: false, coord: north(8), date: tripDay, ...rider,
+    });
+    store.offers.set('d', {
+      id: 'd', userId: 'u-d', status: 'pending', toUni: false, coord: north(20),
+      date: tripDay, departureTime: '16:00', arrivalTime: '18:00',
+      maxDetourTime: 20, seatCapacity: 3, pendingRequestId: null, confirmedRequestIds: [],
+    });
+  }
+
+  it('matches a driver free earlier than the rider, and plans the car to leave when the rider is ready', async () => {
+    const store = new MemoryStore();
+    seedHome(store, { departureTime: '17:00', arrivalTime: '18:00' });
+
+    const report = await runOnce(store, options(store));
+
+    expect(report.batches[0]).toMatchObject({ batchKey: '2026-10-05_FROM_CAMPUS', applied: ['r'] });
+    const { pendingSchedule } = store.offers.get('d')!;
+    expect(pendingSchedule.departAt).toEqual(at('17:00'));
+    // Everyone boards at campus at departure; the rider is home 8 km later, in time.
+    expect(store.requests.get('r')!.pickupAt).toEqual(at('17:00'));
+    expect(store.requests.get('r')!.arriveAt.getTime()).toBeLessThanOrEqual(at('17:50').getTime());
+  });
+
+  it("still refuses a rider who couldn't leave until after the driver must be home", async () => {
+    const store = new MemoryStore();
+    seedHome(store, { departureTime: '18:30', arrivalTime: '19:30' });
+
+    const report = await runOnce(store, options(store));
+
+    expect(report.batches[0].applied).toEqual([]);
+    expect(report.batches[0].unmatched[0].byOffer[0].reason).toBe('TIME_WINDOW');
   });
 });

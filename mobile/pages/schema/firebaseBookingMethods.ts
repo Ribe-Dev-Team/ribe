@@ -1,5 +1,13 @@
 import {
-  collection, addDoc, updateDoc, doc, Timestamp, runTransaction, deleteField, deleteDoc, getDoc,
+  addDoc,
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getDoc,
+  runTransaction,
+  Timestamp,
+  updateDoc,
   type Transaction,
 } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
@@ -7,6 +15,7 @@ import { Booking, Coord } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
 import { BOOKING_STATUSES, BookingStatus, isBookingStatus } from './matchStatus';
 import { timePattern, toMinutes } from '../../utility/times';
+import { MAX_CAR_SEATS } from './user.validation';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
 
 // convert DD-MM-YYYY string to Firestore Timestamp
@@ -51,6 +60,28 @@ const validateCoord = (coord: Coord | undefined, label: string): Coord | undefin
   return { lat, lon };
 };
 
+/*
+The passenger seats in a user's registered car, or null if they have no car
+registered - not a driver, or a driver whose car details are missing. Read
+from users/{uid}, falling back to drivers/{uid} (driver registration), the
+same way the profile does: an older profile save could reset users/{uid}
+while drivers/{uid} kept the car.
+*/
+export async function registeredCarSeats(uid: string): Promise<number | null> {
+  const [userSnap, driverSnap] = await Promise.all([
+    getDoc(doc(db, 'users', uid)),
+    getDoc(doc(db, 'drivers', uid)),
+  ]);
+  const user = userSnap.exists() ? userSnap.data() : {};
+  const driver = driverSnap.exists() ? driverSnap.data() : null;
+  if (!user['isDriver'] && !driver) return null;
+
+  const plate = user['licensePlate'] ?? driver?.['licensePlate'];
+  const seats = user['seatsAvailable'] ?? driver?.['seatsAvailable'];
+  if (!plate || !Number.isInteger(seats) || seats < 1) return null;
+  return seats;
+}
+
 // Add request to DB
 export const addRideRequest = async (booking: Booking): Promise<string> => {
   const collectionRef = collection(db, 'rideRequests');
@@ -59,8 +90,6 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     throw new Error('A user must be signed in to create a ride request.');
   }
 
-  // Validated before anything is built, so a malformed coordinate fails the
-  // write rather than reaching Firestore.
   const coord = validateCoord(booking.coord, 'Ride request');
 
   const req: Omit<RideRequest, 'requestID'> = {
@@ -68,8 +97,6 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     status: booking.status ?? 'pending',
     toUni: booking.toUni,
     address: booking.address.trim(),
-    // Firestore rejects an explicit `undefined`, so the key is left out
-    // entirely when the address could not be resolved to a point.
     ...(coord ? { coord } : {}),
     date: parseDateToTimestamp(booking.travelDate),
     departureTime: booking.depTime.trim(),
@@ -77,7 +104,6 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     createdAt: new Date().toISOString(),
   };
 
-  // existence & type checking
   if (typeof req.userId !== 'string' || !req.userId.trim()) {
     throw new Error('userId must be a non-empty string');
   }
@@ -86,16 +112,16 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     throw new Error(`status must be one of ${BOOKING_STATUSES.join(', ')}`);
   }
 
-  if (req.toUni !== undefined && typeof req.toUni !== "boolean") {
-    throw new Error("toUni must be a boolean");
+  if (req.toUni !== undefined && typeof req.toUni !== 'boolean') {
+    throw new Error('toUni must be a boolean');
   }
 
-  if (req.address !== undefined && typeof req.address !== "string") {
-    throw new Error("address must be a string");
+  if (req.address !== undefined && typeof req.address !== 'string') {
+    throw new Error('address must be a string');
   }
 
   if (req.date !== undefined && !(req.date instanceof Timestamp)) {
-    throw new Error("date must be a Firestore Timestamp");
+    throw new Error('date must be a Firestore Timestamp');
   } else if (Number.isNaN(req.date)) {
     throw new Error(`couldn't convert '${booking.travelDate}' into a Firestore date format`);
   } else if (!isFutureDate(req.date.toDate())) {
@@ -107,8 +133,7 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
   } else if (req.arrivalTime !== undefined && !timePattern.test(req.arrivalTime)) {
     throw new Error("arrivalTime must be in 'HH:mm' (24-hour) format");
   } else if (toMinutes(req.arrivalTime) <= toMinutes(req.departureTime)) {
-    // range checking (time in bounds)
-    throw new Error("arrivalTime must be later than departureTime");
+    throw new Error('arrivalTime must be later than departureTime');
   }
 
   const docRef = await addDoc(collectionRef, req);
@@ -120,9 +145,9 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
 // add offer to DB
 export const addRideOffer = async (booking: Booking): Promise<string> => {
   if (booking.detourTime === undefined) {
-    throw new Error("Max detour time is required for ride offers");
+    throw new Error('Max detour time is required for ride offers');
   } else if (booking.capacity === undefined) {
-    throw new Error("Number of available seats needs to be specified for ride offers");
+    throw new Error('Number of available seats needs to be specified for ride offers');
   }
 
   if (!booking.userId) {
@@ -130,9 +155,6 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
   }
 
   const collectionRef = collection(db, 'rideOffers');
-
-  // Validated before anything is built, so a malformed coordinate fails the
-  // write rather than reaching Firestore.
   const coord = validateCoord(booking.coord, 'Ride offer');
 
   const offer: Omit<RideOffer, 'offerID'> = {
@@ -140,8 +162,6 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     status: booking.status ?? 'pending',
     toUni: booking.toUni,
     address: booking.address.trim(),
-    // Firestore rejects an explicit `undefined`, so the key is left out
-    // entirely when the address could not be resolved to a point.
     ...(coord ? { coord } : {}),
     date: parseDateToTimestamp(booking.travelDate),
     departureTime: booking.depTime.trim(),
@@ -151,7 +171,6 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     createdAt: new Date().toISOString(),
   };
 
-  // existence & type checking
   if (typeof offer.userId !== 'string' || !offer.userId.trim()) {
     throw new Error('userId must be a non-empty string');
   }
@@ -160,28 +179,28 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error(`status must be one of ${BOOKING_STATUSES.join(', ')}`);
   }
 
-  if (offer.toUni !== undefined && typeof offer.toUni !== "boolean") {
-    throw new Error("toUni must be a boolean");
+  if (offer.toUni !== undefined && typeof offer.toUni !== 'boolean') {
+    throw new Error('toUni must be a boolean');
   }
 
-  if (offer.address !== undefined && typeof offer.address !== "string") {
-    throw new Error("address must be a string");
+  if (offer.address !== undefined && typeof offer.address !== 'string') {
+    throw new Error('address must be a string');
   }
 
   if (offer.date !== undefined && !(offer.date instanceof Timestamp)) {
-    throw new Error("date must be a Firestore Timestamp");
+    throw new Error('date must be a Firestore Timestamp');
   } else if (Number.isNaN(offer.date)) {
     throw new Error(`couldn't convert '${booking.travelDate}' into a Firestore date format`);
   } else if (!isFutureDate(offer.date.toDate())) {
     throw new Error(`a future date must be provided, not '${booking.travelDate}'`);
   }
 
-  if (offer.maxDetourTime !== undefined && typeof offer.maxDetourTime !== "number") {
-    throw new Error("detour time must be a number");
+  if (offer.maxDetourTime !== undefined && typeof offer.maxDetourTime !== 'number') {
+    throw new Error('detour time must be a number');
   }
 
-  if (offer.seatCapacity !== undefined && typeof offer.seatCapacity !== "number") {
-    throw new Error("seat capacity time must be a number");
+  if (offer.seatCapacity !== undefined && typeof offer.seatCapacity !== 'number') {
+    throw new Error('seat capacity time must be a number');
   }
 
   if (offer.departureTime !== undefined && !timePattern.test(offer.departureTime)) {
@@ -190,19 +209,28 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error("arrivalTime must be in 'HH:mm' (24-hour) format");
   }
 
-  // range checking (time in bounds + seats within reason)
   const depMins = toMinutes(offer.departureTime);
   const arrMins = toMinutes(offer.arrivalTime);
   const timeDiff = arrMins - depMins;
 
   if (arrMins <= depMins) {
-    throw new Error("arrivalTime must be later than departureTime");
+    throw new Error('arrivalTime must be later than departureTime');
   } else if (timeDiff < offer.maxDetourTime) {
     throw new Error(`detour allowance of ${offer.maxDetourTime} (min) exceeds travel window of ${timeDiff} (min)`);
   }
 
-  if (offer.seatCapacity < 1 || offer.seatCapacity > 12) {
-    throw new Error(`Ride offers require 1 to 12 seats (inclusive) be available but ${offer.seatCapacity} were given.`);
+  if (offer.seatCapacity < 1 || offer.seatCapacity > MAX_CAR_SEATS) {
+    throw new Error(`Ride offers require 1 to ${MAX_CAR_SEATS} seats (inclusive) be available but ${offer.seatCapacity} were given.`);
+  }
+
+  // Only a registered driver can offer a ride, and never more seats than
+  // their car has. The booking page already stops both; this is the backstop.
+  const carSeats = await registeredCarSeats(offer.userId);
+  if (carSeats === null) {
+    throw new Error('Register as a driver, with your car, in your profile before offering a ride.');
+  }
+  if (offer.seatCapacity > carSeats) {
+    throw new Error(`Your car has ${carSeats} passenger seat${carSeats === 1 ? '' : 's'}, so offer ${carSeats} or fewer.`);
   }
 
   const docRef = await addDoc(collectionRef, offer);
@@ -210,13 +238,6 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
 
   return docRef.id;
 };
-
-// TODO: extract validation checks to separate file to reduce repetition in update and delete methods
-
-// export async function deleteRideRequest(requestID: string): Promise<void> {
-//   const docRef = doc(db, 'rideRequests', requestID);
-//   await docRef.delete();
-// }
 
 /* ---------------------------------------------------------------------------
 Match responses.
@@ -252,9 +273,6 @@ export async function acceptMatch(requestID: string): Promise<void> {
       throw new Error('Ride request ' + requestID + " is '" + request.status + "', not awaiting approval.");
     }
     if (!request.matchedOfferId) throw new Error('Ride request ' + requestID + ' has no matched offer.');
-    // The deadline is authoritative even before the runner gets round to
-    // expiring the match - otherwise a late accept could confirm a seat the
-    // runner is about to hand to someone else.
     if (request.acceptDeadline && request.acceptDeadline.toDate() <= new Date()) {
       throw new Error('This match expired before it was accepted.');
     }
@@ -264,29 +282,25 @@ export async function acceptMatch(requestID: string): Promise<void> {
     if (!offerSnap.exists()) throw new Error('No ride offer ' + request.matchedOfferId);
 
     const offer = offerSnap.data() as RideOffer;
-    // The driver may have removed the offer while the rider was deciding.
     if (offer.status !== 'awaiting' || offer.pendingRequestId !== requestID) {
       throw new Error('The driver has removed this offer. Your request will be matched again.');
     }
+
     const confirmed = (offer.confirmedRequestIds ?? []).filter((id) => id !== requestID);
-    // No stored position (a match written before routeIndex existed) -> last.
     const at = Math.min(Math.max(request.routeIndex ?? confirmed.length, 0), confirmed.length);
     const ordered = [...confirmed.slice(0, at), requestID, ...confirmed.slice(at)];
 
+    const emissionsSavedKg = offer.pendingSchedule?.emissionsSavedKg ?? 0;
+
     tx.update(requestRef, { status: 'confirmed' });
-    // Allowed by the Firestore rules only because the runner set
-    // `matchedRiderId` to this rider's uid. Removed in the same write, so the
-    // rider can't go on editing the driver's offer once they've answered.
     tx.update(offerRef, {
       confirmedRequestIds: ordered,
       pendingRequestId: null,
       matchedRiderId: deleteField(),
-      // The timetable re-planned with this rider in it. A match from before
-      // timetables were stored has none, and the old one no longer fits the
-      // car, so it's dropped and the cards fall back to each rider's own times.
       schedule: offer.pendingSchedule ?? deleteField(),
       pendingSchedule: deleteField(),
       status: settledOfferStatus({ ...offer, confirmedRequestIds: ordered }),
+      emissionsSavedKg,
     });
   });
 }
@@ -309,7 +323,6 @@ export async function declineMatch(requestID: string): Promise<void> {
 
     const request = requestSnap.data() as RideRequest;
     const offerId = request.matchedOfferId;
-
     const offerSnap = offerId ? await tx.get(doc(db, 'rideOffers', offerId)) : null;
 
     tx.update(requestRef, {
@@ -326,13 +339,10 @@ export async function declineMatch(requestID: string): Promise<void> {
 
     if (offerId && offerSnap && offerSnap.exists()) {
       const offer = offerSnap.data() as RideOffer;
-      // Only release the slot if it is still this rider's - a later run may
-      // already have put someone else in it.
       if (offer.pendingRequestId === requestID) {
         tx.update(doc(db, 'rideOffers', offerId), {
           pendingRequestId: null,
           matchedRiderId: deleteField(),
-          // Back in the pool - unless the driver locked it with passengers aboard.
           status: settledOfferStatus(offer),
           matchedAt: deleteField(),
           acceptDeadline: deleteField(),
@@ -494,13 +504,14 @@ export async function setOfferLocked(offerID: string, locked: boolean): Promise<
 
 /**
  * The driver changes how many passengers they'll take. Never below the riders
- * already confirmed plus one deciding on a match, and within the same 1-12 the
+ * already confirmed plus one deciding on a match, and within the same 1-7 the
  * booking form allows. Fewer seats than before can fill the car (it's done);
- * more can reopen a full one (back in the pool), unless it's locked.
+ * more can reopen a full one (back in the pool). Not while the drive is
+ * locked: unlock it first.
  */
 export async function updateOfferSeats(offerID: string, seats: number): Promise<void> {
-  if (!Number.isInteger(seats) || seats < 1 || seats > 12) {
-    throw new Error('A drive offer needs 1 to 12 seats.');
+  if (!Number.isInteger(seats) || seats < 1 || seats > MAX_CAR_SEATS) {
+    throw new Error(`A drive offer needs 1 to ${MAX_CAR_SEATS} seats.`);
   }
   const offerRef = doc(db, 'rideOffers', offerID);
 
@@ -510,10 +521,21 @@ export async function updateOfferSeats(offerID: string, seats: number): Promise<
 
     const offer = offerSnap.data() as RideOffer;
     if (offer.status === 'cancelled') throw new Error('This offer has been removed.');
+    // A locked drive takes nobody new, so its seats change nothing - the card
+    // hides the control, and this keeps it that way.
+    if (offer.acceptingMore === false) throw new Error('Unlock this drive to change its seats.');
 
     const taken = (offer.confirmedRequestIds ?? []).length + (offer.pendingRequestId ? 1 : 0);
     if (seats < taken) {
       throw new Error(`${taken} seat${taken === 1 ? ' is' : 's are'} already taken, so the car needs at least ${taken}.`);
+    }
+    // Never more than the car holds. Only checked when adding seats, so a
+    // driver can always come down to fit, whatever their profile says.
+    if (seats > offer.seatCapacity) {
+      const carSeats = await registeredCarSeats(offer.userId);
+      if (carSeats !== null && seats > carSeats) {
+        throw new Error(`Your car has ${carSeats} passenger seat${carSeats === 1 ? '' : 's'}, so this drive can take ${carSeats} at most.`);
+      }
     }
 
     const next = { ...offer, seatCapacity: seats };
@@ -598,3 +620,4 @@ export async function deleteRideOffer(offerID: string): Promise<void> {
     console.warn('deleteRideOffer: failed to read after-delete state', err);
   }
 }
+
