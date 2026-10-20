@@ -6,7 +6,7 @@
 import * as React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, getDocs, query } from 'firebase/firestore';
+import { collection, doc, getDocs, query, setDoc } from 'firebase/firestore';
 import * as firestoreMock from 'firebase/firestore';
 import { db } from '../../mobile/firebaseConfig';
 import BookingPage from '../../mobile/pages/BookingPage';
@@ -38,8 +38,12 @@ jest.mock('../../mobile/services/googlePlaces', () => ({
 // throws outside an AuthProvider. Stub it with a fixed signed-in user instead of standing up
 // Firebase Auth. A plain function (not jest.fn()) so resetMocks doesn't wipe the return value.
 const TEST_USER_ID = 'test-user-123';
+// The profile is a registered driver with a 4-seat car unless a test sets
+// mockProfile - jest.mock factories may only use variables named mock*.
+const DRIVER_PROFILE = { isDriver: true, licensePlate: 'ABC123', seatsAvailable: 4 };
+let mockProfile: Record<string, unknown> = DRIVER_PROFILE;
 jest.mock('../../mobile/auth/useAuth', () => {
-  const useAuth = () => ({ user: { uid: 'test-user-123' } });
+  const useAuth = () => ({ user: { uid: 'test-user-123' }, profileData: mockProfile });
   return { __esModule: true, useAuth, default: useAuth };
 });
 
@@ -84,7 +88,10 @@ async function pressSubmit() {
 }
 
 
-beforeEach(() => {
+beforeEach(async () => {
+  mockProfile = DRIVER_PROFILE;
+  // addRideOffer checks the driver's registered car in Firestore, too.
+  await setDoc(doc(db, 'users', TEST_USER_ID), DRIVER_PROFILE);
   (global as any).alert = jest.fn();
 });
 
@@ -162,6 +169,53 @@ describe('BookingPage - driver offering a ride', () => {
     expect(snapshot.docs[0].data().maxDetourTime).toBe(15);
     expect(snapshot.docs[0].data().seatCapacity).toBe(3);
     expect(snapshot.docs[0].data().userId).toBe(TEST_USER_ID);
+  });
+});
+
+describe('BookingPage - offering a ride needs a registered car', () => {
+  test("doesn't let someone with no car registered switch to offering a ride", async () => {
+    mockProfile = { isDriver: false };
+    await render(<BookingPage onDone={() => {}} />);
+    await flushHydration();
+
+    await fireEvent.press(screen.getByText('Offering a ride'));
+
+    expect(screen.getByText(/register as a driver with your car in your Profile/)).toBeTruthy();
+    expect(screen.queryByText('Driver details')).toBeNull();
+  });
+
+  test('turns a saved draft offer back into a request for someone with no car registered', async () => {
+    mockProfile = { isDriver: false };
+    await seedDraft({
+      isDriving: true, toUni: true, address: '456 Example Ave', travelDate: futureDateStr(7),
+      depTime: '08:00', arrTime: '09:00', detourTime: 15, capacity: 3,
+    });
+    await render(<BookingPage onDone={() => {}} />);
+    await flushHydration();
+    await screen.findByDisplayValue('456 Example Ave');
+
+    await fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Trip details');
+
+    expect(screen.queryByText('Driver details')).toBeNull();
+  });
+
+  test("caps the seats at the car's passenger seats", async () => {
+    mockProfile = { ...DRIVER_PROFILE, seatsAvailable: 2 };
+    await seedDraft({
+      isDriving: true, toUni: true, address: '456 Example Ave', travelDate: futureDateStr(7),
+      depTime: '08:00', arrTime: '09:00', detourTime: 15, capacity: 3,
+    });
+    await render(<BookingPage onDone={() => {}} />);
+    await flushHydration();
+    await screen.findByDisplayValue('456 Example Ave');
+    await fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Trip details');
+
+    expect(screen.getByText('Up to 2 - the passenger seats in your car.')).toBeTruthy();
+    // The draft's 3 is brought down to the car's 2.
+    expect(screen.getByText('2')).toBeTruthy();
+    expect(screen.queryByText('3')).toBeNull();
   });
 });
 

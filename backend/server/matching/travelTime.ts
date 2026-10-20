@@ -1,4 +1,4 @@
-import { TravelTimeMatrix } from './types';
+import { RoadDistanceMatrix, TravelTimeMatrix } from './types';
 import { haversineKm } from './geo';
 import { Coord } from '../matching.schema';
 
@@ -19,7 +19,8 @@ export interface SyntheticOptions {
 /**
  * Stand-in for Google Distance Matrix.
  *
- * Straight-line distance x road factor, converted at an average urban speed,
+ * Distance is straight-line distance x road factor. Time is that distance
+ * converted at an average urban speed,
  * with deterministic per-leg noise so the algorithm meets cases where road
  * distance diverges from straight line. Noise is cached per ordered pair, so
  * repeated lookups of the same leg agree with themselves — without that,
@@ -28,7 +29,7 @@ export interface SyntheticOptions {
  * Asymmetric by construction (a->b need not equal b->a), which is also true
  * of real road networks.
  */
-export class SyntheticTravelTime implements TravelTimeMatrix {
+export class SyntheticTravelTime implements TravelTimeMatrix, RoadDistanceMatrix {
   private readonly roadFactor: number;
   private readonly avgSpeedKmh: number;
   private readonly jitter: number;
@@ -47,8 +48,7 @@ export class SyntheticTravelTime implements TravelTimeMatrix {
     const hit = this.cache.get(k);
     if (hit !== undefined) return hit;
 
-    const km = haversineKm(a, b) * this.roadFactor;
-    const base = (km / this.avgSpeedKmh) * 60;
+    const base = (this.km(a, b) / this.avgSpeedKmh) * 60;
 
     // Noise is attached to the POINT PAIR via a hash of its coordinates, not
     // drawn fresh per call, and it only ever slows a leg down (never speeds it
@@ -59,6 +59,11 @@ export class SyntheticTravelTime implements TravelTimeMatrix {
 
     this.cache.set(k, mins);
     return mins;
+  }
+
+  /** No noise: a road is as long as it is; only how fast it drives varies. */
+  km(a: Coord, b: Coord): number {
+    return haversineKm(a, b) * this.roadFactor;
   }
 
   /** Deterministic value in [0,1) derived from the leg itself, offset by seed. */
@@ -83,8 +88,13 @@ export class FixtureTravelTime implements TravelTimeMatrix {
   }
 }
 
+/** A fallback for legs Google couldn't route. Distances are optional so a
+ *  times-only fallback still works for matching; pricing then throws. */
+export type MatrixFallback = TravelTimeMatrix & Partial<RoadDistanceMatrix>;
+
 /**
- * In-memory TravelTimeMatrix backed by one batch of Google travel times.
+ * In-memory TravelTimeMatrix backed by one batch of Google travel times, and
+ * the road distances that came back in the same responses.
  *
  * Built once per matching run by `buildRoutesTravelTimeMatrix` (or the legacy
  * `buildGoogleTravelTimeMatrix`); every
@@ -92,11 +102,19 @@ export class FixtureTravelTime implements TravelTimeMatrix {
  * matrix once per batch and every feasibility check stays in-memory
  * arithmetic — no API calls inside the matching loop."
  */
-export class PrecomputedTravelTime implements TravelTimeMatrix {
+export class PrecomputedTravelTime implements TravelTimeMatrix, RoadDistanceMatrix {
   constructor(
     private readonly table: Map<string, number>,
-    private readonly fallback?: TravelTimeMatrix,
+    private readonly fallback?: MatrixFallback,
+    private readonly distances: Map<string, number> = new Map(),
   ) { }
+
+  km(a: Coord, b: Coord): number {
+    const hit = this.distances.get(key(a, b));
+    if (hit !== undefined) return hit;
+    if (this.fallback?.km) return this.fallback.km(a, b);
+    throw new Error(`No road distance for leg ${key(a, b)}, and no fallback that has one.`);
+  }
 
   minutes(a: Coord, b: Coord): number {
     const hit = this.table.get(key(a, b));
@@ -122,14 +140,14 @@ export interface GoogleDistanceMatrixOptions {
   baseUrl?: string;
   /** Used for a leg Google couldn't route (e.g. ZERO_RESULTS). Omit to throw
    *  lazily instead, only if that leg is ever actually looked up. */
-  fallback?: TravelTimeMatrix;
+  fallback?: MatrixFallback;
 }
 
 interface DistanceMatrixResponse {
   status: string;
   error_message?: string;
   rows: Array<{
-    elements: Array<{ status: string; duration?: { value: number; }; }>;
+    elements: Array<{ status: string; duration?: { value: number; }; distance?: { value: number; }; }>;
   }>;
 }
 
@@ -159,6 +177,7 @@ export async function buildGoogleTravelTimeMatrix(
   const baseUrl = opts.baseUrl ?? 'https://maps.googleapis.com/maps/api/distancematrix/json';
 
   const table = new Map<string, number>();
+  const distances = new Map<string, number>();
   const originChunks = chunkPoints(uniquePoints, chunkSize);
   const destChunks = chunkPoints(uniquePoints, chunkSize);
 
@@ -183,12 +202,15 @@ export async function buildGoogleTravelTimeMatrix(
           if (el.status === 'OK' && el.duration) {
             table.set(key(origins[i], destinations[j]), el.duration.value / 60);
           }
+          if (el.status === 'OK' && el.distance) {
+            distances.set(key(origins[i], destinations[j]), el.distance.value / 1000);
+          }
         });
       });
     }
   }
 
-  return new PrecomputedTravelTime(table, opts.fallback);
+  return new PrecomputedTravelTime(table, opts.fallback, distances);
 }
 
 export interface RoutesMatrixOptions {
@@ -203,7 +225,7 @@ export interface RoutesMatrixOptions {
   baseUrl?: string;
   /** Used for a leg Google couldn't route. Omit to throw lazily instead, only
    *  if that leg is ever actually looked up. */
-  fallback?: TravelTimeMatrix;
+  fallback?: MatrixFallback;
 }
 
 /** One element of a computeRouteMatrix response. `status` is an empty object
@@ -214,6 +236,7 @@ interface RouteMatrixElement {
   status?: { code?: number; message?: string; };
   condition?: string;
   duration?: string; // e.g. "712s"
+  distanceMeters?: number;
 }
 
 /**
@@ -243,6 +266,7 @@ export async function buildRoutesTravelTimeMatrix(
   });
 
   const table = new Map<string, number>();
+  const distances = new Map<string, number>();
   for (const origins of chunks) {
     for (const destinations of chunks) {
       const res = await doFetch(url, {
@@ -250,7 +274,7 @@ export async function buildRoutesTravelTimeMatrix(
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': opts.apiKey,
-          'X-Goog-FieldMask': 'originIndex,destinationIndex,status,condition,duration',
+          'X-Goog-FieldMask': 'originIndex,destinationIndex,status,condition,duration,distanceMeters',
         },
         body: JSON.stringify({
           origins: origins.map(asWaypoint),
@@ -273,12 +297,15 @@ export async function buildRoutesTravelTimeMatrix(
         if (el.condition !== 'ROUTE_EXISTS' || (el.status?.code ?? 0) !== 0 || !el.duration) continue;
         const from = origins[el.originIndex ?? 0];
         const to = destinations[el.destinationIndex ?? 0];
-        if (from && to) table.set(key(from, to), parseFloat(el.duration) / 60);
+        if (!from || !to) continue;
+        table.set(key(from, to), parseFloat(el.duration) / 60);
+        // Proto3 JSON leaves a zero out, so a routable leg with no distance is 0 m.
+        distances.set(key(from, to), (el.distanceMeters ?? 0) / 1000);
       }
     }
   }
 
-  return new PrecomputedTravelTime(table, opts.fallback);
+  return new PrecomputedTravelTime(table, opts.fallback, distances);
 }
 
 function dedupePoints(points: Coord[]): Coord[] {

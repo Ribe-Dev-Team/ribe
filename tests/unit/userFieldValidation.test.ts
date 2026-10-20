@@ -1,4 +1,7 @@
 import {
+  getDriverValidationError,
+  MAX_CAR_SEATS,
+  MAX_PLATE_LENGTH,
   isValidDob,
   isValidEmail,
   isValidName,
@@ -116,5 +119,51 @@ describe('isValidDob', () => {
     ['empty string', ''],
   ])('rejects %s (%s)', (_label, value) => {
     expect(isValidDob(value)).toBe(false);
+  });
+});
+
+describe('getDriverValidationError - license plate', () => {
+  const driver = {
+    isDriver: true, vehicleMake: 'Toyota', vehicleModel: 'Corolla', vehicleColor: 'Blue',
+    licensePlate: '1ABC234', seatsAvailable: '3',
+  };
+  const plateError = 'License plate must be up to 7 letters and numbers, with no spaces.';
+
+  it.each(['1ABC234', 'ABC123', 'x1', '1abc234', ' 1ABC234 '])('accepts %p', (licensePlate) => {
+    expect(getDriverValidationError({ ...driver, licensePlate })).toBeNull();
+  });
+
+  it('allows at most 7 characters', () => {
+    expect(MAX_PLATE_LENGTH).toBe(7);
+    expect(getDriverValidationError({ ...driver, licensePlate: '1ABC2345' })).toBe(plateError);
+  });
+
+  it.each(['1AB 234', '1AB-234', 'AB.12'])('refuses spaces and symbols: %p', (licensePlate) => {
+    expect(getDriverValidationError({ ...driver, licensePlate })).toBe(plateError);
+  });
+
+  it('still asks for a missing plate first, and ignores the plate for non-drivers', () => {
+    expect(getDriverValidationError({ ...driver, licensePlate: '  ' })).toBe('Please fill in all vehicle details.');
+    expect(getDriverValidationError({ ...driver, isDriver: false, licensePlate: 'TOOLONG123' })).toBeNull();
+  });
+});
+
+describe('getDriverValidationError - car seats', () => {
+  const driver = {
+    isDriver: true, vehicleMake: 'Toyota', vehicleModel: 'Corolla', vehicleColor: 'Blue',
+    licensePlate: '1ABC234', seatsAvailable: '3',
+  };
+
+  it.each(['1', '4', '7'])('accepts %p passenger seats', (seatsAvailable) => {
+    expect(getDriverValidationError({ ...driver, seatsAvailable })).toBeNull();
+  });
+
+  it('allows at most 7', () => {
+    expect(MAX_CAR_SEATS).toBe(7);
+    expect(getDriverValidationError({ ...driver, seatsAvailable: '8' })).toBe('A car can have at most 7 passenger seats.');
+  });
+
+  it.each(['0', '-1', '2.5', 'abc'])('still refuses %p', (seatsAvailable) => {
+    expect(getDriverValidationError({ ...driver, seatsAvailable })).toBe('Please enter a valid number of seats available.');
   });
 });
