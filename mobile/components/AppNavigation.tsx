@@ -3,8 +3,9 @@ import { Animated, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles from '../styles';
 
-// "Drives" isn't a separate tab: driver mode lives inside My Rides via the rider/driver toggle
-export type NavigationTab = 'home' | 'rides' | 'calendar' | 'profile';
+// My Rides (the user's ride requests) and My Drives (their driving offers) are
+// separate tabs. My Drives shows only for drivers - see `showDrives`.
+export type NavigationTab = 'home' | 'rides' | 'drives' | 'calendar' | 'profile';
 
 interface NavigationItem {
   key: NavigationTab;
@@ -14,7 +15,8 @@ interface NavigationItem {
 
 const navigationItems: NavigationItem[] = [
   { key: 'home', label: 'Home', icon: 'home' },
-  { key: 'rides', label: 'My Rides', icon: 'car' },
+  { key: 'rides', label: 'My Rides', icon: 'people' },
+  { key: 'drives', label: 'My Drives', icon: 'car-sport' },
   { key: 'calendar', label: 'Calendar', icon: 'calendar' },
   { key: 'profile', label: 'Profile', icon: 'person' },
 ];
@@ -23,9 +25,13 @@ interface AppNavigationProps {
   activeTab: NavigationTab;
   onChange: (tab: NavigationTab) => void;
   hidden?: boolean;
+  /** Whether to show My Drives: for registered drivers and anyone with a
+   *  drive posted. Hidden for everyone else. */
+  showDrives?: boolean;
 }
 
-export default function AppNavigation({ activeTab, onChange, hidden = false }: AppNavigationProps) {
+export default function AppNavigation({ activeTab, onChange, hidden = false, showDrives = false }: AppNavigationProps) {
+  const items = navigationItems.filter((item) => item.key !== 'drives' || showDrives);
   const offset = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -46,7 +52,7 @@ export default function AppNavigation({ activeTab, onChange, hidden = false }: A
       }}
     >
       <View style={styles.navigationBar}>
-        {navigationItems.map((item) => {
+        {items.map((item) => {
           const isActive = item.key === activeTab;
           return (
             <TouchableOpacity
@@ -57,7 +63,13 @@ export default function AppNavigation({ activeTab, onChange, hidden = false }: A
               style={[styles.navigationItem, isActive && styles.navigationItemActive]}
             >
               <Ionicons name={item.icon} size={20} color={isActive ? '#ffffff' : '#bfdbfe'} />
-              <Text style={[styles.navigationLabel, isActive && styles.navigationLabelActive]}>
+              {/* Five tabs are tight on a narrow phone: shrink a label rather than wrap it. */}
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                style={[styles.navigationLabel, isActive && styles.navigationLabelActive]}
+              >
                 {item.label}
               </Text>
             </TouchableOpacity>

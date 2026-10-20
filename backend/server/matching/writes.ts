@@ -1,4 +1,6 @@
-import { MatchOffer, ProposedMatch, TripStop } from './types';
+import { emissionsForDistanceKm, emissionsForRiders } from '../emissions';
+import { MatchOffer, MatchRequest, ProposedMatch, RoadDistanceMatrix, TripStop } from './types';
+import type { StoredRiderCost, StoredTripCosts } from '../costSplitting/tripCosts';
 
 /**
  * What a matching run writes back, as plain decisions with no Firebase SDK in
@@ -47,19 +49,27 @@ export function settledOfferStatus(offer: StoredOffer): 'confirmed' | 'pending' 
 }
 
 /** A car's timetable as stored on its offer: the driver's own departure and
- *  arrival, and every rider in pickup order. */
+ *  arrival, and every rider in pickup order - with the car's cost split
+ *  (costSplitting/tripCosts.ts) once the runner has priced it. */
 export interface StoredSchedule {
   departAt: Date;
   arriveAt: Date;
-  stops: Array<{ requestId: string; pickupAt: Date; arriveAt: Date }>;
+  stops: Array<{ requestId: string; pickupAt: Date; arriveAt: Date; cost?: StoredRiderCost }>;
+  costs?: StoredTripCosts;
+  /** Sum of every listed rider's solo-trip emissions; excludes the driver. */
+  emissionsSavedKg?: number;
 }
 
 /** A timetable (route.ts → timetableFor) in the shape the offer stores. */
-export function toStoredSchedule(t: { departAt: Date; arriveAt: Date; stops: TripStop[] }): StoredSchedule {
+export function toStoredSchedule(
+  t: { departAt: Date; arriveAt: Date; stops: TripStop[] },
+  emissionsSavedKg?: number,
+): StoredSchedule {
   return {
     departAt: t.departAt,
     arriveAt: t.arriveAt,
     stops: t.stops.map((s) => ({ requestId: s.reqId, pickupAt: s.pickupAt, arriveAt: s.arriveAt })),
+    ...(emissionsSavedKg === undefined ? {} : { emissionsSavedKg }),
   };
 }
 
@@ -84,6 +94,8 @@ export interface MatchWrite {
   /** The car's timetable if this rider accepts - confirmed riders' times
    *  included, since picking up the new rider can shift them. */
   schedule: StoredSchedule;
+  riderEmissionsKg: number;
+  driverEmissionsKg: number;
 }
 
 /**
@@ -91,9 +103,31 @@ export interface MatchWrite {
  * `offers` must be the offers passed INTO the run: the run never mutates its
  * inputs, so their `onBoard` is exactly the confirmed riders.
  */
-export function toMatchWrites(matches: ProposedMatch[], offers: MatchOffer[]): MatchWrite[] {
+export function toMatchWrites(
+  matches: ProposedMatch[],
+  offers: MatchOffer[],
+  requests: MatchRequest[],
+  distances: RoadDistanceMatrix,
+): MatchWrite[] {
   const baselineByOffer = new Map(offers.map((o) => [o.offerId, o.onBoard.map((r) => r.reqId)]));
-  return matches.map((m) => ({
+  const offersById = new Map(offers.map((offer) => [offer.offerId, offer]));
+  const requestsById = new Map(requests.map((request) => [request.reqId, request]));
+  return matches.map((m) => {
+    const offer = offersById.get(m.offerId)!;
+    const request = requestsById.get(m.rideId)!;
+    const campus = offer.direction === 'TO_CAMPUS' ? offer.end : offer.start;
+    const riderHomes = [
+      ...offer.onBoard.map((rider) => rider.waypoint),
+      request.direction === 'TO_CAMPUS' ? request.start : request.end,
+    ];
+    const emissionsSavedKg = emissionsForRiders(
+      riderHomes,
+      campus,
+      offer.direction === 'TO_CAMPUS',
+      distances,
+    );
+
+    return ({
     reqId: m.rideId,
     offerId: m.offerId,
     riderId: m.riderId,
@@ -107,8 +141,20 @@ export function toMatchWrites(matches: ProposedMatch[], offers: MatchOffer[]): M
     baseline: baselineByOffer.get(m.offerId) ?? [],
     pickupAt: m.pickupAt,
     arriveAt: m.arriveAt,
-    schedule: toStoredSchedule({ departAt: m.departAt, arriveAt: m.finalArrival, stops: m.schedule }),
-  }));
+    schedule: toStoredSchedule(
+      { departAt: m.departAt, arriveAt: m.finalArrival, stops: m.schedule },
+      emissionsSavedKg,
+    ),
+    riderEmissionsKg: emissionsForDistanceKm(distances.km(
+      request.start,
+      request.end,
+    )),
+    driverEmissionsKg: emissionsForDistanceKm(distances.km(
+      offer.start,
+      offer.end,
+    )),
+    });
+  });
 }
 
 export type MatchWriteSkip =
@@ -159,6 +205,7 @@ export function planMatchWrite(
         // if it can't read the offer.
         pickupAt: m.pickupAt,
         arriveAt: m.arriveAt,
+        emissionsSavedKg: m.riderEmissionsKg,
       },
       remove: [],
     },
@@ -176,6 +223,7 @@ export function planMatchWrite(
         // Not `schedule` yet: that is the confirmed riders' timetable until this
         // rider accepts, and acceptMatch moves this into its place.
         pendingSchedule: m.schedule,
+        driverEmissionsKg: m.driverEmissionsKg,
       },
       remove: [],
     },
@@ -304,5 +352,11 @@ export interface ScheduleWrite {
 export function planScheduleWrite(offer: StoredOffer | undefined, w: ScheduleWrite): FieldUpdate | null {
   if (!offer || offer.status === 'cancelled') return null;
   if (!sameList(offer.confirmedRequestIds ?? [], w.baseline)) return null;
-  return { set: { schedule: w.schedule }, remove: [] };
+  return {
+    set: {
+      schedule: w.schedule,
+      emissionsSavedKg: w.schedule.emissionsSavedKg ?? 0,
+    },
+    remove: [],
+  };
 }

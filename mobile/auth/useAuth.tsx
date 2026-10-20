@@ -5,6 +5,7 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   updateProfile,
+  sendEmailVerification,
   type User,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -47,7 +48,7 @@ type AuthContextType = {
 
   updateProfileDetails: (data: ProfileExtras) => Promise<void>;
   handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
-  handleSignup: (fields: SignupFields, extra?: ProfileExtras) => Promise<void>;
+  handleSignup: (fields: SignupFields, extra?: ProfileExtras) => Promise<boolean>;
   handleLogout: () => Promise<void>;
 };
 
@@ -95,6 +96,21 @@ const getAuthErrorMessage = (err: unknown) => {
   return message;
 };
 
+/** The car fields drivers/{uid} holds - written by driver registration. */
+type DriverRegistration = Partial<Record<'vehicleMake' | 'vehicleModel' | 'vehicleColor' | 'licensePlate', string | null>>
+  & { seatsAvailable?: number | null };
+
+/** This user's driver registration, or null if they've never registered (or
+ *  it can't be read - the profile then goes by users/{uid} alone). */
+async function readDriverRegistration(uid: string): Promise<DriverRegistration | null> {
+  try {
+    const snap = await getDoc(doc(db, 'drivers', uid));
+    return snap.exists() ? (snap.data() as DriverRegistration) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profileData, setProfileData] = useState<UserProfileData | null>(null);
@@ -113,10 +129,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const profileDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        const [profileDoc, driverData] = await Promise.all([
+          getDoc(doc(db, 'users', currentUser.uid)),
+          readDriverRegistration(currentUser.uid),
+        ]);
         if (profileDoc.exists()) {
           const data = profileDoc.data() as UserProfileData;
           const isComplete = data.onboardingComplete ?? false;
+          // A driver registration counts even if users/{uid} says otherwise:
+          // an older profile save could reset isDriver and the car details
+          // there, and drivers/{uid} kept them.
+          const fromDriver = (field: keyof DriverRegistration) => data[field] ?? driverData?.[field] ?? null;
           setProfileData({
             name: data.name ?? currentUser.displayName ?? '',
             dob: data.dob ?? '',
@@ -126,12 +149,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             bio: data.bio ?? null,
             profilePhotoUrl: data.profilePhotoUrl ?? null,
             onboardingComplete: isComplete,
-            isDriver: data.isDriver ?? false,
-            vehicleMake: data.vehicleMake ?? null,
-            vehicleModel: data.vehicleModel ?? null,
-            vehicleColor: data.vehicleColor ?? null,
-            licensePlate: data.licensePlate ?? null,
-            seatsAvailable: data.seatsAvailable ?? null,
+            isDriver: Boolean(data.isDriver) || driverData !== null,
+            vehicleMake: fromDriver('vehicleMake') as string | null,
+            vehicleModel: fromDriver('vehicleModel') as string | null,
+            vehicleColor: fromDriver('vehicleColor') as string | null,
+            licensePlate: fromDriver('licensePlate') as string | null,
+            seatsAvailable: fromDriver('seatsAvailable') as number | null,
           });
         } else {
           setProfileData({
@@ -206,7 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const handleSignup = async (fields: SignupFields, extra?: ProfileExtras) => {
+  const handleSignup = async (fields: SignupFields, extra?: ProfileExtras): Promise<boolean> => {
     // Clean inputs exactly once for the signup process
     const trimmedName = fields.name.trim();
     const trimmedDob = fields.dob.trim();
@@ -225,7 +248,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (validationError || submitting) {
       setError(validationError ?? 'Please complete the form correctly.');
-      return;
+      return false;
     }
 
     setSubmitting(true);
@@ -249,9 +272,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const licensePlate = extra?.licensePlate?.trim() || null;
       const seatsAvailable = typeof extra?.seatsAvailable === 'number' ? extra.seatsAvailable : null;
 
-      // Profile details (photo/degree/bio/driver info) are gathered in the signup wizard
-      // itself now, so the account is created fully onboarded in one write instead of
-      // needing a separate post-signup setup screen.
       const profilePayload = {
         name: trimmedName,
         dob: trimmedDob,
@@ -292,12 +312,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
-      setProfileData((currentProfile) => ({
-        ...(currentProfile ?? {}),
-        ...profilePayload,
-      }));
+      await sendEmailVerification(currentUser);
+      await firebaseSignOut(auth);
+      
+      return true;
     } catch (err) {
       setError(getAuthErrorMessage(err));
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -322,15 +343,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profilePhotoUrl = `data:${mimeType};base64,${data.profilePhotoBase64}`;
       }
 
-      // Clean inputs exactly once for saving to Firestore
-      const trimmedDegree = data.degree?.trim() || null;
-      const trimmedBio = data.bio?.trim() || null;
-      const isDriverValue = data.isDriver ?? false;
-      const vehicleMake = data.vehicleMake?.trim() || null;
-      const vehicleModel = data.vehicleModel?.trim() || null;
-      const vehicleColor = data.vehicleColor?.trim() || null;
-      const licensePlate = data.licensePlate?.trim() || null;
-      const seatsAvailable = typeof data.seatsAvailable === 'number' ? data.seatsAvailable : null;
+      // Clean inputs exactly once for saving to Firestore. A field the caller
+      // didn't pass keeps what's stored: the profile page saves only photo,
+      // degree and bio, and driver registration only the car - neither may
+      // wipe the other's fields, or reset a driver to not being one. An empty
+      // string still clears a field on purpose.
+      const text = (given: string | undefined, stored: string | null | undefined) =>
+        given !== undefined ? given.trim() || null : stored ?? null;
+      const trimmedDegree = text(data.degree, profileData?.degree);
+      const trimmedBio = text(data.bio, profileData?.bio);
+      const isDriverValue = data.isDriver ?? profileData?.isDriver ?? false;
+      const vehicleMake = text(data.vehicleMake, profileData?.vehicleMake);
+      const vehicleModel = text(data.vehicleModel, profileData?.vehicleModel);
+      const vehicleColor = text(data.vehicleColor, profileData?.vehicleColor);
+      const licensePlate = text(data.licensePlate, profileData?.licensePlate);
+      const seatsAvailable = typeof data.seatsAvailable === 'number' ? data.seatsAvailable : profileData?.seatsAvailable ?? null;
 
       const timestamp = new Date().toISOString();
       const profilePayload = {

@@ -3,6 +3,9 @@ import { Alert, Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, Vie
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import NumberStepper from './NumberStepper';
+import { RideCostSplit } from '../utility/costDisplay';
+import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
+import { MAX_CAR_SEATS } from '../pages/schema/user.validation';
 
 const APPROVAL_WINDOW_MS = 12 * 60 * 60 * 1000;
 
@@ -35,8 +38,6 @@ function useApprovalCountdown(matchedAt?: Date, acceptDeadline?: Date) {
   return remainingMs;
 }
 
-const PHONE_REVEAL_WINDOW_MS = 12 * 60 * 60 * 1000;
-
 function useTimeUntil(target?: Date) {
   const targetMs = target ? target.getTime() : null;
   const [remainingMs, setRemainingMs] = useState(() => (targetMs ? targetMs - Date.now() : Infinity));
@@ -50,16 +51,6 @@ function useTimeUntil(target?: Date) {
   }, [targetMs]);
 
   return remainingMs;
-}
-
-function maskPhone(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  return `${digits.slice(0, 4)} •• •• ••`;
-}
-
-function formatPhone(phone: string) {
-  const digits = phone.replace(/\D/g, '');
-  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 10)}`;
 }
 
 export type RideStatus = 'confirmed' | 'awaiting' | 'pending' | 'cancelled';
@@ -128,9 +119,15 @@ export interface RideCardProps {
   /** Pickups the car makes between this card's first row and campus, in
    *  order, each with its estimated time. Only shown once the trip is planned. */
   stops?: RideStop[];
+  /** The suggested contribution - a rider's own, or a driver's passengers'
+   *  in total - formatted, or 'TBC' until the runner has priced the car. */
   cost: string;
+  /** The breakdown behind `cost`, read from Firestore; see RideCostSplit. */
+  costSplit?: RideCostSplit;
   co2SavedKg: number;
-  driver: { uid?: string; name: string; vehicle: string; avatarUri?: string };
+  /** Who's driving: a rider's matched driver, or on a driver's own card,
+   *  themselves. `vehicle` is make and model; `avatarUri` their profile photo. */
+  driver: { uid?: string; name: string; vehicle: string; colour?: string; avatarUri?: string };
   /** A driver's 'awaiting' card only: the rider they're being asked to accept,
    *  by first name - the same way their stop is labelled. */
   rider?: { uid?: string; name: string; degree?: string; avatarUri?: string };
@@ -164,9 +161,6 @@ export interface RideCardProps {
   /** Driver only: change how many passengers the drive takes. */
   onChangeSeats?: (seats: number) => void;
 }
-
-/** Most passengers an offer can take - the booking form's limit. */
-const MAX_SEATS = 12;
 
 export default function RideCard({
   kind,
@@ -238,9 +232,10 @@ export default function RideCard({
   // Locked, the car is as full as it's going to get: it reads 1/1, not 1/3,
   // because the empty seats aren't on offer any more.
   const seatTotal = seats && seats.locked && seats.filled > 0 ? seats.filled : seats?.total ?? 0;
-  // The driver's own controls: seats any time, lock/unlock once someone's
-  // aboard (a full car that isn't locked has nothing to lock).
-  const canEditSeats = isDriver && Boolean(onChangeSeats);
+  // The driver's own controls: seats until the drive is locked (a locked car
+  // takes nobody new, so its seat count would change nothing), lock/unlock
+  // once someone's aboard (a full car that isn't locked has nothing to lock).
+  const canEditSeats = isDriver && Boolean(onChangeSeats) && !seats?.locked;
   const canToggleLock = isDriver && Boolean(onSetLocked) && (seats?.filled ?? 0) > 0
     && Boolean(seats?.open || seats?.locked);
   const seatLabel = !seats ? '' : seats.open
@@ -271,8 +266,21 @@ export default function RideCard({
     }
   };
 
+  // The whole card opens the details, as "See more information" does. The
+  // buttons inside it still take their own presses - the innermost one wins.
+  const openDetails = () => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true));
+  // "Toyota Corolla · Blue" - colour is left off when the driver hasn't added it.
+  const vehicleLine = [driver.vehicle, driver.colour].filter(Boolean).join(' · ');
+
   return (
-    <View style={[styles.card, { borderLeftColor: accent }]}>
+    <Pressable
+      testID="ride-card"
+      onPress={openDetails}
+      // Not one accessible element: that would hide every button inside from
+      // screen readers. Their way to the details is the "See more information" link.
+      accessible={false}
+      style={({ pressed }) => [styles.card, { borderLeftColor: accent }, pressed && styles.cardPressed]}
+    >
       <View style={styles.topRow}>
         <View style={styles.statusRow}>
           <View style={[styles.statusDot, { backgroundColor: accent }]} />
@@ -341,7 +349,9 @@ export default function RideCard({
       {showCostInfo && (
         <View style={styles.infoNote}>
           <Text style={styles.infoNoteText}>
-            This is the recommended fee to pay, including parking. See the FAQ for more information.
+            {isDriver
+              ? 'What your passengers are suggested to contribute towards fuel, excluding parking. See the FAQ for more information.'
+              : 'This is the recommended fee to pay towards fuel, excluding parking. See the FAQ for more information.'}
           </Text>
         </View>
       )}
@@ -373,10 +383,7 @@ export default function RideCard({
 
       {status === 'awaiting' ? (
         <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.seeDetailsButton}
-            onPress={() => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true))}
-          >
+          <TouchableOpacity style={styles.seeDetailsButton} onPress={openDetails}>
             <Ionicons name="eye-outline" size={16} color={colors.white} />
             <Text style={styles.seeDetailsText}>See Details</Text>
           </TouchableOpacity>
@@ -425,7 +432,7 @@ export default function RideCard({
               </TouchableOpacity>
             </View>
           </View>
-          <TouchableOpacity style={styles.seeMoreLink} onPress={onSeeDetails}>
+          <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
             <Text style={styles.seeMoreLinkText}>See more information</Text>
             <Ionicons name="chevron-forward" size={13} color={colors.white} />
           </TouchableOpacity>
@@ -433,13 +440,15 @@ export default function RideCard({
       ) : (
         <>
           <View style={styles.footerRow}>
+            {/* A rider's driver opens their profile; on a driver's own card
+                the row is them, so it opens the drive's details instead. */}
             <TouchableOpacity
               style={styles.driverRow}
-              accessibilityLabel="View driver profile"
-              onPress={() => (onOpenDriverProfile ? onOpenDriverProfile() : setDetailsVisible(true))}
+              accessibilityLabel={isDriver ? 'Your car' : 'View driver profile'}
+              onPress={() => (!isDriver && onOpenDriverProfile ? onOpenDriverProfile() : openDetails())}
             >
               {driver.avatarUri ? (
-                <Image source={{ uri: driver.avatarUri }} style={styles.avatar} />
+                <Image source={{ uri: driver.avatarUri }} style={styles.avatar} accessibilityLabel={`${driver.name}'s profile photo`} />
               ) : (
                 <View style={styles.avatarFallback}>
                   <Ionicons name="person" size={16} color={colors.white} />
@@ -447,7 +456,7 @@ export default function RideCard({
               )}
               <View>
                 <Text style={styles.driverName}>{driver.name}</Text>
-                <Text style={styles.vehicleText}>{driver.vehicle}</Text>
+                <Text style={styles.vehicleText}>{vehicleLine}</Text>
               </View>
             </TouchableOpacity>
             <Text style={styles.plateBadge}>{plate}</Text>
@@ -517,10 +526,7 @@ export default function RideCard({
       )}
 
       {status === 'confirmed' && (
-        <TouchableOpacity
-          style={styles.seeMoreLink}
-          onPress={() => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true))}
-        >
+        <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
           <Text style={styles.seeMoreLinkText}>See more information</Text>
           <Ionicons name="chevron-forward" size={13} color={colors.white} />
         </TouchableOpacity>
@@ -544,7 +550,7 @@ export default function RideCard({
               value={seatDraft}
               onChange={setSeatDraft}
               min={Math.max(1, seatsTaken)}
-              max={MAX_SEATS}
+              max={MAX_CAR_SEATS}
               style={styles.seatEditorStepper}
             />
             <View style={styles.modalButtonRow}>
@@ -574,14 +580,14 @@ export default function RideCard({
         <Pressable style={styles.modalBackdrop} onPress={() => setDetailsVisible(false)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             {driver.avatarUri ? (
-              <Image source={{ uri: driver.avatarUri }} style={styles.modalAvatar} />
+              <Image source={{ uri: driver.avatarUri }} style={styles.modalAvatar} accessibilityLabel={`${driver.name}'s profile photo`} />
             ) : (
               <View style={styles.modalAvatarFallback}>
                 <Ionicons name="person" size={28} color={colors.white} />
               </View>
             )}
             <Text style={styles.modalDriverName}>{driver.name}</Text>
-            <Text style={styles.modalVehicleText}>{driver.vehicle}</Text>
+            <Text style={styles.modalVehicleText}>{vehicleLine}</Text>
             {plate !== '—' && <Text style={styles.modalPlateText}>Plate: {plate}</Text>}
             {driverPhone && (
               <View style={styles.modalPhoneRow}>
@@ -641,7 +647,7 @@ export default function RideCard({
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </Pressable>
   );
 }
 
@@ -652,6 +658,9 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
     backgroundColor: colors.mediumBlue,
+  },
+  cardPressed: {
+    opacity: 0.85,
   },
   topRow: {
     flexDirection: 'row',

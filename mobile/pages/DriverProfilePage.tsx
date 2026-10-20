@@ -83,7 +83,10 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
     };
   }, [role, person.name, person.uid]);
 
-  const [make, colorTrim] = ride.driver.vehicle.split(' - ');
+  // Colour comes separately; older cards packed it into `vehicle` as "Make - Colour".
+  const [packedMake, packedColour] = ride.driver.vehicle.split(' - ');
+  const make = ride.driver.colour ? ride.driver.vehicle : packedMake;
+  const colorTrim = ride.driver.colour ?? packedColour;
 
   return (
     <ScrollView contentContainerStyle={localStyles.screen} showsVerticalScrollIndicator={false}>

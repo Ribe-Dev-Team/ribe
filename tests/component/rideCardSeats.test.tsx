@@ -88,6 +88,15 @@ describe('driver view', () => {
     expect(onSetLocked).toHaveBeenCalledWith(true);
   });
 
+  it("offers Seats until the drive is locked, then takes it away", async () => {
+    const onChangeSeats = jest.fn();
+    await render(<RideCard {...base} kind="offer" seats={{ filled: 1, total: 4, open: true, locked: false }} onChangeSeats={onChangeSeats} />);
+    expect(screen.getByLabelText('Change number of seats')).toBeTruthy();
+
+    await render(<RideCard {...base} kind="offer" seats={{ filled: 1, total: 4, open: false, locked: true }} onChangeSeats={onChangeSeats} />);
+    expect(screen.queryByLabelText('Change number of seats')).toBeNull();
+  });
+
   it('unlocks a locked drive, but offers nothing for a car that is simply full', async () => {
     const alert = jest.spyOn(Alert, 'alert');
     const onSetLocked = jest.fn();

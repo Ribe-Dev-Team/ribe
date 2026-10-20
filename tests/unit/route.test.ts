@@ -214,15 +214,37 @@ describe("addPassenger — nobody is collected before they're ready (David's tim
     expect(res.feasible).toBe(true);
   });
 
-  it('leaving campus, checks the one moment everyone boards: departure', () => {
+  it('leaving campus, waits for a rider who is ready later than the driver', () => {
+    // Driver free from 17:00, rider from 17:30: the car leaves at 17:30 rather
+    // than the two never being matched.
     const fromCampus = makeOffer({
       offerId: 'o', direction: 'FROM_CAMPUS', start: CAMPUS, end: north(20), maxDetour: 30,
     });
     const rider = { waypoint: north(10), maxDetour: 20, arriveBy: at(23) };
 
-    expect(addPassenger(fromCampus, { ...rider, earliest: at(17, 30) }, at(17), t).reason)
-      .toBe('PICKUP_BEFORE_READY');
-    expect(addPassenger(fromCampus, { ...rider, earliest: at(16, 45) }, at(17), t).feasible)
+    const waits = addPassenger(fromCampus, { ...rider, earliest: at(17, 30) }, at(17), t);
+    expect(waits.feasible).toBe(true);
+    expect(waits.departAt).toEqual(at(17, 30));
+
+    // A rider ready before the driver: the car leaves at the driver's earliest.
+    expect(addPassenger(fromCampus, { ...rider, earliest: at(16, 45) }, at(17), t).departAt).toEqual(at(17));
+  });
+
+  it("leaving campus, won't wait if that makes anyone late home - rider or driver", () => {
+    // 10 km out the rider is dropped 21 minutes after the car leaves; the
+    // driver is home 20 km out after 42.
+    const fromCampus = makeOffer({
+      offerId: 'o', direction: 'FROM_CAMPUS', start: CAMPUS, end: north(20), maxDetour: 30,
+    });
+    const rider = { waypoint: north(10), maxDetour: 20, earliest: at(17, 30) };
+
+    // Leaving at 17:30, the rider is home at 17:51 - too late for 17:45, though
+    // leaving at the driver's 17:00 would have made it.
+    expect(addPassenger(fromCampus, { ...rider, arriveBy: at(17, 45) }, at(17), t).reason).toBe('ARRIVAL_WINDOW');
+    // Leaving at 17:30, the driver is home at 18:12 - too late for their own 18:00.
+    expect(addPassenger({ ...fromCampus, arriveBy: at(18) }, { ...rider, arriveBy: at(23) }, at(17), t).reason)
+      .toBe('ARRIVAL_WINDOW');
+    expect(addPassenger({ ...fromCampus, arriveBy: at(18, 15) }, { ...rider, arriveBy: at(23) }, at(17), t).feasible)
       .toBe(true);
   });
 
