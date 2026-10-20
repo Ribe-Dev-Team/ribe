@@ -266,8 +266,10 @@ export interface Settled {
  *   EXPIRED   the rider didn't answer by the deadline: the request expires -
  *             RideCard already tells the rider the trip is cancelled - and the
  *             driver's slot is freed for the next run
- *   VACATED   a confirmed rider cancelled (cancelConfirmedRequest): their seat
- *             comes off the driver's offer, which the rider's phone can't write.
+ *   VACATED   a confirmed rider cancelled (cancelConfirmedRequest) and their
+ *             seat is still on the driver's offer. The app takes it off at once
+ *             when it can; it's left here only when another rider was deciding
+ *             on the car, or the Firestore rules refused the app's write.
  *             Waits while another rider is deciding on that car - their proposed
  *             route and pickup position include the departed rider - and goes
  *             ahead once they answer or their match expires.

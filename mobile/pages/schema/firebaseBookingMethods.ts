@@ -481,29 +481,74 @@ export async function driverDeclineMatch(offerID: string): Promise<void> {
 }
 
 /**
- * A confirmed rider cancels their seat. The request becomes 'cancelled' and
- * keeps `matchedOfferId`, which is how the runner finds the car: the rider's
- * phone can't write the driver's offer (`matchedRiderId` was removed when they
- * accepted), so the runner takes them off it on its next run
- * (backend/server/matching/writes.ts → planSettle) and the seat goes back into
- * matching.
+ * A confirmed rider cancels their seat, and it comes straight off the driver's
+ * offer in the same write: the car is back in matching if a seat is now free
+ * (unless the driver locked it with others still aboard), and its timetable
+ * loses this rider's stop, so the driver sees the trip without them at once.
+ * The riders left keep their planned times until the runner re-plans the
+ * route (`needsReplan`) - without this rider's detour the car reaches them a
+ * little early, never late.
+ *
+ * The published Firestore rules let a confirmed rider make exactly this change
+ * to the driver's offer: take their own request off it, and nothing else. Two
+ * cases leave the offer to the runner's next run instead
+ * (backend/server/matching/writes.ts → planSettle), and the request keeps
+ * `matchedOfferId` so the runner can find the car:
+ *   - another rider is deciding on a match to this car - their proposed route
+ *     and pickup position include this rider
+ *   - the rules refuse it (rules published before this change): the
+ *     cancellation itself must still go through
  *
  * Not a delete: with the request gone, the offer would still list the rider and
  * every later run would skip the car as having a confirmed rider it can't read.
  */
 export async function cancelConfirmedRequest(requestID: string): Promise<void> {
+  try {
+    await runTransaction(db, (tx) => cancelConfirmed(tx, requestID, true));
+  } catch (error) {
+    if ((error as { code?: string })?.code !== 'permission-denied') throw error;
+    await runTransaction(db, (tx) => cancelConfirmed(tx, requestID, false));
+  }
+}
+
+async function cancelConfirmed(tx: Transaction, requestID: string, freeSeat: boolean): Promise<void> {
   const requestRef = doc(db, 'rideRequests', requestID);
+  const requestSnap = await tx.get(requestRef);
+  if (!requestSnap.exists()) throw new Error('No ride request ' + requestID);
 
-  await runTransaction(db, async (tx) => {
-    const requestSnap = await tx.get(requestRef);
-    if (!requestSnap.exists()) throw new Error('No ride request ' + requestID);
+  const request = requestSnap.data() as RideRequest;
+  if (request.status !== 'confirmed') {
+    throw new Error('Ride request ' + requestID + " is '" + request.status + "', not confirmed.");
+  }
 
-    const request = requestSnap.data() as RideRequest;
-    if (request.status !== 'confirmed') {
-      throw new Error('Ride request ' + requestID + " is '" + request.status + "', not confirmed.");
-    }
+  const offerRef = freeSeat && request.matchedOfferId ? doc(db, 'rideOffers', request.matchedOfferId) : null;
+  const offerSnap = offerRef ? await tx.get(offerRef) : null;
+  const offer = offerSnap?.exists() ? (offerSnap.data() as RideOffer) : undefined;
+  const seated = offer !== undefined && offer.status !== 'cancelled' && !offer.pendingRequestId
+    && (offer.confirmedRequestIds ?? []).includes(requestID);
 
+  if (!offerRef || !offer || !seated) {
     tx.update(requestRef, { status: 'cancelled' });
+    return;
+  }
+
+  const remaining = (offer.confirmedRequestIds ?? []).filter((id) => id !== requestID);
+  tx.update(offerRef, {
+    confirmedRequestIds: remaining,
+    status: settledOfferStatus({ ...offer, confirmedRequestIds: remaining }),
+    // Nobody left, nothing to time.
+    schedule: offer.schedule && remaining.length > 0
+      ? {
+        ...offer.schedule,
+        stops: offer.schedule.stops.filter((s) => s.requestId !== requestID),
+        needsReplan: true,
+      }
+      : deleteField(),
+  });
+  // The seat is already off the car, so the runner has nothing left to do here.
+  tx.update(requestRef, {
+    status: 'cancelled',
+    ...removeMatchFields(),
   });
 }
 

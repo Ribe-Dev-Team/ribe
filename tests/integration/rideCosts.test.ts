@@ -109,4 +109,21 @@ describe('ride cards read the stored cost split', () => {
       expect(card.costSplit).toBeUndefined();
     }
   });
+
+  it('says TBC again after a rider cancels, until the runner re-plans the car', async () => {
+    // What cancelConfirmedRequest leaves behind: e2's stop cut out, the prices
+    // still worked out with e2 in the car (the rules don't let the cancelling
+    // rider change them), and the car flagged for the next run.
+    const before = priced([{ id: 'e1', contribution: 2, detourKm: 1 }, { id: 'e2', contribution: 2, detourKm: 1 }]);
+    await setDoc(doc(db, 'rideOffers', 'car-e'), {
+      ...booking, userId: 'driver-e', status: 'pending', seatCapacity: 4, confirmedRequestIds: ['e1'],
+      schedule: { ...before, stops: before.stops.filter((s) => s.requestId !== 'e2'), needsReplan: true },
+    });
+    await seedRider('e1', 'car-e', 'confirmed');
+
+    for (const card of [(await fetchUserRides('e1-uid')).requests[0], (await fetchUserRides('driver-e')).offers[0]]) {
+      expect(card.cost).toBe('TBC');
+      expect(card.costSplit).toBeUndefined();
+    }
+  });
 });

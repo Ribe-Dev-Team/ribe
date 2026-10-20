@@ -56,6 +56,7 @@ interface StoredSchedule {
   stops: { requestId: string; pickupAt: StoredTime; arriveAt: StoredTime; cost?: RiderCost }[];
   costs?: Omit<TripCosts, 'calculatedAt'>;
   emissionsSavedKg?: number;
+  needsReplan?: boolean; // a rider cancelled; the runner re-plans it next run
 }
 
 type OfferView = Pick<
@@ -164,8 +165,10 @@ function plannedTimes(
 /**
  * The cost split this card shows, read from the same timetable as its times -
  * so a rider deciding on a match sees the split with them in the car. Worked
- * out by the matching runner; undefined until it has priced the car, and for a
- * rider still searching.
+ * out by the matching runner; undefined until it has priced the car, for a
+ * rider still searching, and while a car waits to be re-planned after a rider
+ * cancelled - its split still has them in it, and the Firestore rules don't
+ * let the cancelling rider take the prices off.
  */
 function costSplitFor(
   record: DisplayableRideRecord,
@@ -177,7 +180,7 @@ function costSplitFor(
   if (kind === 'request' && record.status === 'pending') return undefined;
   const schedule = scheduleFor(record, kind, docId, offer);
   const trip = schedule?.costs;
-  if (!schedule || !trip) return undefined;
+  if (!schedule || !trip || schedule.needsReplan) return undefined;
 
   const shared = {
     medianFuelPrice: trip.medianFuelPrice,
@@ -237,16 +240,23 @@ function middleStops(
   const schedule = scheduleFor(record, kind, docId, offer);
   if (!record.toUni || !schedule) return undefined;
 
+  // Route order is pickup-time order. Sorted rather than trusting the stored
+  // order: a cancelling rider writes the timetable (firestore.rules
+  // → stopCutOut), and the rules can protect each stop's times but not their
+  // order in the list.
+  const stops = [...schedule.stops]
+    .sort((a, b) => toDate(a.pickupAt).getTime() - toDate(b.pickupAt).getTime());
+
   if (kind === 'request') {
-    const own = schedule.stops.findIndex((s) => s.requestId === docId);
+    const own = stops.findIndex((s) => s.requestId === docId);
     if (own < 0) return undefined;
-    return schedule.stops.slice(own + 1).map((s) => ({
+    return stops.slice(own + 1).map((s) => ({
       label: 'Pickup · another passenger',
       time: '~' + formatClock(toDate(s.pickupAt)),
     }));
   }
 
-  return schedule.stops.map((s, index) => {
+  return stops.map((s, index) => {
     const person = people?.get(s.requestId);
     const name = person?.name && s.requestId === record.pendingRequestId
       ? `${person.name} (awaiting)`
