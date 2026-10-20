@@ -124,6 +124,17 @@ describe('planSettle', () => {
     });
   });
 
+  it('returns a rider who accepted to the pool, not expired, when only the driver never answered', () => {
+    expect(planSettle('r', overdue, { ...holding, riderAccepted: true }, now)).toEqual({
+      ...released,
+      offer: { set: { status: 'pending', pendingRequestId: null }, remove: OFFER_SLOT_FIELDS },
+    });
+  });
+
+  it("clears both answers along with the rest of the driver's slot", () => {
+    expect(OFFER_SLOT_FIELDS).toEqual(expect.arrayContaining(['riderAccepted', 'driverAccepted']));
+  });
+
   it('returns a rider awaiting approval to the pool when the driver removed the offer', () => {
     expect(planSettle('r', overdue, { ...holding, status: 'cancelled' }, before)).toEqual(released);
     expect(planSettle('r', overdue, undefined, before)).toEqual(released);

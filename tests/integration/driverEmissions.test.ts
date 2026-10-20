@@ -20,6 +20,9 @@ describe('Driver emissions saved when getting riders', () => {
       confirmedRequestIds: [],
       pendingRequestId: req1Id,
       matchedRiderId: 'rider-1-uid',
+      // A match needs both sides to accept: the driver already has, so the
+      // rider's acceptMatch below is the one that confirms it.
+      driverAccepted: true,
       driverEmissionsKg: 3.4,
       emissionsSavedKg: 0,
       pendingSchedule: { emissionsSavedKg: 2.5 },
@@ -51,6 +54,7 @@ describe('Driver emissions saved when getting riders', () => {
       status: 'awaiting',
       pendingRequestId: req2Id,
       matchedRiderId: 'rider-2-uid',
+      driverAccepted: true,
       pendingSchedule: { emissionsSavedKg: 4.3 },
     });
 

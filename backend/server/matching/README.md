@@ -80,7 +80,7 @@ rankings that don't change while it runs. Within one run, Ribe has all three:
   on time, and the slack the car keeps (see "How pairs are scored").
 - **Trips rank riders** by marginal driving minutes: the fewer minutes a rider
   adds to the driver's route, the better. Drivers don't state this ranking —
-  only the rider accepts or declines a match — so the matcher ranks on the
+  they only accept or decline the one rider they're offered — so the matcher ranks on the
   driver's behalf, the way school-choice systems rank applicants by a priority
   rule rather than asking each school. A tie keeps the rider already held.
 - **Each trip takes one new rider per run** (above).
@@ -420,8 +420,17 @@ before its cutoff.
   from a snapshot: the rider may have cancelled, the driver's slot may have been
   filled, or — `BASELINE_CHANGED` — the driver's confirmed riders may no longer
   be the ones the route was computed for. Any of those skips the write.
+- **Both sides accept.** A match is confirmed only once the rider and the
+  driver have both accepted, in either order (`acceptMatch` /
+  `driverAcceptMatch` in the app). Each answer is stored on the offer's pending
+  slot as `riderAccepted` / `driverAccepted`, and whoever accepts second
+  confirms the match. They're part of `OFFER_SLOT_FIELDS`, so they're removed
+  whenever the slot is freed and never carry over to the next rider. A rider
+  the driver declines (`driverDeclineMatch`) goes back to `pending`, not
+  `cancelled`. If the deadline passes with only the rider having accepted,
+  `planSettle` returns them to the pool (`RELEASED`) instead of expiring them.
 - **Pickup order.** `routeIndex` is where the rider sits among the driver's
-  confirmed riders. `acceptMatch` (in the app) inserts them there, so
+  confirmed riders. Confirming the match (in the app) inserts them there, so
   `confirmedRequestIds` is always in pickup order. The next run rebuilds the
   car's route from that list, so an append-only list would silently re-check
   everyone's detour against the wrong route.
@@ -430,7 +439,7 @@ before its cutoff.
   order; it's what the ride cards show instead of the booking window. Picking up
   a new rider can move everyone else's times (never past their detour cap or
   arrival deadline), so each match proposes a whole new timetable as
-  `pendingSchedule`, and `acceptMatch` moves it into `schedule`. It's stored on
+  `pendingSchedule`, and confirming the match moves it into `schedule`. It's stored on
   the offer rather than on each request because a rider's phone can't update
   another rider's booking. The request's own `pickupAt`/`arriveAt` are a
   snapshot from match time, used only if the offer can't be read. Every
@@ -631,8 +640,9 @@ Two ways to poke at the algorithm without writing a Jest test:
   so an early arrival is treated as infeasible rather than under-reporting
   detour. This costs some matches where the driver lives further out and leaves
   early.
-- Only the rider can accept. Driver-side approval and `firestore.rules` do not
-  exist yet.
+- A declined match isn't remembered: a rider the driver declines can be offered
+  to the same driver again on the next run. `firestore.rules` isn't in the
+  repo yet (the published rules live in the Firebase console).
 - When a confirmed rider cancels, their seat is freed on the next run, not at
   once. Until then the driver's card still counts them, and the car's timetable
   and cost split are gone until the run re-plans them.

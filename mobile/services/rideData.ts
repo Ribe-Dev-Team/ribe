@@ -29,7 +29,11 @@ interface FirestoreRideRecord {
   riderDetourMinutes?: number;
   pendingRequestId?: string | null;
   confirmedRequestIds?: string[];
-  acceptingMore?: boolean;
+  acceptingMore?: boolean; // false once the driver locks the trip
+  // Who has accepted the rider in an offer's pending slot so far.
+  riderAccepted?: boolean;
+  driverAccepted?: boolean;
+  // A request's own estimated times, as of its match.
   pickupAt?: StoredTime;
   arriveAt?: StoredTime;
   schedule?: StoredSchedule;
@@ -56,7 +60,8 @@ interface StoredSchedule {
 
 type OfferView = Pick<
   FirestoreRideRecord,
-  'status' | 'schedule' | 'pendingSchedule' | 'pendingRequestId' | 'confirmedRequestIds' | 'seatCapacity' | 'acceptingMore'
+  'status' | 'schedule' | 'pendingSchedule' | 'pendingRequestId' | 'confirmedRequestIds'
+  | 'seatCapacity' | 'acceptingMore' | 'riderAccepted' | 'driverAccepted'
 >;
 
 interface SeatState {
@@ -212,6 +217,7 @@ function costSplitFor(
 /** A passenger on a car: who they are, from users/{uid}, and where they're
  *  collected, from their request. */
 interface StopPerson {
+  uid?: string;
   name?: string;
   address?: string;
   coord?: Coord;
@@ -253,10 +259,10 @@ function middleStops(
 }
 
 /**
- * The passengers at a car's stops: first name, photo, bio and degree from
- * users/{uid}, pickup address and point from their request. Once per request;
- * one that can't be read is left out, and the card labels that stop
- * "Passenger N" instead.
+ * The passengers at a car's stops, and the rider each awaiting drive is
+ * asking about: first name, photo, bio and degree from users/{uid}, pickup
+ * address and point from their request. Once per request; one that can't be
+ * read is left out, and the card labels that stop "Passenger N" instead.
  */
 async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPerson>> {
   const unique = [...new Set(requestIds)];
@@ -276,9 +282,8 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
       }
       const text = (field: string) => (typeof profile[field] === 'string' && profile[field].trim()) || undefined;
       out.set(id, {
-       
+        uid: request.userId || undefined,
         name: text('name')?.split(/\s+/)[0],
-       
         address: request.address || undefined,
         emissionsSavedKg: request.emissionsSavedKg,
         coord: request.coord,
@@ -294,18 +299,36 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
   return out;
 }
 
-export async function fetchDriverProfile(uid: string): Promise<DocumentData> {
-  const read = async (collectionName: string): Promise<DocumentData> => {
-    try {
-      const snap = await getDoc(doc(db, collectionName, uid));
-      return snap.exists() ? snap.data() : {};
-    } catch (error) {
-      console.warn(`Failed to load ${collectionName} profile`, uid, error);
-      return {};
-    }
-  };
+/** One profile document, or `{}` when it's missing or can't be read. */
+async function readProfile(collectionName: string, uid: string): Promise<DocumentData> {
+  try {
+    const snap = await getDoc(doc(db, collectionName, uid));
+    return snap.exists() ? snap.data() : {};
+  } catch (error) {
+    console.warn(`Failed to load ${collectionName} profile`, uid, error);
+    return {};
+  }
+}
 
-  const [driverDoc, userDoc] = await Promise.all([read('drivers'), read('users')]);
+/**
+ * A rider's account profile (users/{uid}): name, bio, degree. For the driver
+ * deciding whether to accept them. `{}` when it can't be read.
+ */
+export async function fetchRiderProfile(uid: string): Promise<DocumentData> {
+  return readProfile('users', uid);
+}
+
+/**
+ * Everything known about a driver, from both places it lives: drivers/{uid}
+ * (written by driver registration - car and plate) and users/{uid} (the
+ * account - name, bio, degree, phone, and often the car too). Anyone can offer
+ * a ride without finishing driver registration, so drivers/{uid} may not exist,
+ * and it never holds a phone, bio or degree. Each field comes from drivers/{uid}
+ * when it has a value, else users/{uid}. `{}` when neither can be read - an
+ * unreadable profile must never fail the screen showing it.
+ */
+export async function fetchDriverProfile(uid: string): Promise<DocumentData> {
+  const [driverDoc, userDoc] = await Promise.all([readProfile('drivers', uid), readProfile('users', uid)]);
   const merged: DocumentData = { ...userDoc };
   for (const [key, value] of Object.entries(driverDoc)) {
     if (value !== undefined && value !== null && value !== '') merged[key] = value;
@@ -364,6 +387,8 @@ async function fetchOfferViews(offerIds: string[]): Promise<Map<string, OfferVie
         confirmedRequestIds: data.confirmedRequestIds,
         seatCapacity: data.seatCapacity,
         acceptingMore: data.acceptingMore,
+        riderAccepted: data.riderAccepted,
+        driverAccepted: data.driverAccepted,
       });
     } catch (error) {
       console.warn('Failed to load matched trip', id, error);
@@ -453,6 +478,17 @@ function buildRideCard(
     ? record.emissionsSavedKg ?? 0
     : scheduleFor(record, kind, docId, offer)?.emissionsSavedKg ?? record.emissionsSavedKg ?? 0;
 
+  // Both sides' answers live on the offer's pending slot: a driver's own
+  // record, or a rider's matched offer while it's still holding them.
+  const slot = kind === 'offer' ? record : offer?.pendingRequestId === docId ? offer : undefined;
+  const riderAccepted = slot?.riderAccepted === true;
+  const driverAccepted = slot?.driverAccepted === true;
+
+  // The rider a driver is being asked to accept, so they can see who it is.
+  const pendingRider = kind === 'offer' && status === 'awaiting' && record.pendingRequestId
+    ? stopPeople?.get(record.pendingRequestId)
+    : undefined;
+
   return {
     rideId: docId,
     id: docId,
@@ -484,10 +520,22 @@ function buildRideCard(
       colour: resolved.colour,
       avatarUri: resolved.photoUrl,
     },
+    ...(pendingRider ? {
+      rider: {
+        uid: pendingRider.uid,
+        name: pendingRider.name ?? 'Your matched rider',
+        degree: pendingRider.degree,
+        avatarUri: pendingRider.photoUrl,
+      },
+    } : {}),
     plate: resolved.plate,
     driverPhone: resolved.phone,
     matchedAt: toDateOrUndefined(record.matchedAt),
     acceptDeadline: toDateOrUndefined(record.acceptDeadline),
+    ...(status === 'awaiting' ? {
+      youAccepted: kind === 'offer' ? driverAccepted : riderAccepted,
+      otherAccepted: kind === 'offer' ? riderAccepted : driverAccepted,
+    } : {}),
     pickupDateTime: planned?.startAt ?? date,
   };
 }
@@ -572,13 +620,14 @@ export async function fetchUserRides(userId: string): Promise<UserRideBundle> {
         .map((row) => row.data.matchedOfferId)
         .filter((id): id is string => Boolean(id)),
     ),
-    // Every drive's passengers - named in its pickup list and its cost split.
+    // Every drive's passengers - named in its pickup list and its cost split -
+    // and, whichever way the drive goes, the rider each one is asked to accept.
     fetchStopPeople(
-      offerRows
-        .flatMap((row) => [
-          ...(row.data.confirmedRequestIds ?? []),
-          ...(scheduleFor(row.data, 'offer', row.id)?.stops.map((stop) => stop.requestId) ?? []),
-        ])
+      offerRows.flatMap((row) => [
+        ...(row.data.confirmedRequestIds ?? []),
+        ...(scheduleFor(row.data, 'offer', row.id)?.stops.map((stop) => stop.requestId) ?? []),
+        ...(row.data.status === 'awaiting' && row.data.pendingRequestId ? [row.data.pendingRequestId] : []),
+      ]),
     ),
   ]);
 
