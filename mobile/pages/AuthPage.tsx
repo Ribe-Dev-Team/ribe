@@ -184,7 +184,7 @@ export default function AuthPage({
     let valid = true;
 
     if (!isValidEmail(email.trim())) {
-      setEmailErr('Enter a valid email address.');
+      setEmailErr('Please enter a valid Monash email address.');
       valid = false;
     } else setEmailErr('');
 
@@ -265,7 +265,7 @@ export default function AuthPage({
   };
 
   const submitSignup = async () => {
-    const success = await handleSignup(
+    await handleSignup(
       { name, dob, phoneNumber, email, password, confirmPassword },
       {
         profilePhotoBase64: profilePhotoBase64 ?? undefined,
@@ -284,14 +284,6 @@ export default function AuthPage({
           : {}),
       },
     );
-    if (success) {
-      alert('Account created! Please check your email to verify your account, then log in.');
-      setMode('login');
-      setSignupStep('about');
-      // Clear fields to avoid logging in with password if user navigates back
-      setPassword('');
-      setConfirmPassword('');
-    }
   };
 
   const signupProgress = (

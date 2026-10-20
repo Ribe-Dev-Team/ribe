@@ -163,6 +163,64 @@ describe("the driver on a matched rider's card", () => {
   });
 });
 
+describe("the rider on a driver's awaiting card", () => {
+  /** A drive asking its driver to accept `asking`. */
+  async function seedAsking(opts: { toUni?: boolean } = {}) {
+    await setDoc(doc(db, 'rideOffers', 'offer-1'), {
+      ...booking,
+      toUni: opts.toUni ?? true,
+      userId: 'driver-uid',
+      status: 'awaiting',
+      seatCapacity: 3,
+      confirmedRequestIds: [],
+      pendingRequestId: 'asking',
+      matchedRiderId: 'asking-uid',
+    });
+    await setDoc(doc(db, 'rideRequests', 'asking'), {
+      ...booking,
+      userId: 'asking-uid',
+      status: 'awaiting',
+      matchedOfferId: 'offer-1',
+      matchedDriverId: 'driver-uid',
+    });
+  }
+
+  it('shows who they are - first name and degree - so the driver can decide', async () => {
+    await seedAsking();
+    await setDoc(doc(db, 'users', 'asking-uid'), { name: 'Priya Nair', degree: 'Engineering', bio: 'Hi!' });
+
+    const [card] = (await fetchUserRides('driver-uid')).offers;
+
+    expect(card.status).toBe('awaiting');
+    expect(card.rider).toEqual({ uid: 'asking-uid', name: 'Priya', degree: 'Engineering', avatarUri: undefined });
+  });
+
+  it('shows them on a trip home too, which has no stops on the card', async () => {
+    await seedAsking({ toUni: false });
+    await setDoc(doc(db, 'users', 'asking-uid'), { name: 'Priya Nair' });
+
+    const [card] = (await fetchUserRides('driver-uid')).offers;
+
+    expect(card.rider?.name).toBe('Priya');
+  });
+
+  it('still has a rider to open when their profile is unreadable', async () => {
+    await seedAsking();
+
+    const [card] = (await fetchUserRides('driver-uid')).offers;
+
+    expect(card.rider).toEqual(expect.objectContaining({ uid: 'asking-uid', name: 'Your matched rider' }));
+  });
+
+  it("is absent once no one's waiting on the drive", async () => {
+    await seedCar({ riders: 1 });
+
+    const [card] = (await fetchUserRides('driver-uid')).offers;
+
+    expect(card.rider).toBeUndefined();
+  });
+});
+
 describe('stops on the way to campus', () => {
   // Local-clock times, so the expected "HH:mm" holds in any test time zone.
   const at = (h: number, m: number) => Timestamp.fromDate(new Date(2026, 9, 7, h, m));

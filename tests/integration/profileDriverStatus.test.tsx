@@ -20,7 +20,12 @@ const car = { vehicleMake: 'Toyota', vehicleModel: 'Corolla', vehicleColor: 'Blu
 
 /** Renders the real AuthProvider signed in as UID, and hands back its hook. */
 async function signIn() {
-  (auth as unknown as { currentUser: unknown }).currentUser = { uid: UID, email: 'd@example.com', displayName: 'Dana' };
+  (auth as unknown as { currentUser: unknown }).currentUser = {
+    uid: UID,
+    email: 'd@example.com',
+    displayName: 'Dana',
+    emailVerified: true,
+  };
   let hook!: ReturnType<typeof useAuth>;
   const Probe = () => { hook = useAuth(); return null; };
   await render(<AuthProvider><Probe /></AuthProvider>);

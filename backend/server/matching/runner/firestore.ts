@@ -96,6 +96,7 @@ function toStoredOffer(snap: DocumentSnapshot): StoredOffer | undefined {
     pendingRequestId: d['pendingRequestId'] ?? null,
     confirmedRequestIds: d['confirmedRequestIds'] ?? [],
     acceptingMore: d['acceptingMore'] !== false,
+    riderAccepted: d['riderAccepted'] === true,
   };
 }
 

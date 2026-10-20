@@ -98,11 +98,15 @@ function CarSection({ title, car }: { title: string; car?: RideCar }) {
 export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel }: RideDetailPageProps) {
 	const [details, setDetails] = useState<RideDetails | null>(null);
 	const isConfirmed = ride.status === 'confirmed';
-	// Drivers don't answer matches, so their awaiting offer reads as a rider found.
+	// A match needs both sides to accept; once you have, you're waiting on the other.
 	const isDriver = ride.kind === 'offer';
 	const isMatched = ride.status === 'confirmed' || ride.status === 'awaiting';
 	const status = ride.status === 'confirmed' ? 'Confirmed ride'
-		: ride.status === 'awaiting' ? (isDriver ? 'Rider found - awaiting their confirmation' : 'Awaiting confirmation')
+		: ride.status === 'awaiting' ? (
+			ride.youAccepted ? `You accepted - waiting for the ${isDriver ? 'rider' : 'driver'}`
+			: isDriver ? `Rider found - ${ride.otherAccepted ? 'they accepted, ' : ''}waiting for your answer`
+			: `Awaiting your confirmation${ride.otherAccepted ? ' - your driver accepted' : ''}`
+		)
 		: 'Pending ride';
 	// What the time at the top is: once the trip is planned, when the driver
 	// leaves or the rider is collected; until then, the window they booked.
@@ -201,10 +205,12 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 					<Pressable
 						onPress={() =>
 							Alert.alert(
-								'Decline this ride?',
-								'Are you sure you want to decline this ride?',
+								isDriver ? 'Decline this rider?' : 'Decline this ride?',
+								isDriver
+									? 'They will go back to being matched with another driver, and your seat opens up again.'
+									: 'Are you sure you want to decline this ride?',
 								[
-									{ text: 'Keep Ride', style: 'cancel' },
+									{ text: isDriver ? 'Keep Rider' : 'Keep Ride', style: 'cancel' },
 									{ text: 'Decline', style: 'destructive', onPress: onDecline },
 								],
 							)
@@ -213,9 +219,11 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 					>
 						<Text style={styles.dangerButtonText}>Decline</Text>
 					</Pressable>
-					<Pressable onPress={onAccept} style={[styles.successButton, { marginTop: 0 }]}>
-						<Text style={styles.successButtonText}>Accept</Text>
-					</Pressable>
+					{onAccept && (
+						<Pressable onPress={onAccept} style={[styles.successButton, { marginTop: 0 }]}>
+							<Text style={styles.successButtonText}>Accept</Text>
+						</Pressable>
+					)}
 				</View>
 			)}
 
