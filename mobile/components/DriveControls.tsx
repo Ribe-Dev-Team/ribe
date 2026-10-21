@@ -17,11 +17,12 @@ interface DriveControlsProps {
 }
 
 /**
- * A driver's own controls for a drive, on its details page: how many seats it
- * offers, and whether it's still taking passengers. Seats until the drive is
- * locked (a locked car takes nobody new, so its seat count would change
- * nothing); lock/unlock once someone's aboard (a full car that isn't locked
- * has nothing to lock).
+ * A driver's own controls for a drive, on its details page: one line under
+ * the passengers saying how full the car is, with pills to change how many
+ * seats it offers and whether it's still taking passengers. Seats until the drive is locked
+ * (a locked car takes nobody new, so its seat count would change nothing);
+ * lock/unlock once someone's aboard (a full car that isn't locked has nothing
+ * to lock).
  */
 export default function DriveControls({ seats, riderDeciding = false, onSetLocked, onChangeSeats }: DriveControlsProps) {
   const [editorVisible, setEditorVisible] = useState(false);
@@ -31,7 +32,8 @@ export default function DriveControls({ seats, riderDeciding = false, onSetLocke
 
   const canEditSeats = Boolean(onChangeSeats) && !seats.locked;
   const canToggleLock = Boolean(onSetLocked) && seats.filled > 0 && (seats.open || seats.locked);
-  if (!canEditSeats && !canToggleLock) return null;
+  const state = seats.locked ? 'Locked' : seats.open ? 'Taking riders' : 'Car full';
+  const summary = `${seats.filled}/${seats.total} seats  ·  ${state}${riderDeciding ? '  ·  1 deciding' : ''}`;
 
   const confirmLockToggle = () => {
     if (!onSetLocked) return;
@@ -57,26 +59,28 @@ export default function DriveControls({ seats, riderDeciding = false, onSetLocke
   };
 
   return (
-    <View style={localStyles.row}>
+    <View style={localStyles.line}>
+      <Ionicons name={seats.locked ? 'lock-closed-outline' : 'people-outline'} size={18} color={colors.white} />
+      <Text style={localStyles.summary}>{summary}</Text>
       {canEditSeats && (
         <TouchableOpacity
           accessibilityLabel="Change number of seats"
-          style={localStyles.button}
+          style={localStyles.pill}
           onPress={() => { setDraft(seats.total); setEditorVisible(true); }}
         >
-          <Ionicons name="create-outline" size={15} color={colors.white} />
-          <Text style={localStyles.buttonText}>Seats ({seats.total})</Text>
+          <Ionicons name="create-outline" size={13} color={colors.darkBlue} />
+          <Text style={localStyles.pillText}>Edit Seats</Text>
         </TouchableOpacity>
       )}
       {/* Says what it does, not just "Lock". */}
       {canToggleLock && (
         <TouchableOpacity
           accessibilityLabel={seats.open ? 'Stop taking passengers' : 'Take more passengers'}
-          style={localStyles.button}
+          style={localStyles.pill}
           onPress={confirmLockToggle}
         >
-          <Ionicons name={seats.open ? 'lock-closed-outline' : 'lock-open-outline'} size={15} color={colors.white} />
-          <Text style={localStyles.buttonText}>{seats.open ? 'Lock · No More Passengers' : 'Unlock · Take More'}</Text>
+          <Ionicons name={seats.open ? 'lock-closed-outline' : 'lock-open-outline'} size={13} color={colors.darkBlue} />
+          <Text style={localStyles.pillText}>{seats.open ? 'Stop New Riders' : 'Take More Riders'}</Text>
         </TouchableOpacity>
       )}
 
@@ -110,21 +114,37 @@ export default function DriveControls({ seats, riderDeciding = false, onSetLocke
 }
 
 const localStyles = StyleSheet.create({
-  row: {
+  // Matches the car line beneath it on the details page.
+  line: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 8,
     marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.whiteA16,
   },
-  button: {
+  summary: {
+    flex: 1,
+    minWidth: 120,
+    color: colors.white,
+    fontFamily: 'Marcellus_400Regular',
+    fontSize: 14,
+  },
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.whiteA50,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: colors.white,
+  },
+  pillText: {
+    color: colors.darkBlue,
+    fontSize: 12,
+    fontWeight: '700',
   },
   buttonText: {
     color: colors.white,

@@ -1,6 +1,6 @@
 // Component tests for mobile/components/DriveControls.tsx - a driver's Seats
 // and Lock buttons, now on the ride details page rather than the ride card -
-// and the details page's Edit button for a booking still searching.
+// and the details page's Remove Offer button beside the drive's status.
 
 import * as React from 'react';
 import { Alert } from 'react-native';
@@ -27,7 +27,7 @@ describe('DriveControls', () => {
     const onSetLocked = jest.fn();
     await render(<DriveControls seats={{ filled: 1, total: 4, open: true, locked: false }} onSetLocked={onSetLocked} />);
 
-    expect(screen.getByText('Lock · No More Passengers')).toBeTruthy();
+    expect(screen.getByText('Stop New Riders')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Stop taking passengers'));
     lastAlertButtons(alert).find((b) => b.text === 'Lock Drive')!.onPress!();
 
@@ -37,7 +37,7 @@ describe('DriveControls', () => {
   it('offers Seats until the drive is locked, then takes it away', async () => {
     const onChangeSeats = jest.fn();
     await render(<DriveControls seats={{ filled: 1, total: 4, open: true, locked: false }} onChangeSeats={onChangeSeats} />);
-    expect(screen.getByText('Seats (4)')).toBeTruthy();
+    expect(screen.getByText('Edit Seats')).toBeTruthy();
 
     await render(<DriveControls seats={{ filled: 1, total: 4, open: false, locked: true }} onChangeSeats={onChangeSeats} />);
     expect(screen.queryByLabelText('Change number of seats')).toBeNull();
@@ -50,13 +50,24 @@ describe('DriveControls', () => {
       <DriveControls seats={{ filled: 2, total: 4, open: false, locked: true }} onSetLocked={onSetLocked} />,
     );
 
-    expect(screen.getByText('Unlock · Take More')).toBeTruthy();
+    expect(screen.getByText('Take More Riders')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Take more passengers'));
     lastAlertButtons(alert).find((b) => b.text === 'Unlock')!.onPress!();
     expect(onSetLocked).toHaveBeenCalledWith(false);
 
     await rerender(<DriveControls seats={{ filled: 4, total: 4, open: false, locked: false }} onSetLocked={onSetLocked} />);
     expect(screen.queryByLabelText('Take more passengers')).toBeNull();
+  });
+
+  it('shows how full the car is, counting the rider deciding, and whether it is still taking riders', async () => {
+    await render(<DriveControls seats={{ filled: 1, total: 4, open: true, locked: false }} riderDeciding />);
+    expect(screen.getByText('1/4 seats  ·  Taking riders  ·  1 deciding')).toBeTruthy();
+
+    await render(<DriveControls seats={{ filled: 2, total: 2, open: false, locked: false }} />);
+    expect(screen.getByText('2/2 seats  ·  Car full')).toBeTruthy();
+
+    await render(<DriveControls seats={{ filled: 2, total: 4, open: false, locked: true }} />);
+    expect(screen.getByText('2/4 seats  ·  Locked')).toBeTruthy();
   });
 
   it('changes the number of seats, never below the riders aboard and the one deciding', async () => {
@@ -83,27 +94,21 @@ describe('on the ride details page', () => {
   const show = async (ride: typeof offer | Record<string, unknown>, props: Record<string, unknown> = {}) => {
     (fetchRideDetails as jest.Mock).mockResolvedValue({ passengers: [{ name: 'Ben' }], journey: [], mapPoints: [] });
     await render(<RideDetailPage ride={ride as never} date={new Date()} onBack={() => {}} {...props} />);
+    await fireEvent.press(screen.getByRole('tab', { name: 'People' }));
     await screen.findByText('Ben');
   };
 
   it("gives a driver their drive's Seats and Lock buttons", async () => {
     await show(offer, { onSetLocked: jest.fn(), onChangeSeats: jest.fn() });
 
-    expect(screen.getByText('Seats (3)')).toBeTruthy();
-    expect(screen.getByText('Lock · No More Passengers')).toBeTruthy();
+    expect(screen.getByText('Edit Seats')).toBeTruthy();
+    expect(screen.getByText('Stop New Riders')).toBeTruthy();
   });
 
-  it('offers Edit for a booking still searching, beside cancelling it', async () => {
-    const onEdit = jest.fn();
-    await show({ ...offer, status: 'pending', seats: { filled: 0, total: 3, open: true, locked: false } }, { onEdit, onCancel: jest.fn() });
+  it('puts Remove Offer beside the status, with no Edit button', async () => {
+    await show({ ...offer, status: 'pending', seats: { filled: 0, total: 3, open: true, locked: false } }, { onCancel: jest.fn() });
 
-    await fireEvent.press(screen.getByText('Edit Offer'));
-    expect(onEdit).toHaveBeenCalled();
     expect(screen.getByText('Remove Offer')).toBeTruthy();
-  });
-
-  it('has no Edit once the ride is confirmed', async () => {
-    await show(offer, { onEdit: jest.fn() });
     expect(screen.queryByText('Edit Offer')).toBeNull();
   });
 });
