@@ -6,37 +6,35 @@ import NumberStepper from './NumberStepper';
 import { MAX_CAR_SEATS } from '../pages/schema/user.validation';
 import { RideCardProps } from './RideCard';
 
+type Seats = NonNullable<RideCardProps['seats']>;
+
 interface DriveControlsProps {
-  seats: NonNullable<RideCardProps['seats']>;
+  seats: Seats;
   /** A rider deciding on a match to this drive - they hold a seat too. */
   riderDeciding?: boolean;
-  /** Stop (true) or resume (false) taking passengers. */
-  onSetLocked?: (locked: boolean) => void;
   /** Change how many passengers the drive takes. */
   onChangeSeats?: (seats: number) => void;
 }
 
-/**
- * A driver's own controls for a drive, on its details page: one line under
- * the passengers saying how full the car is, with pills to change how many
- * seats it offers and whether it's still taking passengers. Seats until the drive is locked
- * (a locked car takes nobody new, so its seat count would change nothing);
- * lock/unlock once someone's aboard (a full car that isn't locked has nothing
- * to lock).
- */
-export default function DriveControls({ seats, riderDeciding = false, onSetLocked, onChangeSeats }: DriveControlsProps) {
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [draft, setDraft] = useState(seats.total);
-  // Seats can't drop below the riders aboard, or the one deciding.
-  const taken = seats.filled + (riderDeciding ? 1 : 0);
+/** Lock/unlock once someone's aboard - a full car that isn't locked has
+ *  nothing to lock. */
+export function canToggleLock(seats: Seats) {
+  return seats.filled > 0 && (seats.open || seats.locked);
+}
 
-  const canEditSeats = Boolean(onChangeSeats) && !seats.locked;
-  const canToggleLock = Boolean(onSetLocked) && seats.filled > 0 && (seats.open || seats.locked);
-  const state = seats.locked ? 'Locked' : seats.open ? 'Taking riders' : 'Car full';
-  const summary = `${seats.filled}/${seats.total} seats  ·  ${state}${riderDeciding ? '  ·  1 deciding' : ''}`;
+/**
+ * A driver's stop/resume taking passengers button, for the details page's
+ * footer. Says what it does, not just "Lock", and confirms first.
+ */
+export function LockToggleButton({ seats, onSetLocked, compact = false }: {
+  seats: Seats;
+  onSetLocked: (locked: boolean) => void;
+  /** Smaller, for under Accept/Decline. */
+  compact?: boolean;
+}) {
+  if (!canToggleLock(seats)) return null;
 
   const confirmLockToggle = () => {
-    if (!onSetLocked) return;
     if (seats.open) {
       Alert.alert(
         'Stop taking passengers?',
@@ -59,6 +57,34 @@ export default function DriveControls({ seats, riderDeciding = false, onSetLocke
   };
 
   return (
+    <TouchableOpacity
+      accessibilityLabel={seats.open ? 'Stop taking passengers' : 'Take more passengers'}
+      style={[localStyles.footerButton, compact && localStyles.footerButtonCompact]}
+      onPress={confirmLockToggle}
+    >
+      <Ionicons name={seats.open ? 'lock-closed-outline' : 'lock-open-outline'} size={16} color={colors.white} />
+      <Text style={[localStyles.footerButtonText, compact && localStyles.footerButtonTextCompact]}>{seats.open ? 'Stop New Riders' : 'Take More Riders'}</Text>
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * A driver's seats on their drive's details page: one line under the
+ * passengers saying how full the car is, with a pill to change how many seats
+ * it offers - until the drive is locked, since a locked car takes nobody new
+ * and its seat count would change nothing.
+ */
+export default function DriveControls({ seats, riderDeciding = false, onChangeSeats }: DriveControlsProps) {
+  const [editorVisible, setEditorVisible] = useState(false);
+  const [draft, setDraft] = useState(seats.total);
+  // Seats can't drop below the riders aboard, or the one deciding.
+  const taken = seats.filled + (riderDeciding ? 1 : 0);
+
+  const canEditSeats = Boolean(onChangeSeats) && !seats.locked;
+  const state = seats.locked ? 'Locked' : seats.open ? 'Taking riders' : 'Car full';
+  const summary = `${seats.filled}/${seats.total} seats  ·  ${state}${riderDeciding ? '  ·  1 deciding' : ''}`;
+
+  return (
     <View style={localStyles.line}>
       <Ionicons name={seats.locked ? 'lock-closed-outline' : 'people-outline'} size={18} color={colors.white} />
       <Text style={localStyles.summary}>{summary}</Text>
@@ -68,19 +94,8 @@ export default function DriveControls({ seats, riderDeciding = false, onSetLocke
           style={localStyles.pill}
           onPress={() => { setDraft(seats.total); setEditorVisible(true); }}
         >
-          <Ionicons name="create-outline" size={13} color={colors.darkBlue} />
+          <Ionicons name="create-outline" size={13} color={colors.white} />
           <Text style={localStyles.pillText}>Edit Seats</Text>
-        </TouchableOpacity>
-      )}
-      {/* Says what it does, not just "Lock". */}
-      {canToggleLock && (
-        <TouchableOpacity
-          accessibilityLabel={seats.open ? 'Stop taking passengers' : 'Take more passengers'}
-          style={localStyles.pill}
-          onPress={confirmLockToggle}
-        >
-          <Ionicons name={seats.open ? 'lock-closed-outline' : 'lock-open-outline'} size={13} color={colors.darkBlue} />
-          <Text style={localStyles.pillText}>{seats.open ? 'Stop New Riders' : 'Take More Riders'}</Text>
         </TouchableOpacity>
       )}
 
@@ -132,19 +147,42 @@ const localStyles = StyleSheet.create({
     fontFamily: 'Marcellus_400Regular',
     fontSize: 14,
   },
+  // Matches the Call/Text buttons beside a passenger.
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.whiteA16,
+  },
+  footerButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 12,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    backgroundColor: colors.white,
+    paddingVertical: 13,
+    backgroundColor: colors.whiteA16,
+  },
+  footerButtonCompact: {
+    paddingVertical: 9,
+  },
+  footerButtonText: {
+    color: colors.white,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  footerButtonTextCompact: {
+    fontSize: 13,
   },
   pillText: {
-    color: colors.darkBlue,
+    color: colors.white,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   buttonText: {
     color: colors.white,

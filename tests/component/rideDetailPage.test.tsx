@@ -189,3 +189,16 @@ it('shows a driver their passengers and their own car, not a driver', async () =
   expect(screen.getByText('Blue Toyota Corolla')).toBeTruthy();
   expect(screen.queryByText('Your Driver')).toBeNull();
 });
+
+it('keeps Accept and Decline in the footer, whichever tab is open', async () => {
+  fetchDetails.mockResolvedValue(details());
+  await render(
+    <RideDetailPage ride={{ ...ride, status: 'awaiting' }} date={new Date()} onBack={() => {}} onAccept={jest.fn()} onDecline={jest.fn()} />,
+  );
+  await screen.findByText('Your Driver');
+  expect(screen.getByText('Accept')).toBeTruthy();
+
+  await fireEvent.press(screen.getByRole('tab', { name: 'Trip' }));
+  expect(screen.getByText('Accept')).toBeTruthy();
+  expect(screen.getByText('Decline')).toBeTruthy();
+});
