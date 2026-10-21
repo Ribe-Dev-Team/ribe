@@ -16,7 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../auth/useAuth';
 import styles, { colors } from '../styles';
 import PressableScale from '../components/PressableScale';
-import { getDriverValidationError } from './schema/user.validation';
+import { getDriverValidationError, MAX_PLATE_LENGTH } from './schema/user.validation';
 
 interface DriverRegistrationPageProps {
   onDone: () => void;
@@ -98,7 +98,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 This is what passengers see when they book a ride with you, so make sure it's accurate.
               </Text>
 
-              <Text style={styles.profileLabel}>Vehicle make</Text>
+              <Text style={styles.profileLabel}>Vehicle Make</Text>
               <TextInput
                 autoCapitalize="words"
                 onChangeText={setVehicleMake}
@@ -108,7 +108,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 value={vehicleMake}
               />
 
-              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Vehicle model</Text>
+              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Vehicle Model</Text>
               <TextInput
                 autoCapitalize="words"
                 onChangeText={setVehicleModel}
@@ -118,7 +118,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 value={vehicleModel}
               />
 
-              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Vehicle color</Text>
+              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Vehicle Color</Text>
               <TextInput
                 autoCapitalize="words"
                 onChangeText={setVehicleColor}
@@ -128,9 +128,10 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 value={vehicleColor}
               />
 
-              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>License plate</Text>
+              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>License Plate</Text>
               <TextInput
                 autoCapitalize="characters"
+                maxLength={MAX_PLATE_LENGTH}
                 onChangeText={setLicensePlate}
                 placeholder="1ABC234"
                 placeholderTextColor={colors.whiteA40}
@@ -138,9 +139,10 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 value={licensePlate}
               />
 
-              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Seats available</Text>
+              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Seats Available</Text>
               <TextInput
                 keyboardType="number-pad"
+                maxLength={1}
                 onChangeText={setSeatsAvailable}
                 placeholder="2"
                 placeholderTextColor={colors.whiteA40}

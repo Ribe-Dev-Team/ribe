@@ -1,7 +1,7 @@
 import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin/app';
 import { DocumentSnapshot, FieldValue, Firestore, getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { readFileSync } from 'fs';
-import { MATCHABLE_APP_STATUS, OfferDoc, RequestDoc } from '../adapter';
+import { MATCHABLE_APP_STATUS, OfferDoc, RequestDoc, SETTLED_OFFER_STATUS } from '../adapter';
 import {
   FieldUpdate, MatchWrite, MatchWriteSkip, planMatchWrite, planScheduleWrite, planSettle, ScheduleWrite, Settled,
   StoredOffer, StoredRequest,
@@ -72,9 +72,12 @@ function toOfferDoc(snap: DocumentSnapshot): OfferDoc {
     pendingRequestId: d['pendingRequestId'] ?? null,
     confirmedRequestIds: d['confirmedRequestIds'] ?? [],
     acceptingMore: d['acceptingMore'] !== false,
-    scheduledRiders: Array.isArray(d['schedule']?.stops)
+    // A timetable a cancelling rider's stop was cut out of still has the old
+    // route's times, so it counts as missing and gets re-planned.
+    scheduledRiders: Array.isArray(d['schedule']?.stops) && !d['schedule'].needsReplan
       ? d['schedule'].stops.map((s: { requestId: string }) => s.requestId)
       : undefined,
+    scheduleCosted: Boolean(d['schedule']?.costs),
   };
 }
 
@@ -93,6 +96,7 @@ function toStoredOffer(snap: DocumentSnapshot): StoredOffer | undefined {
     pendingRequestId: d['pendingRequestId'] ?? null,
     confirmedRequestIds: d['confirmedRequestIds'] ?? [],
     acceptingMore: d['acceptingMore'] !== false,
+    riderAccepted: d['riderAccepted'] === true,
   };
 }
 
@@ -102,11 +106,12 @@ function toFirestoreUpdate(u: FieldUpdate): Record<string, unknown> {
   return out;
 }
 
-/** Every request and offer still looking for a match. */
+/** Every request and offer still looking for a match, and every done car -
+ *  the runner keeps those cars' timetables and costs up to date too. */
 export async function loadPending(db: Firestore): Promise<{ requests: RequestDoc[]; offers: OfferDoc[] }> {
   const [requests, offers] = await Promise.all([
     db.collection(REQUESTS).where('status', '==', MATCHABLE_APP_STATUS).get(),
-    db.collection(OFFERS).where('status', '==', MATCHABLE_APP_STATUS).get(),
+    db.collection(OFFERS).where('status', 'in', [MATCHABLE_APP_STATUS, SETTLED_OFFER_STATUS]).get(),
   ]);
   return { requests: requests.docs.map(toRequestDoc), offers: offers.docs.map(toOfferDoc) };
 }

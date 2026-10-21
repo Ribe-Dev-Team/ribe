@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -13,11 +14,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import styles, { colors } from '../styles';
-import { Booking } from './schema/booking.schema';
+import { Booking, BOOKING_HORIZON_DAYS } from './schema/booking.schema';
 import { addRideRequest, addRideOffer } from './schema/firebaseBookingMethods';
 import { formatTime12h } from '../utility/times';
-import { isFutureDate, formatDateToStr, parseDateAsStr } from '../utility/dates';
-import { validateTripStep as validateTripStepFields, validateDetailsStep as validateDetailsStepFields, getTimeOrderWarning, getDetourWarning } from './validation/bookingValidation';
+import { formatDateToStr, formatWeekdayDate, parseDateAsStr } from '../utility/dates';
+import { validateTripStep as validateTripStepFields, validateDetailsStep as validateDetailsStepFields, getTimeOrderWarning, getDetourWarning, isBookableDate, latestBookingDate } from './validation/bookingValidation';
 import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
 import NumberStepper from '../components/NumberStepper';
@@ -25,6 +26,8 @@ import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
 import RouteMapPreview from '../components/RouteMapPreview';
 import { geocodeAddress, ResolvedPlace } from '../services/googlePlaces';
 import { useAuth } from '../auth/useAuth';
+import { MAX_CAR_SEATS } from './schema/user.validation';
+import { formatPhone } from '../utility/phone';
 
 interface BookingPageProps {
   onDone: () => void;
@@ -36,20 +39,43 @@ type FieldName = 'address' | 'travelDate' | 'depTime' | 'arrTime' | 'detourTime'
 
 const BOOKING_DRAFT_KEY = 'ribe:bookingDraftV1';
 
+/** Whether a saved draft holds anything the user filled in, beyond a blank
+ *  form. A date alone doesn't count: one is filled in for them when they start
+ *  from a day on the calendar, and is quick to pick again. */
+export function draftHasProgress(draft: Partial<Booking>): boolean {
+  return Boolean(
+    (typeof draft.address === 'string' && draft.address.trim())
+    || draft.depTime
+    || draft.arrTime
+    || draft.isDriving === true
+    || draft.toUni === false
+    || (typeof draft.detourTime === 'number' && draft.detourTime !== 0)
+    || (typeof draft.capacity === 'number' && draft.capacity !== 1),
+  );
+}
+
 function toTitleCase(value: string): string {
   return value.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase());
 }
 
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
-  const { user } = useAuth();
+  const { user, profileData } = useAuth();
+  // Passenger seats in the user's registered car - null when they have no car
+  // registered, and so can't offer a ride (addRideOffer checks this too).
+  const carSeats = profileData?.isDriver && profileData.licensePlate
+    && Number.isInteger(profileData.seatsAvailable) && (profileData.seatsAvailable ?? 0) >= 1
+    ? profileData.seatsAvailable as number
+    : null;
+  const canDrive = carSeats !== null;
   const [step, setStep] = useState<Step>('trip');
   const [isDriving, setIsDriving] = useState<boolean>(false);
+  const [showDriveNote, setShowDriveNote] = useState(false);
   const [toUni, setToUni] = useState<boolean>(true);
   const [address, setAddress] = useState<string>('');
   const [addrErr, setAddrErr] = useState<string>('');
   const [addressPlace, setAddressPlace] = useState<ResolvedPlace | null>(null);
   const [travelDate, setTravelDate] = useState<string>(
-    initialDate && isFutureDate(initialDate) ? formatDateToStr(initialDate) : '',
+    initialDate && isBookableDate(initialDate) ? formatDateToStr(initialDate) : '',
   ); // Format: DD-MM-YYYY
   const [travelDateErr, setTravelDateErr] = useState<string>('');
   const [detourTime, setDetourTime] = useState<number>(0);
@@ -65,31 +91,49 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const [activePicker, setActivePicker] = useState<'date' | 'dep' | 'arr' | null>(null);
   const [hydrated, setHydrated] = useState<boolean>(false);
 
-  // Restore any in-progress draft so a user doesn't lose their inputs if they navigate away mid-form.
+  // A user who navigated away mid-form is asked whether to pick up their
+  // draft or start again. Nothing is saved over it until they've answered.
   useEffect(() => {
     let isMounted = true;
+    const restore = (draft: Partial<Booking>) => {
+      if (typeof draft.isDriving === 'boolean') setIsDriving(draft.isDriving);
+      if (typeof draft.toUni === 'boolean') setToUni(draft.toUni);
+      if (typeof draft.address === 'string') setAddress(draft.address);
+      if (typeof draft.detourTime === 'number') setDetourTime(draft.detourTime);
+      if (typeof draft.capacity === 'number') setNumSeats(draft.capacity);
+      if (typeof draft.depTime === 'string') setDepTime(draft.depTime);
+      if (typeof draft.arrTime === 'string') setArrTime(draft.arrTime);
+      // The draft's date if it can still be booked, else the calendar day they came from.
+      const parsed = typeof draft.travelDate === 'string' ? parseDateAsStr(draft.travelDate) : null;
+      if (parsed && isBookableDate(parsed)) setTravelDate(draft.travelDate as string);
+    };
+    const finish = () => { if (isMounted) setHydrated(true); };
+
     (async () => {
+      let draft: Partial<Booking> | null = null;
       try {
         const raw = await AsyncStorage.getItem(BOOKING_DRAFT_KEY);
-        if (raw && isMounted) {
-          const draft: Partial<Booking> = JSON.parse(raw);
-          if (typeof draft.isDriving === 'boolean') setIsDriving(draft.isDriving);
-          if (typeof draft.toUni === 'boolean') setToUni(draft.toUni);
-          if (typeof draft.address === 'string') setAddress(draft.address);
-          if (typeof draft.detourTime === 'number') setDetourTime(draft.detourTime);
-          if (typeof draft.capacity === 'number') setNumSeats(draft.capacity);
-          if (typeof draft.depTime === 'string') setDepTime(draft.depTime);
-          if (typeof draft.arrTime === 'string') setArrTime(draft.arrTime);
-          if (typeof draft.travelDate === 'string') {
-            const parsed = parseDateAsStr(draft.travelDate);
-            setTravelDate(parsed && isFutureDate(parsed) ? draft.travelDate : '');
-          }
-        }
+        draft = raw ? JSON.parse(raw) : null;
       } catch (err) {
         console.warn('Failed to restore booking draft:', err);
-      } finally {
-        if (isMounted) setHydrated(true);
       }
+      if (!isMounted) return;
+      if (!draft || !draftHasProgress(draft)) {
+        finish();
+        return;
+      }
+      const saved = draft;
+      Alert.alert(
+        'Continue where you left off?',
+        'You have a ride you started but didn\'t submit.',
+        [
+          // Start again: the blank form, with the calendar day if they came
+          // from one. The old draft is saved over once they start.
+          { text: 'No', style: 'cancel', onPress: finish },
+          { text: 'Yes', onPress: () => { if (isMounted) restore(saved); finish(); } },
+        ],
+        { cancelable: false },
+      );
     })();
     return () => {
       isMounted = false;
@@ -128,8 +172,19 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     return addrErr === '';
   };
 
+  // A draft saved while offering a ride can't stay one for someone with no car
+  // registered, and the seats can't stay above what the car holds.
+  useEffect(() => {
+    if (isDriving && !canDrive) setIsDriving(false);
+  }, [isDriving, canDrive]);
+  useEffect(() => {
+    if (carSeats !== null && numSeats > carSeats) setNumSeats(carSeats);
+  }, [carSeats, numSeats]);
+
   const validateDetailsStep = (): boolean => {
-    const result = validateDetailsStepFields({ travelDate, isDriving, detourTime, numSeats, depTime, arrTime });
+    const result = validateDetailsStepFields({
+      travelDate, isDriving, detourTime, numSeats, depTime, arrTime, carSeats: carSeats ?? undefined,
+    });
     setTravelDateErr(result.travelDateErr);
     setDetourTimeErr(result.detourTimeErr);
     setNumSeatsErr(result.numSeatsErr);
@@ -208,7 +263,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const stepLabels: Record<Step, string> = {
     trip: 'Step 1 of 3 · Trip',
     details: 'Step 2 of 3 · Details',
-    confirm: 'Step 3 of 3 · Confirm & submit',
+    confirm: 'Step 3 of 3 · Confirm & Submit',
   };
 
   const progressIndicator = (
@@ -223,6 +278,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   );
 
   if (step === 'confirm') {
+    const travelDay = parseDateAsStr(travelDate);
     return (
       <View style={localStyles.pageContainer}>
         <View style={localStyles.fixedHeader}>
@@ -230,40 +286,60 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <Ionicons name="chevron-back" size={24} color={colors.white} />
             <Text style={localStyles.backButtonLabel}>Back</Text>
           </Pressable>
-          <Text style={localStyles.headerTitle}>{isDriving ? 'Confirm your offer' : 'Confirm your request'}</Text>
+          <Text style={localStyles.headerTitle}>{isDriving ? 'Confirm Your Offer' : 'Confirm Your Request'}</Text>
           {progressIndicator}
         </View>
 
         <ScrollView contentContainerStyle={localStyles.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* Who's going: the car a driver is offering, or the details a rider's
+              driver will see - in place of a "Role" row in the table below. */}
+          <View style={localStyles.card}>
+            <View>
+              <Text style={localStyles.youTitle}>{isDriving ? "You're Offering a Ride" : "You're Requesting a Ride"}</Text>
+              <Text style={localStyles.youDetail}>
+                {[profileData?.name, profileData?.phoneNumber ? formatPhone(profileData.phoneNumber) : null].filter(Boolean).join('  ·  ')}
+              </Text>
+              {isDriving ? (
+                <>
+                  <View style={localStyles.youCarRow}>
+                    <Text style={[localStyles.youDetail, { marginTop: 0 }]}>
+                      {[profileData?.vehicleColor, profileData?.vehicleMake, profileData?.vehicleModel].filter(Boolean).join(' ') || 'Your car'}
+                    </Text>
+                    {profileData?.licensePlate ? <Text style={styles.plateBadge}>{profileData.licensePlate}</Text> : null}
+                  </View>
+                  <Text style={localStyles.youNote}>Riders matched to you will see your car and plate as well as your personal profile details.</Text>
+                </>
+              ) : (
+                <Text style={localStyles.youNote}>
+                  Your driver will see your first name, photo, degree, bio and pickup address once you're matched, and your number once the ride is confirmed.
+                </Text>
+              )}
+            </View>
+          </View>
+
           <View style={localStyles.card}>
             <View style={localStyles.summaryRow}>
-              <Text style={localStyles.summaryLabel}>{toUni ? 'Pickup' : 'Destination'}</Text>
-              <Text style={localStyles.summaryValue} numberOfLines={1}>{address}</Text>
+              <Text style={localStyles.summaryLabel}>Travel Date</Text>
+              <Text style={localStyles.summaryValue}>
+                {travelDay ? formatWeekdayDate(travelDay) : travelDate}
+              </Text>
             </View>
             <View style={localStyles.summaryRow}>
-              <Text style={localStyles.summaryLabel}>Travel date</Text>
-              <Text style={localStyles.summaryValue}>{travelDate}</Text>
-            </View>
-            <View style={localStyles.summaryRow}>
-              <Text style={localStyles.summaryLabel}>Earliest departure</Text>
+              <Text style={localStyles.summaryLabel}>Earliest Departure</Text>
               <Text style={localStyles.summaryValue}>{formatTime12h(depTime)}</Text>
             </View>
-            <View style={localStyles.summaryRow}>
-              <Text style={localStyles.summaryLabel}>Latest arrival</Text>
+            <View style={[localStyles.summaryRow, !isDriving && { borderBottomWidth: 0 }]}>
+              <Text style={localStyles.summaryLabel}>Latest Arrival</Text>
               <Text style={localStyles.summaryValue}>{formatTime12h(arrTime)}</Text>
-            </View>
-            <View style={localStyles.summaryRow}>
-              <Text style={localStyles.summaryLabel}>Role</Text>
-              <Text style={localStyles.summaryValue}>{isDriving ? 'Offering a ride' : 'Requesting a ride'}</Text>
             </View>
             {isDriving && (
               <>
                 <View style={localStyles.summaryRow}>
-                  <Text style={localStyles.summaryLabel}>Max detour</Text>
+                  <Text style={localStyles.summaryLabel}>Max Detour</Text>
                   <Text style={localStyles.summaryValue}>{detourTime} min</Text>
                 </View>
                 <View style={[localStyles.summaryRow, { borderBottomWidth: 0 }]}>
-                  <Text style={localStyles.summaryLabel}>Seats offered</Text>
+                  <Text style={localStyles.summaryLabel}>Seats Offered</Text>
                   <Text style={localStyles.summaryValue}>{numSeats}</Text>
                 </View>
               </>
@@ -271,14 +347,14 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           </View>
 
           <View style={localStyles.card}>
-            <Text style={localStyles.cardLabel}>Route preview</Text>
+            <Text style={localStyles.cardLabel}>Route Preview</Text>
             <RouteMapPreview address={addressPlace} toUni={toUni} />
           </View>
 
           <View style={localStyles.infoCard}>
             <View style={localStyles.infoHeaderRow}>
               <Ionicons name="information-circle-outline" size={16} color={colors.white} />
-              <Text style={localStyles.infoTitle}>What happens next</Text>
+              <Text style={localStyles.infoTitle}>What Happens Next</Text>
             </View>
             <Text style={localStyles.infoText}>
               {isDriving
@@ -294,7 +370,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               disabled={isSubmitting}
             >
               <Text style={styles.primaryButtonText}>
-                {isSubmitting ? 'Submitting...' : isDriving ? 'Submit offer' : 'Submit request'}
+                {isSubmitting ? 'Submitting...' : isDriving ? 'Submit Offer' : 'Submit Request'}
               </Text>
             </Pressable>
           </View>
@@ -311,7 +387,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <Ionicons name="chevron-back" size={24} color={colors.white} />
             <Text style={localStyles.backButtonLabel}>Back</Text>
           </Pressable>
-          <Text style={localStyles.headerTitle}>{isDriving ? 'Offer a ride' : 'Request a ride'}</Text>
+          <Text style={localStyles.headerTitle}>{isDriving ? 'Offer a Ride' : 'Request a Ride'}</Text>
           {progressIndicator}
         </View>
 
@@ -329,15 +405,21 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                     onPress={() => setIsDriving(false)}
                     style={[localStyles.segmentOption, !isDriving && localStyles.segmentOptionActive]}
                   >
-                    <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a ride</Text>
+                    <Text style={[localStyles.segmentText, !isDriving && localStyles.segmentTextActive]}>Requesting a Ride</Text>
                   </Pressable>
                   <Pressable
-                    onPress={() => setIsDriving(true)}
-                    style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive]}
+                    accessibilityState={{ disabled: !canDrive }}
+                    onPress={() => (canDrive ? setIsDriving(true) : setShowDriveNote(true))}
+                    style={[localStyles.segmentOption, isDriving && localStyles.segmentOptionActive, !canDrive && localStyles.segmentOptionDisabled]}
                   >
-                    <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a ride</Text>
+                    <Text style={[localStyles.segmentText, isDriving && localStyles.segmentTextActive]}>Offering a Ride</Text>
                   </Pressable>
                 </View>
+                {!canDrive && showDriveNote && (
+                  <Text style={[localStyles.warningText, { marginTop: 8 }]}>
+                    To offer a ride, register as a driver with your car in your Profile first.
+                  </Text>
+                )}
 
                 <Text style={[localStyles.cardLabel, { marginTop: 16 }]}>Direction</Text>
                 <View style={localStyles.segmentRow}>
@@ -345,20 +427,20 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                     onPress={() => setToUni(true)}
                     style={[localStyles.segmentOption, toUni && localStyles.segmentOptionActive]}
                   >
-                    <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To uni</Text>
+                    <Text style={[localStyles.segmentText, toUni && localStyles.segmentTextActive]}>To Uni</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => setToUni(false)}
                     style={[localStyles.segmentOption, !toUni && localStyles.segmentOptionActive]}
                   >
-                    <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From uni</Text>
+                    <Text style={[localStyles.segmentText, !toUni && localStyles.segmentTextActive]}>From Uni</Text>
                   </Pressable>
                 </View>
               </View>
 
               <View style={[localStyles.card, { zIndex: 5 }]}>
                 <Text style={localStyles.cardLabel}>Where</Text>
-                <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup address' : 'Destination address'}</Text>
+                <Text style={localStyles.fieldLabel}>{toUni ? 'Pickup Address' : 'Destination Address'}</Text>
                 <AddressAutocompleteInput
                   inputStyle={[localStyles.fieldInput, focusedField === 'address' && localStyles.fieldInputFocused]}
                   onBlur={() => setFocusedField(null)}
@@ -370,7 +452,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 />
                 {addrErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{addrErr}</Text>}
 
-                <Text style={[localStyles.fieldLabel, { marginTop: 16 }]}>Route preview</Text>
+                <Text style={[localStyles.fieldLabel, { marginTop: 16 }]}>Route Preview</Text>
                 <RouteMapPreview address={addressPlace} toUni={toUni} />
               </View>
 
@@ -391,7 +473,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           <Ionicons name="chevron-back" size={24} color={colors.white} />
           <Text style={localStyles.backButtonLabel}>Back</Text>
         </Pressable>
-        <Text style={localStyles.headerTitle}>Trip details</Text>
+        <Text style={localStyles.headerTitle}>Trip Details</Text>
         {progressIndicator}
       </View>
 
@@ -404,7 +486,8 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           >
             <View style={localStyles.card}>
               <Text style={localStyles.cardLabel}>When</Text>
-              <Text style={localStyles.fieldLabel}>Travel date</Text>
+              <Text style={localStyles.fieldLabel}>Travel Date</Text>
+              <Text style={localStyles.fieldHint}>Up to {BOOKING_HORIZON_DAYS} days ahead.</Text>
               <Pressable
                 onPress={() => {
                   setFocusedField('travelDate');
@@ -419,7 +502,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               </Pressable>
               {travelDateErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{travelDateErr}</Text>}
 
-              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest departure</Text>
+              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Earliest Departure</Text>
               <Pressable
                 onPress={() => {
                   setFocusedField('depTime');
@@ -434,7 +517,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               </Pressable>
               {depTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{depTimeErr}</Text>}
 
-              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest arrival</Text>
+              <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Latest Arrival</Text>
               <Pressable
                 onPress={() => {
                   setFocusedField('arrTime');
@@ -456,8 +539,8 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 (backend/server/matching/riderPolicy.ts). */}
             {isDriving && (
               <View style={localStyles.card}>
-                <Text style={localStyles.cardLabel}>Driver details</Text>
-                <Text style={localStyles.fieldLabel}>Max detour (mins)</Text>
+                <Text style={localStyles.cardLabel}>Driver Details</Text>
+                <Text style={localStyles.fieldLabel}>Max Detour (mins)</Text>
                 <Text style={localStyles.fieldHint}>
                   How much longer your trip can take to pick riders up.
                 </Text>
@@ -465,8 +548,11 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
                 {detourTimeErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{detourTimeErr}</Text>}
                 {detourTimeErr === '' && detourWarning !== '' && <Text style={localStyles.warningText}>{detourWarning}</Text>}
 
-                <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats available</Text>
-                <NumberStepper max={12} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
+                <Text style={[localStyles.fieldLabel, { marginTop: 12 }]}>Seats Available</Text>
+                {carSeats !== null && (
+                  <Text style={localStyles.fieldHint}>Up to {carSeats} - the passenger seats in your car.</Text>
+                )}
+                <NumberStepper max={carSeats ?? MAX_CAR_SEATS} min={1} onChange={setNumSeats} style={localStyles.fieldInput} value={numSeats} />
                 {numSeatsErr !== '' && <Text style={[styles.errorText, styles.errorTextOnDark]}>{numSeatsErr}</Text>}
               </View>
             )}
@@ -478,6 +564,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
           <DatePickerModal
             initialDate={parseDateAsStr(travelDate)}
+            maxDate={latestBookingDate()}
             onClose={() => {
               setActivePicker(null);
               setFocusedField(null);
@@ -492,7 +579,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
           <TimePickerModal
             initialTime={depTime}
-            label="Earliest departure"
+            label="Earliest Departure"
             onClose={() => {
               setActivePicker(null);
               setFocusedField(null);
@@ -507,7 +594,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
 
           <TimePickerModal
             initialTime={arrTime}
-            label="Latest arrival"
+            label="Latest Arrival"
             onClose={() => {
               setActivePicker(null);
               setFocusedField(null);
@@ -618,6 +705,9 @@ const localStyles = StyleSheet.create({
   segmentOptionActive: {
     backgroundColor: colors.darkBlue,
   },
+  segmentOptionDisabled: {
+    opacity: 0.5,
+  },
   segmentText: {
     color: colors.white,
     opacity: 0.75,
@@ -695,6 +785,30 @@ const localStyles = StyleSheet.create({
     fontWeight: '600',
     maxWidth: '60%',
     textAlign: 'right',
+  },
+  youTitle: {
+    fontFamily: 'Marcellus_400Regular',
+    fontSize: 16,
+    color: colors.white,
+  },
+  youCarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  youDetail: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  youNote: {
+    color: colors.whiteA75,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 6,
   },
   infoCard: {
     borderRadius: 16,

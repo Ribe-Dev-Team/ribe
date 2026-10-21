@@ -26,16 +26,49 @@ export interface RideRequest {
   arriveAt?: Timestamp;
 }
 
-export interface TripStop {
-  requestId: string;
-  pickupAt: Timestamp;
-  arriveAt: Timestamp;
+/** One rider's place in a car's timetable. */
+/** One rider's cost split, worked out by the matching runner
+ *  (backend/server/costSplitting/tripCosts.ts). Excludes parking. */
+export interface RiderCost {
+  detourDistanceKm: number;
+  detourCost: number;            // $
+  passengerContribution: number; // $, their share of the trip's fuel + their detour
 }
 
+/** The car's half of the split: the inputs and the per-person share. */
+export interface TripCosts {
+  medianFuelPrice: number;   // c/L
+  fuelType: string;
+  fuelSource: 'servo-saver' | 'fallback';
+  vehicleEconomy: number;    // L/100km
+  tripDistanceKm: number;    // the driver's own trip, no detours
+  tripParticipants: number;  // driver included
+  fuelCost: number;          // $
+  baseTripContribution: number; // $, fuelCost / tripParticipants
+  calculatedAt: Timestamp;
+}
+
+export interface TripStop {
+  requestId: string;
+  pickupAt: Timestamp; // at their door going to campus; the driver's departure leaving it
+  arriveAt: Timestamp; // at their own destination
+  cost?: RiderCost;    // absent until the runner has priced the car
+}
+
+/** A car's timetable, computed by the matcher from real drive times, with the
+ *  car's cost split once the runner has priced it. The app only reads costs. */
 export interface TripSchedule {
-  departAt: Timestamp;
-  arriveAt: Timestamp;
-  stops: TripStop[];
+  departAt: Timestamp; // the driver sets off
+  arriveAt: Timestamp; // the driver reaches their own destination
+  stops: TripStop[];   // every rider, in pickup order
+  /*
+  Set when a rider cancelled and their stop was simply taken out
+  (cancelConfirmedRequest): the others' times are still the old route's, so the
+  runner re-plans it on its next run, which also clears this.
+  */
+  needsReplan?: boolean;
+  costs?: TripCosts;
+  emissionsSavedKg?: number;
 }
 
 export interface RideOffer {
@@ -52,7 +85,21 @@ export interface RideOffer {
   seatCapacity: number;
   createdAt?: string;
   pendingRequestId?: string | null;
+  /*
+  The uid of the rider in that pending slot. The published Firestore rules let
+  a user update someone else's offer only when this matches them, and the
+  rider's Accept/Decline updates the driver's offer - so it's required, not
+  informational. Cleared again once the match is confirmed or declined.
+  */
   matchedRiderId?: string;
+  /*
+  Who has accepted the rider in the pending slot so far. A match is confirmed
+  only once BOTH have, in either order: whoever accepts second confirms it.
+  Pending-slot fields, so they're removed whenever the slot is freed and can't
+  carry over to the next rider matched.
+  */
+  riderAccepted?: boolean;
+  driverAccepted?: boolean;
   confirmedRequestIds?: string[];
   acceptingMore?: boolean;
   matchedAt?: Timestamp;

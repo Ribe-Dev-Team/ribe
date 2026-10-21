@@ -167,7 +167,7 @@ export default function TimePickerModal({ visible, label, initialTime, onSelect,
               onPress={() => onSelect(toTimeString(hourIndex, minuteIndex, periodIndex))}
               style={localStyles.confirmButton}
             >
-              <Text style={localStyles.confirmButtonText}>Set time</Text>
+              <Text style={localStyles.confirmButtonText}>Set Time</Text>
             </Pressable>
           </View>
         </View>

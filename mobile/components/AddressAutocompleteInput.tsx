@@ -39,6 +39,9 @@ export default function AddressAutocompleteInput({
   const sessionTokenRef = useRef(createSessionToken());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastResolvedDescription = useRef<string | null>(null);
+  const inputRef = useRef<TextInput>(null);
+  // The text is a picked suggestion, not typed - until the user types again.
+  const picked = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -47,6 +50,7 @@ export default function AddressAutocompleteInput({
   }, []);
 
   const handleChangeText = (text: string) => {
+    picked.current = false;
     onChangeText(text);
     setShowDropdown(true);
 
@@ -69,6 +73,9 @@ export default function AddressAutocompleteInput({
   };
 
   const handleSelectPrediction = async (prediction: PlacePrediction) => {
+    // Picking an address finishes the field: close the keyboard.
+    picked.current = true;
+    inputRef.current?.blur();
     setShowDropdown(false);
     setPredictions([]);
     onChangeText(prediction.description);
@@ -89,7 +96,9 @@ export default function AddressAutocompleteInput({
     setTimeout(() => setShowDropdown(false), 150);
     onBlur?.();
 
-    if (!value.trim() || lastResolvedDescription.current === value) return;
+    // Not when a suggestion was picked: the blur can still see the half-typed
+    // text, and geocoding that could land after the picked place, replacing it.
+    if (picked.current || !value.trim() || lastResolvedDescription.current === value) return;
     // The user typed/edited an address without picking a suggestion - fall back to geocoding it directly.
     const typedValue = value;
     geocodeAddress(typedValue).then((resolved) => {
@@ -111,6 +120,7 @@ export default function AddressAutocompleteInput({
           if (predictions.length) setShowDropdown(true);
         }}
         onLayout={(event) => setInputHeight(event.nativeEvent.layout.height)}
+        ref={inputRef}
         placeholder={placeholder}
         placeholderTextColor={colors.whiteA40}
         style={inputStyle}

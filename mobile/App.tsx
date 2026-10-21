@@ -19,7 +19,7 @@ import { RideCardProps } from './components/RideCard';
 import AuthPage from './pages/AuthPage';
 import HomePage from './pages/HomePage';
 import CalendarPage, { Ride } from './pages/CalendarPage';
-import DashboardPage, { DashboardMode } from './pages/DashboardPage';
+import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import RideDetailPage from './pages/RideDetailPage';
 import { rideTimeSummary } from './services/rideData';
@@ -27,7 +27,8 @@ import DriverProfilePage from './pages/DriverProfilePage';
 import DriverRegistrationPage from './pages/DriverRegistrationPage';
 import BookingPage from './pages/BookingPage';
 import {
-  acceptMatch, cancelConfirmedRequest, cancelOffer, declineMatch, deleteRideRequest, setOfferLocked, updateOfferSeats,
+  acceptMatch, cancelConfirmedRequest, cancelOffer, declineMatch, deleteRideRequest, driverAcceptMatch,
+  driverDeclineMatch, setOfferLocked, updateOfferSeats,
 } from './pages/schema/firebaseBookingMethods';
 import { db } from './firebaseConfig';
 import {
@@ -56,7 +57,12 @@ function toDetailRide(ride: RideCardProps): Ride {
     driver: ride.driver.name,
     driverUid: ride.driver.uid,
     vehicle: ride.driver.vehicle,
+    youAccepted: ride.youAccepted,
+    otherAccepted: ride.otherAccepted,
+    rider: ride.rider,
     co2SavedKg: ride.co2SavedKg,
+    costSplit: ride.costSplit,
+    seats: ride.seats,
   };
 }
 
@@ -65,6 +71,19 @@ interface ActionableRide {
   rideId?: string;
   kind?: 'request' | 'offer';
   status: 'confirmed' | 'awaiting' | 'pending' | 'cancelled';
+  /** Awaiting only: this person has already accepted the match. */
+  youAccepted?: boolean;
+}
+
+/** Every action a ride can offer; which ones depends on who and what state.
+ *  One type for all of them, so a card can take just Accept/Decline from it. */
+interface RideActions {
+  onAccept?: () => void;
+  onDecline?: () => void;
+  onCancel?: () => void;
+  onEdit?: () => void;
+  onSetLocked?: (locked: boolean) => void;
+  onChangeSeats?: (seats: number) => void;
 }
 
 function errorMessage(error: unknown): string {
@@ -72,22 +91,62 @@ function errorMessage(error: unknown): string {
 }
 
 // Shared across Calendar, Home, and Dashboard so the ride details page always offers
-// the same Accept/Decline (awaiting) or Cancel (confirmed/pending) actions, regardless
+// the same Accept/Decline (awaiting), Edit/Cancel, or a driver's Seats/Lock actions, regardless
 // of which page you opened it from.
 //
 // Accept and Decline write to Firestore and then call `onChanged`, which sends the
 // user back to the list AND remounts it. Without the remount the list keeps
 // rendering the status it fetched on mount, so an accepted ride would appear to
 // stay in Awaiting Approval until the app was restarted.
+// Editing a booking isn't built yet; the details page's Edit button says so.
+function editComingSoon(kind?: 'request' | 'offer') {
+  Alert.alert(
+    kind === 'offer' ? 'Edit driving offer' : 'Edit ride request',
+    kind === 'offer' ? 'Editing this drive offer is coming soon.' : 'Editing this request is coming soon.',
+  );
+}
+
 function buildRideActions(
   ride: ActionableRide,
   driverName: string,
   onChanged: () => void,
-) {
-  // A driver never answers a match - only the rider does. What a driver can do,
-  // whatever state the offer is in, is remove it.
+): RideActions {
+  // A match needs both sides to accept. Accept is offered until you have;
+  // Decline until the match is confirmed.
+  const answering = ride.status === 'awaiting' && Boolean(ride.rideId);
+
+  // A driver answers the rider found for them, and whatever state the offer is
+  // in can remove it, lock it, or change its seats.
   if (ride.kind === 'offer') {
     return {
+      onEdit: () => editComingSoon('offer'),
+      ...(answering && !ride.youAccepted ? {
+        onAccept: async () => {
+          try {
+            const answer = await driverAcceptMatch(ride.rideId!);
+            Alert.alert(
+              answer === 'confirmed' ? 'Rider confirmed' : 'Rider accepted',
+              answer === 'confirmed'
+                ? 'They have accepted too, so they are now confirmed on this drive.'
+                : 'Waiting for the rider to accept as well.',
+            );
+            onChanged();
+          } catch (error) {
+            Alert.alert('Could not accept rider', errorMessage(error));
+          }
+        },
+      } : {}),
+      ...(answering ? {
+        onDecline: async () => {
+          try {
+            await driverDeclineMatch(ride.rideId!);
+            Alert.alert('Rider declined', 'They will be matched with another driver, and your seat is open again.');
+            onChanged();
+          } catch (error) {
+            Alert.alert('Could not decline rider', errorMessage(error));
+          }
+        },
+      } : {}),
       onCancel: async () => {
         if (!ride.rideId) {
           Alert.alert('Not available yet', 'Removing an offer from this view is not wired up.');
@@ -132,19 +191,26 @@ function buildRideActions(
     const approvable = Boolean(ride.rideId);
 
     return {
-      onAccept: async () => {
-        if (!approvable) {
-          Alert.alert('Not available yet', 'Approving a ride from this view is not wired up.');
-          return;
-        }
-        try {
-          await acceptMatch(ride.rideId!);
-          Alert.alert('Ride accepted', `Trip with ${driverName} confirmed.`);
-          onChanged();
-        } catch (error) {
-          Alert.alert('Could not accept ride', errorMessage(error));
-        }
-      },
+      ...(ride.youAccepted ? {} : {
+        onAccept: async () => {
+          if (!approvable) {
+            Alert.alert('Not available yet', 'Approving a ride from this view is not wired up.');
+            return;
+          }
+          try {
+            const answer = await acceptMatch(ride.rideId!);
+            Alert.alert(
+              'Ride accepted',
+              answer === 'confirmed'
+                ? `Trip with ${driverName} confirmed.`
+                : `Waiting for ${driverName} to accept as well.`,
+            );
+            onChanged();
+          } catch (error) {
+            Alert.alert('Could not accept ride', errorMessage(error));
+          }
+        },
+      }),
       onDecline: async () => {
         if (!approvable) {
           Alert.alert('Not available yet', 'Declining a ride from this view is not wired up.');
@@ -167,6 +233,7 @@ function buildRideActions(
   // above, which the matcher relies on.
   const confirmed = ride.status === 'confirmed';
   return {
+    onEdit: () => editComingSoon('request'),
     onCancel: async () => {
       if (!ride.rideId) {
         Alert.alert('Not available yet', 'Cancelling a ride from this view is not wired up.');
@@ -215,6 +282,9 @@ function AppContent() {
     onAccept?: () => void;
     onDecline?: () => void;
     onCancel?: () => void;
+    onEdit?: () => void;
+    onSetLocked?: (locked: boolean) => void;
+    onChangeSeats?: (seats: number) => void;
   } | null>(null);
   const [viewingDriver, setViewingDriver] = useState<RideCardProps | null>(null);
   const [showBooking, setShowBooking] = useState(false);
@@ -222,15 +292,16 @@ function AppContent() {
   const [showDriverRegistration, setShowDriverRegistration] = useState(false);
   // Bumped after a write so the ride lists remount and refetch. See afterRideChange.
   const [dataVersion, setDataVersion] = useState(0);
-  // The Dashboard's Rider/Driver toggle lives here, not in the page: the page is
-  // remounted after every write (see afterRideChange) and on the way back from
-  // a ride's details, which would otherwise flip it back to Rider each time.
-  const [dashboardMode, setDashboardMode] = useState<DashboardMode>('rider');
+  // Whether the user has a drive offer that isn't cancelled - from the offers
+  // listener below. Anyone can post a drive from the booking page, registered
+  // driver or not, so this keeps My Drives for them too.
+  const [hasDrives, setHasDrives] = useState(false);
   const lastScrollY = useRef(0);
   const wasLoggedIn = useRef(false);
 
   const {
     user,
+    profileData,
     loading,
     submitting,
     error,
@@ -239,11 +310,20 @@ function AppContent() {
     handleSignup,
     handleLogout,
   } = useAuth();
+
+  // My Drives is its own tab for drivers - registered ones, and anyone with a
+  // drive posted. Everyone else gets no tab for it, and is moved off it if it
+  // goes (their last drive was removed, say).
+  const showDrives = Boolean(profileData?.isDriver) || hasDrives;
+  useEffect(() => {
+    if (!showDrives && activeTab === 'drives') setActiveTab('home');
+  }, [showDrives, activeTab]);
   
   // Global persistent Firestore listeners for real-time notifications
   useEffect(() => {
     if (!user?.uid) {
       setNotificationsList([]);
+      setHasDrives(false);
       return;
     }
 
@@ -425,6 +505,7 @@ function AppContent() {
     // Listener for Ride Offers
     const unsubOffers = onSnapshot(offersQuery, (snapshot) => {
       currentOfferDocs = snapshot.docs;
+      setHasDrives(snapshot.docs.some((d) => d.data()['status'] !== 'cancelled'));
 
       snapshot.docChanges().forEach((change) => {
         if (change.type !== 'removed') processOfferState(change.doc.id, change.doc.data(), 'driver');
@@ -510,6 +591,9 @@ function AppContent() {
           onAccept={selectedRide.onAccept}
           onDecline={selectedRide.onDecline}
           onCancel={selectedRide.onCancel}
+          onEdit={selectedRide.onEdit}
+          onSetLocked={selectedRide.onSetLocked}
+          onChangeSeats={selectedRide.onChangeSeats}
         />
       );
     }
@@ -528,15 +612,15 @@ function AppContent() {
           />
         );
       case 'rides':
+      case 'drives':
         return (
           <DashboardPage
-            key={dataVersion}
+            key={`${activeTab}-${dataVersion}`}
             onScroll={handleScroll}
-            onSeeRideDetails={(ride) => openRideDetails(ride, 'My Rides')}
+            onSeeRideDetails={(ride) => openRideDetails(ride, activeTab === 'drives' ? 'My Drives' : 'My Rides')}
             onOpenDriverProfile={setViewingDriver}
             rideActions={rideActionsFor}
-            mode={dashboardMode}
-            onModeChange={setDashboardMode}
+            mode={activeTab === 'drives' ? 'driver' : 'rider'}
           />
         );
       case 'profile':
@@ -597,6 +681,7 @@ function AppContent() {
       <AppNavigation
         activeTab={activeTab}
         onChange={changeTab}
+        showDrives={showDrives}
         hidden={navHidden || !!selectedRide || !!viewingDriver || showBooking || showDriverRegistration}
       />
     </SafeAreaView>

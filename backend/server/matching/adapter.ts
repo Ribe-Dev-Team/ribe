@@ -9,6 +9,7 @@ import {
   CalendarDate, CAMPUS_TIME_ZONE, calendarDateIn, dateKey, isHhMm, zonedDateTime,
 } from './melbourneTime';
 import { MONASH_CLAYTON_LOCATION } from '../../../mobile/services/googlePlaces';
+import { BOOKING_HORIZON_DAYS } from '../../../mobile/pages/schema/booking.schema';
 
 /**
  * Firestore bookings -> matcher inputs.
@@ -26,6 +27,11 @@ export const MONASH_CLAYTON: Coord = { lat: MONASH_CLAYTON_LOCATION.lat, lon: MO
 /** The only stored status the matcher may pick up. The app's 'pending' means
  *  "not matched yet" (the matcher's 'unassigned') - see matchStatus.ts. */
 export const MATCHABLE_APP_STATUS = 'pending';
+
+/** An offer that is done - full, or locked with passengers - and so out of
+ *  matching. The runner still reads it, to keep its timetable and costs up to
+ *  date (`DocBatch.settledOffers`). */
+export const SETTLED_OFFER_STATUS = 'confirmed';
 
 export interface RequestDoc {
   id: string;
@@ -52,6 +58,8 @@ export interface OfferDoc extends RequestDoc {
   /** The riders the stored confirmed timetable lists, in order - absent when
    *  the car has no timetable stored (see `ScheduleWrite` in writes.ts). */
   scheduledRiders?: string[];
+  /** Whether that stored timetable carries the car's cost split. */
+  scheduleCosted?: boolean;
 }
 
 export type SkipReason =
@@ -59,6 +67,7 @@ export type SkipReason =
   | 'NO_COORD'                 // address never resolved to a point
   | 'BAD_TIME'                 // missing date or a malformed HH:mm
   | 'DEPARTED'                 // the trip is already over or under way
+  | 'TOO_FAR_AHEAD'            // beyond BOOKING_HORIZON_DAYS; matched once it's within
   | 'SLOT_TAKEN'               // offer already holds a rider awaiting approval
   | 'LOCKED'                   // the driver stopped taking passengers
   | 'CONFIRMED_RIDER_UNKNOWN'; // a confirmed rider's request can't be read back
@@ -78,6 +87,9 @@ export interface DocBatch {
   direction: Direction;
   requests: RequestDoc[];
   offers: OfferDoc[];
+  /** Done cars (SETTLED_OFFER_STATUS) on this date and direction. Never
+   *  matched; read only so their timetable can be filled in or priced. */
+  settledOffers: OfferDoc[];
 }
 
 const directionOf = (doc: RequestDoc): Direction => (doc.toUni ? 'TO_CAMPUS' : 'FROM_CAMPUS');
@@ -87,13 +99,19 @@ function endpoints(doc: RequestDoc & { coord: Coord; }, campus: Coord): [Coord, 
   return doc.toUni ? [doc.coord, campus] : [campus, doc.coord];
 }
 
+/** Whole calendar days from `from` to `to`: 1 for tomorrow. */
+function daysBetween(from: CalendarDate, to: CalendarDate): number {
+  return (Date.UTC(to.year, to.month - 1, to.day) - Date.UTC(from.year, from.month - 1, from.day)) / 86_400_000;
+}
+
 function hasValidTimes(doc: RequestDoc): boolean {
   return !Number.isNaN(doc.date.getTime()) && isHhMm(doc.departureTime) && isHhMm(doc.arrivalTime);
 }
 
 /**
  * Sort matchable bookings into batches by date and direction, and report every
- * booking left out with the reason.
+ * booking left out with the reason. Done cars go in too, as `settledOffers`,
+ * for their timetables - unless their trip is already over.
  *
  * Needs no travel times, so the runner can size each batch's Google matrix to
  * that batch alone rather than paying for legs between different days.
@@ -110,9 +128,10 @@ export function groupIntoBatches(
   const place = (doc: RequestDoc, kind: 'request' | 'offer'): DocBatch | null => {
     const skip = (reason: SkipReason) => { skipped.push({ kind, id: doc.id, reason }); return null; };
 
-    if (doc.status !== MATCHABLE_APP_STATUS) return skip('NOT_MATCHABLE');
-    if (kind === 'offer' && (doc as OfferDoc).pendingRequestId) return skip('SLOT_TAKEN');
-    if (kind === 'offer' && (doc as OfferDoc).acceptingMore === false) return skip('LOCKED');
+    const settled = kind === 'offer' && doc.status === SETTLED_OFFER_STATUS;
+    if (doc.status !== MATCHABLE_APP_STATUS && !settled) return skip('NOT_MATCHABLE');
+    if (!settled && kind === 'offer' && (doc as OfferDoc).pendingRequestId) return skip('SLOT_TAKEN');
+    if (!settled && kind === 'offer' && (doc as OfferDoc).acceptingMore === false) return skip('LOCKED');
     if (!doc.coord) return skip('NO_COORD');
     if (!hasValidTimes(doc)) return skip('BAD_TIME');
 
@@ -121,19 +140,26 @@ export function groupIntoBatches(
     // they needed to arrive by has passed.
     const endsAt = zonedDateTime(date, kind === 'offer' ? doc.departureTime : doc.arrivalTime, timeZone);
     if (endsAt <= now) return skip('DEPARTED');
+    // The app books at most BOOKING_HORIZON_DAYS ahead; anything further out
+    // (booked before that limit, or written some other way) waits until it's
+    // within reach. A done car is past matching, so it's never held back.
+    if (!settled && daysBetween(calendarDateIn(now, timeZone), date) > BOOKING_HORIZON_DAYS) return skip('TOO_FAR_AHEAD');
 
     const direction = directionOf(doc);
     const batchKey = `${dateKey(date)}_${direction}`;
     let batch = byKey.get(batchKey);
     if (!batch) {
-      batch = { batchKey, date, direction, requests: [], offers: [] };
+      batch = { batchKey, date, direction, requests: [], offers: [], settledOffers: [] };
       byKey.set(batchKey, batch);
     }
     return batch;
   };
 
   for (const doc of requestDocs) place(doc, 'request')?.requests.push(doc);
-  for (const doc of offerDocs) place(doc, 'offer')?.offers.push(doc);
+  for (const doc of offerDocs) {
+    const batch = place(doc, 'offer');
+    if (batch) (doc.status === SETTLED_OFFER_STATUS ? batch.settledOffers : batch.offers).push(doc);
+  }
 
   const batches = [...byKey.values()].sort((a, b) => a.batchKey.localeCompare(b.batchKey));
   return { batches, skipped };
@@ -151,7 +177,7 @@ export function batchPoints(
 ): Coord[] {
   const points: Coord[] = [campus];
   for (const r of batch.requests) if (r.coord) points.push(r.coord);
-  for (const o of batch.offers) {
+  for (const o of [...batch.offers, ...batch.settledOffers]) {
     if (o.coord) points.push(o.coord);
     for (const id of o.confirmedRequestIds ?? []) {
       const coord = confirmedById.get(id)?.coord;
@@ -254,11 +280,11 @@ function toMatchRequest(
  *    window who offered 15 minutes of detour can really only give 10.
  *
  *  - Their `travelWindow` (what the time filter compares against a rider's) is
- *    when the car could be at a rider's door. Leaving campus, every passenger
- *    boards at departure, so it is exactly the departure time. Heading to
- *    campus, pickups happen somewhere along the drive, and the drive can be
- *    planned as late as the driver's arrival time - so it spans departure to
- *    arrival. Generous on purpose, like the corridor test, because a pair
+ *    when the car could be at a rider's door, from departure to arrival either
+ *    way. Heading to campus, pickups happen somewhere along a drive that can be
+ *    planned as late as the driver's arrival time. Leaving campus, everyone
+ *    boards at departure, and the car can wait at campus for a rider who's
+ *    ready later than the driver. Generous on purpose, like the corridor test, because a pair
  *    wrongly rejected here is never seen again. `addPassenger` then checks
  *    precisely that nobody is collected before they're ready and everyone
  *    arrives in time.
@@ -289,7 +315,11 @@ function toMatchOffer(
     currTripDuration = ev.totalMinutes;
   }
 
-  const lastPickup = doc.toUni ? new Date(Math.max(departAt.getTime(), driverArriveBy.getTime())) : departAt;
+  // The latest the car could be at a rider's: heading to campus, anywhere up
+  // to the driver's arrival; leaving it, the car can wait at campus for a
+  // rider until then too (`slideMinutes`). Generous either way - addPassenger
+  // checks everyone really arrives in time.
+  const lastPickup = new Date(Math.max(departAt.getTime(), driverArriveBy.getTime()));
 
   return {
     offerId: doc.id,

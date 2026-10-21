@@ -5,7 +5,7 @@
 
 import { addRideRequest, addRideOffer } from '../../mobile/pages/schema/firebaseBookingMethods';
 import { db } from '../../mobile/firebaseConfig';
-import { collection, doc, getDoc, getDocs, query } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, setDoc } from 'firebase/firestore';
 import { Booking, Coord } from '../../mobile/pages/schema/booking.schema';
 
 // The mocked Firestore/AsyncStorage use real setTimeout delays internally;
@@ -27,7 +27,7 @@ user before any other validation runs. Omitting it here made every test in this
 file fail on that check rather than on the behaviour it meant to exercise.
 */
 const baseRiderBooking: Booking = {
-  userId: 'test-user-123',
+  userId: 'mock-user-id',
   isDriving: false,
   toUni: true,
   address: '123 Main St',
@@ -44,6 +44,14 @@ const baseDriverBooking: Booking = {
   userId: 'test-user-123',
 };
 
+// Offering a ride needs a registered driver with a car (addRideOffer checks).
+// The test user is one, with 4 passenger seats; jest.setup.js empties the mock
+// after every test, so it's registered again before each.
+const registerTestDriver = (fields: Record<string, unknown> = {}) => setDoc(doc(db, 'users', 'test-user-123'), {
+  isDriver: true, vehicleMake: 'Toyota', vehicleModel: 'Corolla', licensePlate: 'ABC123', seatsAvailable: 4, ...fields,
+});
+beforeEach(() => registerTestDriver());
+
 describe('addRideRequest', () => {
   test('persists a valid ride request to Firestore', async () => {
     const id = await addRideRequest(baseRiderBooking);
@@ -56,9 +64,9 @@ describe('addRideRequest', () => {
     expect(data['departureTime']).toBe('08:00');
     expect(data['arrivalTime']).toBe('09:00');
     // the doc is stamped with its own generated id after creation
-    expect(data.requestID).toBe(id);
-    expect(data.userId).toBe('test-user-123');
-    expect(data.status).toBe('pending');
+    expect(data['requestID']).toBe(id);
+    expect(data['userId']).toBe('mock-user-id');
+    expect(data['status']).toBe('pending');
   });
 
   test('requires a signed-in user', async () => {
@@ -106,6 +114,37 @@ describe('addRideRequest', () => {
   });
 });
 
+describe('addRideOffer - who can offer, and how many seats', () => {
+  test('refuses someone who is not a registered driver', async () => {
+    await registerTestDriver({ isDriver: false, licensePlate: null, seatsAvailable: null });
+    await expect(addRideOffer(baseDriverBooking)).rejects.toThrow(/Register as a driver/);
+    expect((await getDocs(query(collection(db, 'rideOffers')))).size).toBe(0);
+  });
+
+  test('refuses a driver whose car is not registered', async () => {
+    await registerTestDriver({ licensePlate: null });
+    await expect(addRideOffer(baseDriverBooking)).rejects.toThrow(/Register as a driver/);
+  });
+
+  test('refuses more seats than the car has', async () => {
+    await registerTestDriver({ seatsAvailable: 2 });
+    await expect(addRideOffer({ ...baseDriverBooking, capacity: 3 })).rejects.toThrow(
+      'Your car has 2 passenger seats, so offer 2 or fewer.',
+    );
+  });
+
+  test("accepts every seat the car has", async () => {
+    await registerTestDriver({ seatsAvailable: 3 });
+    await expect(addRideOffer({ ...baseDriverBooking, capacity: 3 })).resolves.toEqual(expect.any(String));
+  });
+
+  test('takes the car from driver registration when the profile has lost it', async () => {
+    await registerTestDriver({ isDriver: false, licensePlate: null, seatsAvailable: null });
+    await setDoc(doc(db, 'drivers', 'test-user-123'), { licensePlate: 'ABC123', seatsAvailable: 3 });
+    await expect(addRideOffer({ ...baseDriverBooking, capacity: 3 })).resolves.toEqual(expect.any(String));
+  });
+});
+
 describe('addRideOffer', () => {
   test('persists a valid ride offer to Firestore', async () => {
     const id = await addRideOffer(baseDriverBooking);
@@ -113,10 +152,10 @@ describe('addRideOffer', () => {
     const snapshot = await getDoc(doc(db, 'rideOffers', id));
     expect(snapshot.exists()).toBe(true);
     const data = snapshot.data();
-    expect(data.maxDetourTime).toBe(15);
-    expect(data.seatCapacity).toBe(3);
-    expect(data.offerID).toBe(id);
-    expect(data.userId).toBe('test-user-123');
+    expect(data['maxDetourTime']).toBe(15);
+    expect(data['seatCapacity']).toBe(3);
+    expect(data['offerID']).toBe(id);
+    expect(data['userId']).toBe('test-user-123');
   });
 
   test('requires a signed-in user', async () => {
@@ -140,13 +179,13 @@ describe('addRideOffer', () => {
 
   test('rejects a seat capacity below 1', async () => {
     await expect(addRideOffer({ ...baseDriverBooking, capacity: 0 })).rejects.toThrow(
-      /require 1 to 12 seats/,
+      /require 1 to 7 seats/,
     );
   });
 
-  test('rejects a seat capacity above 12', async () => {
-    await expect(addRideOffer({ ...baseDriverBooking, capacity: 13 })).rejects.toThrow(
-      /require 1 to 12 seats/,
+  test('rejects a seat capacity above 7', async () => {
+    await expect(addRideOffer({ ...baseDriverBooking, capacity: 8 })).rejects.toThrow(
+      /require 1 to 7 seats/,
     );
   });
 

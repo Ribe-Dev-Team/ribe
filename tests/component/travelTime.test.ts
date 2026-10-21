@@ -7,9 +7,12 @@ uses it - `npm run test:live` checks the real APIs.
   buildGoogleTravelTimeMatrix   legacy Distance Matrix client
   buildRoutesTravelTimeMatrix   Routes API client (the runner's default)
 
-For both: converting Google's durations to minutes, request shape, removing
-duplicate points, splitting big requests into chunks, what happens to a leg
-Google can't route, and errors.
+For both: converting Google's durations to minutes and distances to km (cost
+splitting prices cars from the same matrix), request shape, removing duplicate
+points, splitting big requests into chunks, what happens to a leg Google can't
+route, and errors.
+
+The fakes answer 10 m per second of driving, so a leg's km is its seconds / 100.
 
 Not tested here: SyntheticTravelTime itself, though most other test files use it.
 */
@@ -44,7 +47,7 @@ function fakeFetch(seconds: (originIdx: number, destIdx: number) => number | nul
             const s = seconds(i, j);
             return s === null
               ? { status: 'ZERO_RESULTS' }
-              : { status: 'OK', duration: { value: s } };
+              : { status: 'OK', duration: { value: s }, distance: { value: s * 10 } };
           }),
         })),
       }),
@@ -62,6 +65,14 @@ describe('buildGoogleTravelTimeMatrix', () => {
     expect(t).toBeInstanceOf(PrecomputedTravelTime);
     expect(t.minutes(A, B)).toBeCloseTo(10, 6);
     expect(t.minutes(B, C)).toBeCloseTo(10, 6);
+  });
+
+  it('answers km() from the same response, converting metres to km', async () => {
+    const { impl } = fakeFetch(() => 600);
+
+    const t = await buildGoogleTravelTimeMatrix([A, B], { apiKey: 'k', fetchImpl: impl });
+
+    expect(t.km(A, B)).toBeCloseTo(6, 6);
   });
 
   it('dedupes repeated points before building the matrix', async () => {
@@ -101,6 +112,8 @@ describe('buildGoogleTravelTimeMatrix', () => {
 
     expect(t.minutes(B, A)).toBeCloseTo(2, 6); // routed leg: 120s
     expect(t.minutes(A, B)).toBeCloseTo(fallback.minutes(A, B), 6); // ZERO_RESULTS leg
+    expect(t.km(B, A)).toBeCloseTo(1.2, 6);
+    expect(t.km(A, B)).toBeCloseTo(fallback.km(A, B), 6);
   });
 
   it('throws on lookup for an unrouted leg when no fallback was given', async () => {
@@ -147,7 +160,7 @@ function fakeRoutesFetch(seconds: (originIdx: number, destIdx: number) => number
         const s = seconds(i, j);
         return s === null
           ? { originIndex: i, destinationIndex: j, status: {}, condition: 'ROUTE_NOT_FOUND' }
-          : { originIndex: i, destinationIndex: j, status: {}, condition: 'ROUTE_EXISTS', duration: `${s}s` };
+          : { originIndex: i, destinationIndex: j, status: {}, condition: 'ROUTE_EXISTS', duration: `${s}s`, distanceMeters: s * 10 };
       }));
     return { ok: true, status: 200, statusText: 'OK', json: async () => elements, text: async () => '' };
   }) as unknown) as typeof fetch;
@@ -165,6 +178,14 @@ describe('buildRoutesTravelTimeMatrix', () => {
     expect(t.minutes(B, B)).toBe(0);
   });
 
+  it('answers km() from the same matrix, converting metres to km', async () => {
+    const { impl } = fakeRoutesFetch((i, j) => (i === j ? 0 : 600));
+
+    const t = await buildRoutesTravelTimeMatrix([A, B], { apiKey: 'k', fetchImpl: impl });
+
+    expect(t.km(A, B)).toBeCloseTo(6, 6);
+  });
+
   it('sends the key and field mask as headers, and lat/lng waypoints in the body', async () => {
     const { impl, calls } = fakeRoutesFetch(() => 60);
 
@@ -176,7 +197,7 @@ describe('buildRoutesTravelTimeMatrix', () => {
     expect(init.method).toBe('POST');
     expect(init.headers).toMatchObject({
       'X-Goog-Api-Key': 'secret',
-      'X-Goog-FieldMask': 'originIndex,destinationIndex,status,condition,duration',
+      'X-Goog-FieldMask': 'originIndex,destinationIndex,status,condition,duration,distanceMeters',
     });
     expect(body.travelMode).toBe('DRIVE');
     expect(body.origins[1]).toEqual({ waypoint: { location: { latLng: { latitude: B.lat, longitude: B.lon } } } });
@@ -187,7 +208,7 @@ describe('buildRoutesTravelTimeMatrix', () => {
       ok: true, status: 200, statusText: 'OK',
       json: async () => [
         { status: {}, condition: 'ROUTE_EXISTS', duration: '0s' },
-        { destinationIndex: 1, status: {}, condition: 'ROUTE_EXISTS', duration: '300s' },
+        { destinationIndex: 1, status: {}, condition: 'ROUTE_EXISTS', duration: '300s', distanceMeters: 4000 },
         { originIndex: 1, status: {}, condition: 'ROUTE_EXISTS', duration: '240s' },
         { originIndex: 1, destinationIndex: 1, status: {}, condition: 'ROUTE_EXISTS', duration: '0s' },
       ],
@@ -197,6 +218,9 @@ describe('buildRoutesTravelTimeMatrix', () => {
 
     expect(t.minutes(A, B)).toBeCloseTo(5, 6);
     expect(t.minutes(B, A)).toBeCloseTo(4, 6);
+    expect(t.km(A, B)).toBeCloseTo(4, 6);
+    // A zero distance is left out too: a routable leg without one is 0 km.
+    expect(t.km(A, A)).toBe(0);
   });
 
   it('dedupes and chunks exactly like the legacy client', async () => {

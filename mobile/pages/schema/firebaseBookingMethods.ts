@@ -8,12 +8,15 @@ import {
   runTransaction,
   Timestamp,
   updateDoc,
+  type DocumentReference,
+  type Transaction,
 } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
 import { Booking, Coord } from './booking.schema';
 import { RideRequest, RideOffer } from './firebaseBooking.schema';
 import { BOOKING_STATUSES, BookingStatus, isBookingStatus } from './matchStatus';
 import { timePattern, toMinutes } from '../../utility/times';
+import { MAX_CAR_SEATS } from './user.validation';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
 import { estimateEmissionsSaved } from '../../utility/emissions';
 
@@ -58,6 +61,28 @@ const validateCoord = (coord: Coord | undefined, label: string): Coord | undefin
 
   return { lat, lon };
 };
+
+/*
+The passenger seats in a user's registered car, or null if they have no car
+registered - not a driver, or a driver whose car details are missing. Read
+from users/{uid}, falling back to drivers/{uid} (driver registration), the
+same way the profile does: an older profile save could reset users/{uid}
+while drivers/{uid} kept the car.
+*/
+export async function registeredCarSeats(uid: string): Promise<number | null> {
+  const [userSnap, driverSnap] = await Promise.all([
+    getDoc(doc(db, 'users', uid)),
+    getDoc(doc(db, 'drivers', uid)),
+  ]);
+  const user = userSnap.exists() ? userSnap.data() : {};
+  const driver = driverSnap.exists() ? driverSnap.data() : null;
+  if (!user['isDriver'] && !driver) return null;
+
+  const plate = user['licensePlate'] ?? driver?.['licensePlate'];
+  const seats = user['seatsAvailable'] ?? driver?.['seatsAvailable'];
+  if (!plate || !Number.isInteger(seats) || seats < 1) return null;
+  return seats;
+}
 
 // Add request to DB
 export const addRideRequest = async (booking: Booking): Promise<string> => {
@@ -205,8 +230,18 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
     throw new Error(`detour allowance of ${offer.maxDetourTime} (min) exceeds travel window of ${timeDiff} (min)`);
   }
 
-  if (offer.seatCapacity < 1 || offer.seatCapacity > 12) {
-    throw new Error(`Ride offers require 1 to 12 seats (inclusive) be available but ${offer.seatCapacity} were given.`);
+  if (offer.seatCapacity < 1 || offer.seatCapacity > MAX_CAR_SEATS) {
+    throw new Error(`Ride offers require 1 to ${MAX_CAR_SEATS} seats (inclusive) be available but ${offer.seatCapacity} were given.`);
+  }
+
+  // Only a registered driver can offer a ride, and never more seats than
+  // their car has. The booking page already stops both; this is the backstop.
+  const carSeats = await registeredCarSeats(offer.userId);
+  if (carSeats === null) {
+    throw new Error('Register as a driver, with your car, in your profile before offering a ride.');
+  }
+  if (offer.seatCapacity > carSeats) {
+    throw new Error(`Your car has ${carSeats} passenger seat${carSeats === 1 ? '' : 's'}, so offer ${carSeats} or fewer.`);
   }
 
   try {
@@ -230,16 +265,65 @@ Match responses.
 
 Matches are WRITTEN by the matching runner (backend/server/matching/runner/), a server-side
 process using the Admin SDK - never by the app. What the app does is resolve
-them: the rider accepts or declines here. Unanswered matches are expired by the
-runner once their acceptDeadline passes.
+them: the rider AND the driver each accept or decline, in either order, and
+the match is confirmed once both have accepted. Unanswered matches are expired
+by the runner once their acceptDeadline passes.
+
+Each side's answer is stored on the offer's pending slot (`riderAccepted`,
+`driverAccepted`). Both phones can write the offer while the match is
+pending: the driver owns it, and the rules let the rider in through
+`matchedRiderId`. The driver can also write the rider's request while they're
+its `matchedDriverId`, which is what lets them confirm it or return it to the
+pool.
 --------------------------------------------------------------------------- */
 
+/** Where answering left a match: confirmed (both have accepted), or still
+ *  waiting for the other side. */
+export type MatchAnswer = 'confirmed' | 'waiting';
+
+/** A request's match fields, removed when it goes back to looking. The same
+ *  list as the runner's (backend/server/matching/writes.ts → REQUEST_MATCH_FIELDS). */
+const REQUEST_MATCH_FIELDS = [
+  'matchedOfferId', 'matchedDriverId', 'matchedAt', 'acceptDeadline', 'riderDetourMinutes',
+  'routeIndex', 'pickupAt', 'arriveAt',
+] as const;
+
+const removeMatchFields = () =>
+  Object.fromEntries(REQUEST_MATCH_FIELDS.map((field) => [field, deleteField()]));
+
+/** The deadline is authoritative even before the runner gets round to
+ *  expiring the match - otherwise a late accept could confirm a seat the
+ *  runner is about to hand to someone else. */
+function assertNotExpired(request: RideRequest) {
+  if (request.acceptDeadline && request.acceptDeadline.toDate() <= new Date()) {
+    throw new Error('This match expired before it was accepted.');
+  }
+}
+
+/** The offer's pending slot emptied: the rider, the deadline, the proposed
+ *  timetable and both answers all go, and the offer is back in the pool if it
+ *  has seats left. */
+function freedSlot(offer: RideOffer) {
+  return {
+    pendingRequestId: null,
+    matchedRiderId: deleteField(),
+    matchedAt: deleteField(),
+    acceptDeadline: deleteField(),
+    pendingSchedule: deleteField(),
+    riderAccepted: deleteField(),
+    driverAccepted: deleteField(),
+    // Back in the pool - unless the driver locked it with passengers aboard.
+    status: settledOfferStatus(offer),
+  };
+}
+
 /**
- * The rider accepts: their request becomes 'confirmed' and they join the offer's
- * confirmed list AT THEIR PICKUP POSITION. The runner stored that position as
- * `routeIndex`, and `confirmedRequestIds` is kept in pickup order because the next
- * run rebuilds the car's route from it - an append-only list would silently
- * reorder the route and re-check everyone's detour against the wrong one.
+ * Both have accepted: the rider's request becomes 'confirmed' and they join the
+ * offer's confirmed list AT THEIR PICKUP POSITION. The runner stored that
+ * position as `routeIndex`, and `confirmedRequestIds` is kept in pickup order
+ * because the next run rebuilds the car's route from it - an append-only list
+ * would silently reorder the route and re-check everyone's detour against the
+ * wrong one.
  *
  * The offer deliberately returns to 'pending' rather than 'confirmed' while it
  * still has an empty seat. 'pending' is the only status the matcher treats as
@@ -247,10 +331,49 @@ runner once their acceptDeadline passes.
  * runs for the one-new-rider-per-run rule to ever fill a 4-seat car. It becomes
  * 'confirmed' once full - or once the driver has locked it (settledOfferStatus).
  */
-export async function acceptMatch(requestID: string): Promise<void> {
+function confirmMatch(
+  tx: Transaction,
+  requestRef: DocumentReference,
+  request: RideRequest,
+  offerRef: DocumentReference,
+  offer: RideOffer,
+) {
+  const requestID = requestRef.id;
+  const confirmed = (offer.confirmedRequestIds ?? []).filter((id) => id !== requestID);
+  // No stored position (a match written before routeIndex existed) -> last.
+  const at = Math.min(Math.max(request.routeIndex ?? confirmed.length, 0), confirmed.length);
+  const ordered = [...confirmed.slice(0, at), requestID, ...confirmed.slice(at)];
+  // The car's CO2 saving with this rider aboard, from the re-planned timetable.
+  const emissionsSavedKg = offer.pendingSchedule?.emissionsSavedKg ?? 0;
+
+  tx.update(requestRef, { status: 'confirmed' });
+  tx.update(offerRef, {
+    confirmedRequestIds: ordered,
+    pendingRequestId: null,
+    // Removed in the same write, so the rider can't go on editing the
+    // driver's offer once the match is settled.
+    matchedRiderId: deleteField(),
+    riderAccepted: deleteField(),
+    driverAccepted: deleteField(),
+    // The timetable re-planned with this rider in it. A match from before
+    // timetables were stored has none, and the old one no longer fits the
+    // car, so it's dropped and the cards fall back to each rider's own times.
+    schedule: offer.pendingSchedule ?? deleteField(),
+    pendingSchedule: deleteField(),
+    status: settledOfferStatus({ ...offer, confirmedRequestIds: ordered }),
+    emissionsSavedKg,
+  });
+}
+
+/**
+ * The rider accepts. If the driver already has, the match is confirmed
+ * (confirmMatch); otherwise their answer is recorded on the offer and the
+ * match waits for the driver's.
+ */
+export async function acceptMatch(requestID: string): Promise<MatchAnswer> {
   const requestRef = doc(db, 'rideRequests', requestID);
 
-  await runTransaction(db, async (tx) => {
+  return runTransaction(db, async (tx) => {
     const requestSnap = await tx.get(requestRef);
     if (!requestSnap.exists()) throw new Error('No ride request ' + requestID);
 
@@ -259,9 +382,7 @@ export async function acceptMatch(requestID: string): Promise<void> {
       throw new Error('Ride request ' + requestID + " is '" + request.status + "', not awaiting approval.");
     }
     if (!request.matchedOfferId) throw new Error('Ride request ' + requestID + ' has no matched offer.');
-    if (request.acceptDeadline && request.acceptDeadline.toDate() <= new Date()) {
-      throw new Error('This match expired before it was accepted.');
-    }
+    assertNotExpired(request);
 
     const offerRef = doc(db, 'rideOffers', request.matchedOfferId);
     const offerSnap = await tx.get(offerRef);
@@ -271,40 +392,21 @@ export async function acceptMatch(requestID: string): Promise<void> {
     if (offer.status !== 'awaiting' || offer.pendingRequestId !== requestID) {
       throw new Error('The driver has removed this offer. Your request will be matched again.');
     }
-
-    const confirmed = (offer.confirmedRequestIds ?? []).filter((id) => id !== requestID);
-    const at = Math.min(Math.max(request.routeIndex ?? confirmed.length, 0), confirmed.length);
-    const ordered = [...confirmed.slice(0, at), requestID, ...confirmed.slice(at)];
-
-    const otherConfirmedSnaps = await Promise.all(
-      confirmed.map((id) => tx.get(doc(db, 'rideRequests', id))),
-    );
-    const otherRiderEmissions = otherConfirmedSnaps
-      .filter((s) => s.exists())
-      .map((s) => (s.data() as RideRequest).emissionsSavedKg ?? 0);
-    const currentRiderEmission = request.emissionsSavedKg ?? 0;
-    const allRiderEmissions = [...otherRiderEmissions, currentRiderEmission];
-
-    const emissionsSavedKg = Math.round(allRiderEmissions.reduce((a, b) => a + b, 0) * 10) / 10;
-
-    tx.update(requestRef, { status: 'confirmed' });
-    tx.update(offerRef, {
-      confirmedRequestIds: ordered,
-      pendingRequestId: null,
-      matchedRiderId: deleteField(),
-      schedule: offer.pendingSchedule ?? deleteField(),
-      pendingSchedule: deleteField(),
-      status: settledOfferStatus({ ...offer, confirmedRequestIds: ordered }),
-      emissionsSavedKg,
-    });
+    if (!offer.driverAccepted) {
+      // Allowed by the Firestore rules only because the runner set
+      // `matchedRiderId` to this rider's uid.
+      tx.update(offerRef, { riderAccepted: true });
+      return 'waiting';
+    }
+    confirmMatch(tx, requestRef, request, offerRef, offer);
+    return 'confirmed';
   });
 }
 
 /**
  * The rider declines: their request is cancelled, and they book again if they
  * still want a ride (a new booking can be matched to anyone, this driver
- * included). Only the rider answers a match - drivers can't turn riders away,
- * only remove their whole offer (cancelOffer).
+ * included). Allowed until the match is confirmed, even after accepting.
  *
  * Every match field is REMOVED rather than set to null, and the driver's slot is
  * freed so the offer goes straight back into the pool if it has seats left.
@@ -320,58 +422,152 @@ export async function declineMatch(requestID: string): Promise<void> {
     const offerId = request.matchedOfferId;
     const offerSnap = offerId ? await tx.get(doc(db, 'rideOffers', offerId)) : null;
 
-    tx.update(requestRef, {
-      status: 'cancelled',
-      matchedOfferId: deleteField(),
-      matchedDriverId: deleteField(),
-      matchedAt: deleteField(),
-      acceptDeadline: deleteField(),
-      riderDetourMinutes: deleteField(),
-      routeIndex: deleteField(),
-      pickupAt: deleteField(),
-      arriveAt: deleteField(),
-    });
+    tx.update(requestRef, { status: 'cancelled', ...removeMatchFields() });
 
     if (offerId && offerSnap && offerSnap.exists()) {
       const offer = offerSnap.data() as RideOffer;
       if (offer.pendingRequestId === requestID) {
-        tx.update(doc(db, 'rideOffers', offerId), {
-          pendingRequestId: null,
-          matchedRiderId: deleteField(),
-          status: settledOfferStatus(offer),
-          matchedAt: deleteField(),
-          acceptDeadline: deleteField(),
-          pendingSchedule: deleteField(),
-        });
+        tx.update(doc(db, 'rideOffers', offerId), freedSlot(offer));
       }
     }
   });
 }
 
 /**
- * A confirmed rider cancels their seat. The request becomes 'cancelled' and
- * keeps `matchedOfferId`, which is how the runner finds the car: the rider's
- * phone can't write the driver's offer (`matchedRiderId` was removed when they
- * accepted), so the runner takes them off it on its next run
- * (backend/server/matching/writes.ts → planSettle) and the seat goes back into
- * matching.
+ * The rider waiting on this offer and their request, read in `tx` for the
+ * driver answering. Throws when no rider is waiting any more - they declined,
+ * or the match expired - so the driver's answer isn't applied to a stale card.
+ */
+async function pendingMatchOf(tx: Transaction, offerID: string) {
+  const offerRef = doc(db, 'rideOffers', offerID);
+  const offerSnap = await tx.get(offerRef);
+  if (!offerSnap.exists()) throw new Error('No ride offer ' + offerID);
+
+  const offer = offerSnap.data() as RideOffer;
+  if (offer.status === 'cancelled') throw new Error('This offer has been removed.');
+  if (offer.status !== 'awaiting' || !offer.pendingRequestId) {
+    throw new Error('No rider is waiting on this drive any more.');
+  }
+
+  const requestRef = doc(db, 'rideRequests', offer.pendingRequestId);
+  const requestSnap = await tx.get(requestRef);
+  const request = requestSnap.exists() ? (requestSnap.data() as RideRequest) : undefined;
+  return { offerRef, offer, requestRef, request };
+}
+
+/**
+ * The driver accepts the rider in their pending slot. If the rider already
+ * has, the match is confirmed (confirmMatch); otherwise the driver's answer is
+ * recorded and the match waits for the rider's.
+ */
+export async function driverAcceptMatch(offerID: string): Promise<MatchAnswer> {
+  return runTransaction(db, async (tx) => {
+    const { offerRef, offer, requestRef, request } = await pendingMatchOf(tx, offerID);
+    // The rider declined (or cancelled) while the driver was deciding.
+    if (!request || request.status !== 'awaiting' || request.matchedOfferId !== offerID) {
+      throw new Error('This rider is no longer waiting on your drive.');
+    }
+    assertNotExpired(request);
+
+    if (!offer.riderAccepted) {
+      tx.update(offerRef, { driverAccepted: true });
+      return 'waiting';
+    }
+    // Allowed by the Firestore rules because the runner set this driver as
+    // the request's `matchedDriverId`.
+    confirmMatch(tx, requestRef, request, offerRef, offer);
+    return 'confirmed';
+  });
+}
+
+/**
+ * The driver declines the rider in their pending slot. Unlike a rider
+ * declining, nobody's booking is cancelled: the rider goes back to looking,
+ * every match field removed so the next run can match them again, and the
+ * driver's slot is freed so the offer is back in the pool if it has seats left.
+ */
+export async function driverDeclineMatch(offerID: string): Promise<void> {
+  await runTransaction(db, async (tx) => {
+    const { offerRef, offer, requestRef, request } = await pendingMatchOf(tx, offerID);
+
+    // Only if it's still this match - a rider who already declined has
+    // cancelled their own request, and that stays cancelled.
+    if (request && request.status === 'awaiting' && request.matchedOfferId === offerID) {
+      tx.update(requestRef, { status: 'pending', ...removeMatchFields() });
+    }
+    tx.update(offerRef, freedSlot(offer));
+  });
+}
+
+/**
+ * A confirmed rider cancels their seat, and it comes straight off the driver's
+ * offer in the same write: the car is back in matching if a seat is now free
+ * (unless the driver locked it with others still aboard), and its timetable
+ * loses this rider's stop, so the driver sees the trip without them at once.
+ * The riders left keep their planned times until the runner re-plans the
+ * route (`needsReplan`) - without this rider's detour the car reaches them a
+ * little early, never late.
+ *
+ * The published Firestore rules let a confirmed rider make exactly this change
+ * to the driver's offer: take their own request off it, and nothing else. Two
+ * cases leave the offer to the runner's next run instead
+ * (backend/server/matching/writes.ts → planSettle), and the request keeps
+ * `matchedOfferId` so the runner can find the car:
+ *   - another rider is deciding on a match to this car - their proposed route
+ *     and pickup position include this rider
+ *   - the rules refuse it (rules published before this change): the
+ *     cancellation itself must still go through
  *
  * Not a delete: with the request gone, the offer would still list the rider and
  * every later run would skip the car as having a confirmed rider it can't read.
  */
 export async function cancelConfirmedRequest(requestID: string): Promise<void> {
+  try {
+    await runTransaction(db, (tx) => cancelConfirmed(tx, requestID, true));
+  } catch (error) {
+    if ((error as { code?: string })?.code !== 'permission-denied') throw error;
+    await runTransaction(db, (tx) => cancelConfirmed(tx, requestID, false));
+  }
+}
+
+async function cancelConfirmed(tx: Transaction, requestID: string, freeSeat: boolean): Promise<void> {
   const requestRef = doc(db, 'rideRequests', requestID);
+  const requestSnap = await tx.get(requestRef);
+  if (!requestSnap.exists()) throw new Error('No ride request ' + requestID);
 
-  await runTransaction(db, async (tx) => {
-    const requestSnap = await tx.get(requestRef);
-    if (!requestSnap.exists()) throw new Error('No ride request ' + requestID);
+  const request = requestSnap.data() as RideRequest;
+  if (request.status !== 'confirmed') {
+    throw new Error('Ride request ' + requestID + " is '" + request.status + "', not confirmed.");
+  }
 
-    const request = requestSnap.data() as RideRequest;
-    if (request.status !== 'confirmed') {
-      throw new Error('Ride request ' + requestID + " is '" + request.status + "', not confirmed.");
-    }
+  const offerRef = freeSeat && request.matchedOfferId ? doc(db, 'rideOffers', request.matchedOfferId) : null;
+  const offerSnap = offerRef ? await tx.get(offerRef) : null;
+  const offer = offerSnap?.exists() ? (offerSnap.data() as RideOffer) : undefined;
+  const seated = offer !== undefined && offer.status !== 'cancelled' && !offer.pendingRequestId
+    && (offer.confirmedRequestIds ?? []).includes(requestID);
 
+  if (!offerRef || !offer || !seated) {
     tx.update(requestRef, { status: 'cancelled' });
+    return;
+  }
+
+  const remaining = (offer.confirmedRequestIds ?? []).filter((id) => id !== requestID);
+  tx.update(offerRef, {
+    confirmedRequestIds: remaining,
+    status: settledOfferStatus({ ...offer, confirmedRequestIds: remaining }),
+    // Nobody left, nothing to time.
+    schedule: offer.schedule && remaining.length > 0
+      ? {
+        ...offer.schedule,
+        stops: offer.schedule.stops.filter((s) => s.requestId !== requestID),
+        needsReplan: true,
+      }
+      : deleteField(),
+  });
+  // The seat is already off the car, so the runner has nothing left to do here.
+  tx.update(requestRef, {
+    status: 'cancelled',
+    ...removeMatchFields(),
   });
 }
 
@@ -392,14 +588,7 @@ export async function cancelOffer(offerID: string): Promise<void> {
     const offerSnap = await tx.get(offerRef);
     if (!offerSnap.exists()) throw new Error('No ride offer ' + offerID);
 
-    tx.update(offerRef, {
-      status: 'cancelled',
-      pendingRequestId: null,
-      matchedRiderId: deleteField(),
-      matchedAt: deleteField(),
-      acceptDeadline: deleteField(),
-      pendingSchedule: deleteField(),
-    });
+    tx.update(offerRef, { ...freedSlot(offerSnap.data() as RideOffer), status: 'cancelled' });
   });
 }
 
@@ -446,13 +635,14 @@ export async function setOfferLocked(offerID: string, locked: boolean): Promise<
 
 /**
  * The driver changes how many passengers they'll take. Never below the riders
- * already confirmed plus one deciding on a match, and within the same 1-12 the
+ * already confirmed plus one deciding on a match, and within the same 1-7 the
  * booking form allows. Fewer seats than before can fill the car (it's done);
- * more can reopen a full one (back in the pool), unless it's locked.
+ * more can reopen a full one (back in the pool). Not while the drive is
+ * locked: unlock it first.
  */
 export async function updateOfferSeats(offerID: string, seats: number): Promise<void> {
-  if (!Number.isInteger(seats) || seats < 1 || seats > 12) {
-    throw new Error('A drive offer needs 1 to 12 seats.');
+  if (!Number.isInteger(seats) || seats < 1 || seats > MAX_CAR_SEATS) {
+    throw new Error(`A drive offer needs 1 to ${MAX_CAR_SEATS} seats.`);
   }
   const offerRef = doc(db, 'rideOffers', offerID);
 
@@ -462,10 +652,21 @@ export async function updateOfferSeats(offerID: string, seats: number): Promise<
 
     const offer = offerSnap.data() as RideOffer;
     if (offer.status === 'cancelled') throw new Error('This offer has been removed.');
+    // A locked drive takes nobody new, so its seats change nothing - the card
+    // hides the control, and this keeps it that way.
+    if (offer.acceptingMore === false) throw new Error('Unlock this drive to change its seats.');
 
     const taken = (offer.confirmedRequestIds ?? []).length + (offer.pendingRequestId ? 1 : 0);
     if (seats < taken) {
       throw new Error(`${taken} seat${taken === 1 ? ' is' : 's are'} already taken, so the car needs at least ${taken}.`);
+    }
+    // Never more than the car holds. Only checked when adding seats, so a
+    // driver can always come down to fit, whatever their profile says.
+    if (seats > offer.seatCapacity) {
+      const carSeats = await registeredCarSeats(offer.userId);
+      if (carSeats !== null && seats > carSeats) {
+        throw new Error(`Your car has ${carSeats} passenger seat${carSeats === 1 ? '' : 's'}, so this drive can take ${carSeats} at most.`);
+      }
     }
 
     const next = { ...offer, seatCapacity: seats };
@@ -550,4 +751,3 @@ export async function deleteRideOffer(offerID: string): Promise<void> {
     console.warn('deleteRideOffer: failed to read after-delete state', err);
   }
 }
-

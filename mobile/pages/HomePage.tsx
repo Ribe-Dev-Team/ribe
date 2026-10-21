@@ -9,14 +9,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import { useAuth } from '../auth/useAuth';
 import RideCard, { RideCardProps } from '../components/RideCard';
-import { fetchUserRides } from '../services/rideData';
+import { fetchUserRides, watchUserRides } from '../services/rideData';
 import { NotificationItem } from '../App';
-import { db } from '../firebaseConfig';
 
 interface HomePageProps {
   notificationsList: NotificationItem[];
@@ -26,7 +24,7 @@ interface HomePageProps {
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
   /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
-  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline'>;
 }
 
 function ridesDescription(count: number, noun: 'ride' | 'drive') {
@@ -87,15 +85,11 @@ export default function HomePage({
       }
     };
 
-    const requestsQuery = query(collection(db, 'rideRequests'), where('userId', '==', user.uid));
-    const offersQuery = query(collection(db, 'rideOffers'), where('userId', '==', user.uid));
-    const unsubscribeRequests = onSnapshot(requestsQuery, () => { loadRides(); });
-    const unsubscribeOffers = onSnapshot(offersQuery, () => { loadRides(); });
+    const stopWatching = watchUserRides(user.uid, loadRides);
 
     return () => {
       isMounted = false;
-      unsubscribeRequests();
-      unsubscribeOffers();
+      stopWatching();
     };
   }, [user?.uid]);
 

@@ -1,4 +1,6 @@
-import { MatchOffer, ProposedMatch, TripStop } from './types';
+import { emissionsForDistanceKm, emissionsForRiders } from '../emissions';
+import { MatchOffer, MatchRequest, ProposedMatch, RoadDistanceMatrix, TripStop } from './types';
+import type { StoredRiderCost, StoredTripCosts } from '../costSplitting/tripCosts';
 
 /**
  * What a matching run writes back, as plain decisions with no Firebase SDK in
@@ -28,6 +30,8 @@ export interface StoredOffer {
   confirmedRequestIds?: string[];
   /** False once the driver locks the trip: no more passengers. Absent = true. */
   acceptingMore?: boolean;
+  /** The rider in the pending slot has accepted, and the driver hasn't yet. */
+  riderAccepted?: boolean;
 }
 
 /**
@@ -45,19 +49,27 @@ export function settledOfferStatus(offer: StoredOffer): 'confirmed' | 'pending' 
 }
 
 /** A car's timetable as stored on its offer: the driver's own departure and
- *  arrival, and every rider in pickup order. */
+ *  arrival, and every rider in pickup order - with the car's cost split
+ *  (costSplitting/tripCosts.ts) once the runner has priced it. */
 export interface StoredSchedule {
   departAt: Date;
   arriveAt: Date;
-  stops: Array<{ requestId: string; pickupAt: Date; arriveAt: Date }>;
+  stops: Array<{ requestId: string; pickupAt: Date; arriveAt: Date; cost?: StoredRiderCost }>;
+  costs?: StoredTripCosts;
+  /** Sum of every listed rider's solo-trip emissions; excludes the driver. */
+  emissionsSavedKg?: number;
 }
 
 /** A timetable (route.ts → timetableFor) in the shape the offer stores. */
-export function toStoredSchedule(t: { departAt: Date; arriveAt: Date; stops: TripStop[] }): StoredSchedule {
+export function toStoredSchedule(
+  t: { departAt: Date; arriveAt: Date; stops: TripStop[] },
+  emissionsSavedKg?: number,
+): StoredSchedule {
   return {
     departAt: t.departAt,
     arriveAt: t.arriveAt,
     stops: t.stops.map((s) => ({ requestId: s.reqId, pickupAt: s.pickupAt, arriveAt: s.arriveAt })),
+    ...(emissionsSavedKg === undefined ? {} : { emissionsSavedKg }),
   };
 }
 
@@ -82,6 +94,8 @@ export interface MatchWrite {
   /** The car's timetable if this rider accepts - confirmed riders' times
    *  included, since picking up the new rider can shift them. */
   schedule: StoredSchedule;
+  riderEmissionsKg: number;
+  driverEmissionsKg: number;
 }
 
 /**
@@ -89,9 +103,31 @@ export interface MatchWrite {
  * `offers` must be the offers passed INTO the run: the run never mutates its
  * inputs, so their `onBoard` is exactly the confirmed riders.
  */
-export function toMatchWrites(matches: ProposedMatch[], offers: MatchOffer[]): MatchWrite[] {
+export function toMatchWrites(
+  matches: ProposedMatch[],
+  offers: MatchOffer[],
+  requests: MatchRequest[],
+  distances: RoadDistanceMatrix,
+): MatchWrite[] {
   const baselineByOffer = new Map(offers.map((o) => [o.offerId, o.onBoard.map((r) => r.reqId)]));
-  return matches.map((m) => ({
+  const offersById = new Map(offers.map((offer) => [offer.offerId, offer]));
+  const requestsById = new Map(requests.map((request) => [request.reqId, request]));
+  return matches.map((m) => {
+    const offer = offersById.get(m.offerId)!;
+    const request = requestsById.get(m.rideId)!;
+    const campus = offer.direction === 'TO_CAMPUS' ? offer.end : offer.start;
+    const riderHomes = [
+      ...offer.onBoard.map((rider) => rider.waypoint),
+      request.direction === 'TO_CAMPUS' ? request.start : request.end,
+    ];
+    const emissionsSavedKg = emissionsForRiders(
+      riderHomes,
+      campus,
+      offer.direction === 'TO_CAMPUS',
+      distances,
+    );
+
+    return ({
     reqId: m.rideId,
     offerId: m.offerId,
     riderId: m.riderId,
@@ -105,8 +141,20 @@ export function toMatchWrites(matches: ProposedMatch[], offers: MatchOffer[]): M
     baseline: baselineByOffer.get(m.offerId) ?? [],
     pickupAt: m.pickupAt,
     arriveAt: m.arriveAt,
-    schedule: toStoredSchedule({ departAt: m.departAt, arriveAt: m.finalArrival, stops: m.schedule }),
-  }));
+    schedule: toStoredSchedule(
+      { departAt: m.departAt, arriveAt: m.finalArrival, stops: m.schedule },
+      emissionsSavedKg,
+    ),
+    riderEmissionsKg: emissionsForDistanceKm(distances.km(
+      request.start,
+      request.end,
+    )),
+    driverEmissionsKg: emissionsForDistanceKm(distances.km(
+      offer.start,
+      offer.end,
+    )),
+    });
+  });
 }
 
 export type MatchWriteSkip =
@@ -157,6 +205,7 @@ export function planMatchWrite(
         // if it can't read the offer.
         pickupAt: m.pickupAt,
         arriveAt: m.arriveAt,
+        emissionsSavedKg: m.riderEmissionsKg,
       },
       remove: [],
     },
@@ -174,6 +223,7 @@ export function planMatchWrite(
         // Not `schedule` yet: that is the confirmed riders' timetable until this
         // rider accepts, and acceptMatch moves this into its place.
         pendingSchedule: m.schedule,
+        driverEmissionsKg: m.driverEmissionsKg,
       },
       remove: [],
     },
@@ -186,8 +236,11 @@ export const REQUEST_MATCH_FIELDS = [
   'routeIndex', 'pickupAt', 'arriveAt',
 ];
 
-/** An offer's pending-slot fields, removed when the slot is freed. */
-export const OFFER_SLOT_FIELDS = ['matchedRiderId', 'matchedAt', 'acceptDeadline', 'pendingSchedule'];
+/** An offer's pending-slot fields, removed when the slot is freed. The two
+ *  answers go with it, so neither carries over to the next rider matched. */
+export const OFFER_SLOT_FIELDS = [
+  'matchedRiderId', 'matchedAt', 'acceptDeadline', 'pendingSchedule', 'riderAccepted', 'driverAccepted',
+];
 
 export type Settlement = 'RELEASED' | 'EXPIRED' | 'VACATED';
 
@@ -200,18 +253,23 @@ export interface Settled {
 
 /**
  * Bring a matched request (awaiting approval or confirmed) in line with its
- * offer. Only the rider answers a match, and the driver can't write the
- * rider's booking - so when something happens on the driver's side, the
- * rider's request catches up here:
+ * offer. A match needs both the rider and the driver to accept, but the
+ * driver's phone can only write the rider's booking while they're matched -
+ * so when the driver removes their whole offer, the rider's request catches
+ * up here:
  *
  *   RELEASED  the driver removed their offer (or it's gone, or no longer has
  *             this rider): back to looking, every match field removed, so the
- *             next run can find them someone else
+ *             next run can find them someone else. Also when the deadline
+ *             passes with the rider having accepted and only the driver not
+ *             answering - the rider did nothing wrong, so they aren't expired
  *   EXPIRED   the rider didn't answer by the deadline: the request expires -
  *             RideCard already tells the rider the trip is cancelled - and the
  *             driver's slot is freed for the next run
- *   VACATED   a confirmed rider cancelled (cancelConfirmedRequest): their seat
- *             comes off the driver's offer, which the rider's phone can't write.
+ *   VACATED   a confirmed rider cancelled (cancelConfirmedRequest) and their
+ *             seat is still on the driver's offer. The app takes it off at once
+ *             when it can; it's left here only when another rider was deciding
+ *             on the car, or the Firestore rules refused the app's write.
  *             Waits while another rider is deciding on that car - their proposed
  *             route and pickup position include the departed rider - and goes
  *             ahead once they answer or their match expires.
@@ -263,12 +321,14 @@ export function planSettle(
   if (!holding) return released;
 
   if (!request.acceptDeadline || request.acceptDeadline > now) return null;
+  // Back in the pool - unless the driver locked the trip meanwhile and has
+  // passengers, in which case it's done.
+  const freedSlot = { set: { status: settledOfferStatus(offer!), pendingRequestId: null }, remove: OFFER_SLOT_FIELDS };
+  if (offer!.riderAccepted) return { ...released, offer: freedSlot };
   return {
     outcome: 'EXPIRED',
     request: { set: { status: 'expired' }, remove: [] },
-    // Back in the pool - unless the driver locked the trip meanwhile and has
-    // passengers, in which case it's done.
-    offer: { set: { status: settledOfferStatus(offer!), pendingRequestId: null }, remove: OFFER_SLOT_FIELDS },
+    offer: freedSlot,
   };
 }
 
@@ -294,5 +354,11 @@ export interface ScheduleWrite {
 export function planScheduleWrite(offer: StoredOffer | undefined, w: ScheduleWrite): FieldUpdate | null {
   if (!offer || offer.status === 'cancelled') return null;
   if (!sameList(offer.confirmedRequestIds ?? [], w.baseline)) return null;
-  return { set: { schedule: w.schedule }, remove: [] };
+  return {
+    set: {
+      schedule: w.schedule,
+      emissionsSavedKg: w.schedule.emissionsSavedKg ?? 0,
+    },
+    remove: [],
+  };
 }

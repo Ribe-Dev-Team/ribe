@@ -114,7 +114,7 @@ export default function DatePickerModal({
               <PressableScale accessibilityLabel="Back to calendar" hitSlop={8} onPress={() => setPickerMode('days')} style={localStyles.navButton}>
                 <Ionicons color={colors.white} name="chevron-back" size={20} />
               </PressableScale>
-              <Text style={localStyles.monthLabel}>Select year</Text>
+              <Text style={localStyles.monthLabel}>Select Year</Text>
               <View style={localStyles.navButton} />
             </View>
           )}
