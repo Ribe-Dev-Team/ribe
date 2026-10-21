@@ -68,6 +68,17 @@ interface ActionableRide {
   youAccepted?: boolean;
 }
 
+/** Every action a ride can offer; which ones depends on who and what state.
+ *  One type for all of them, so a card can take just Accept/Decline from it. */
+interface RideActions {
+  onAccept?: () => void;
+  onDecline?: () => void;
+  onCancel?: () => void;
+  onEdit?: () => void;
+  onSetLocked?: (locked: boolean) => void;
+  onChangeSeats?: (seats: number) => void;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Please try again.';
 }
@@ -92,7 +103,7 @@ function buildRideActions(
   ride: ActionableRide,
   driverName: string,
   onChanged: () => void,
-) {
+): RideActions {
   // A match needs both sides to accept. Accept is offered until you have;
   // Decline until the match is confirmed.
   const answering = ride.status === 'awaiting' && Boolean(ride.rideId);
