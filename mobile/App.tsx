@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
   SafeAreaView,
@@ -23,9 +22,11 @@ import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import RideDetailPage from './pages/RideDetailPage';
 import { rideTimeSummary } from './services/rideData';
+import { formatTime12h } from './utility/times';
 import DriverProfilePage from './pages/DriverProfilePage';
 import DriverRegistrationPage from './pages/DriverRegistrationPage';
 import BookingPage from './pages/BookingPage';
+import { ThemedAlertProvider, useThemedAlert } from './components/ThemedDialog';
 import {
   acceptMatch, cancelConfirmedRequest, cancelOffer, declineMatch, deleteRideRequest, driverAcceptMatch,
   driverDeclineMatch, setOfferLocked, updateOfferSeats,
@@ -99,8 +100,8 @@ function errorMessage(error: unknown): string {
 // rendering the status it fetched on mount, so an accepted ride would appear to
 // stay in Awaiting Approval until the app was restarted.
 // Editing a booking isn't built yet; the details page's Edit button says so.
-function editComingSoon(kind?: 'request' | 'offer') {
-  Alert.alert(
+function editComingSoon(showAlert: ReturnType<typeof useThemedAlert>, kind?: 'request' | 'offer') {
+  showAlert(
     kind === 'offer' ? 'Edit driving offer' : 'Edit ride request',
     kind === 'offer' ? 'Editing this drive offer is coming soon.' : 'Editing this request is coming soon.',
   );
@@ -110,6 +111,7 @@ function buildRideActions(
   ride: ActionableRide,
   driverName: string,
   onChanged: () => void,
+  showAlert: ReturnType<typeof useThemedAlert>,
 ): RideActions {
   // A match needs both sides to accept. Accept is offered until you have;
   // Decline until the match is confirmed.
@@ -119,12 +121,12 @@ function buildRideActions(
   // in can remove it, lock it, or change its seats.
   if (ride.kind === 'offer') {
     return {
-      onEdit: () => editComingSoon('offer'),
+      onEdit: () => editComingSoon(showAlert, 'offer'),
       ...(answering && !ride.youAccepted ? {
         onAccept: async () => {
           try {
             const answer = await driverAcceptMatch(ride.rideId!);
-            Alert.alert(
+            showAlert(
               answer === 'confirmed' ? 'Rider confirmed' : 'Rider accepted',
               answer === 'confirmed'
                 ? 'They have accepted too, so they are now confirmed on this drive.'
@@ -132,7 +134,7 @@ function buildRideActions(
             );
             onChanged();
           } catch (error) {
-            Alert.alert('Could not accept rider', errorMessage(error));
+            showAlert('Could not accept rider', errorMessage(error));
           }
         },
       } : {}),
@@ -140,31 +142,31 @@ function buildRideActions(
         onDecline: async () => {
           try {
             await driverDeclineMatch(ride.rideId!);
-            Alert.alert('Rider declined', 'They will be matched with another driver, and your seat is open again.');
+            showAlert('Rider declined', 'They will be matched with another driver, and your seat is open again.');
             onChanged();
           } catch (error) {
-            Alert.alert('Could not decline rider', errorMessage(error));
+            showAlert('Could not decline rider', errorMessage(error));
           }
         },
       } : {}),
       onCancel: async () => {
         if (!ride.rideId) {
-          Alert.alert('Not available yet', 'Removing an offer from this view is not wired up.');
+          showAlert('Not available yet', 'Removing an offer from this view is not wired up.');
           return;
         }
         try {
           await cancelOffer(ride.rideId);
-          Alert.alert('Offer removed', 'Any rider matched to this drive will be found another driver.');
+          showAlert('Offer removed', 'Any rider matched to this drive will be found another driver.');
           onChanged();
         } catch (error) {
-          Alert.alert('Could not remove offer', errorMessage(error));
+          showAlert('Could not remove offer', errorMessage(error));
         }
       },
       onSetLocked: async (locked: boolean) => {
         if (!ride.rideId) return;
         try {
           await setOfferLocked(ride.rideId, locked);
-          Alert.alert(
+          showAlert(
             locked ? 'Drive locked' : 'Drive unlocked',
             locked
               ? 'No more passengers will be matched to this drive.'
@@ -172,17 +174,17 @@ function buildRideActions(
           );
           onChanged();
         } catch (error) {
-          Alert.alert(locked ? 'Could not lock drive' : 'Could not unlock drive', errorMessage(error));
+          showAlert(locked ? 'Could not lock drive' : 'Could not unlock drive', errorMessage(error));
         }
       },
       onChangeSeats: async (seats: number) => {
         if (!ride.rideId) return;
         try {
           await updateOfferSeats(ride.rideId, seats);
-          Alert.alert('Seats updated', `This drive now takes ${seats} passenger${seats === 1 ? '' : 's'}.`);
+          showAlert('Seats updated', `This drive now takes ${seats} passenger${seats === 1 ? '' : 's'}.`);
           onChanged();
         } catch (error) {
-          Alert.alert('Could not change seats', errorMessage(error));
+          showAlert('Could not change seats', errorMessage(error));
         }
       },
     };
@@ -194,12 +196,12 @@ function buildRideActions(
       ...(ride.youAccepted ? {} : {
         onAccept: async () => {
           if (!approvable) {
-            Alert.alert('Not available yet', 'Approving a ride from this view is not wired up.');
+            showAlert('Not available yet', 'Approving a ride from this view is not wired up.');
             return;
           }
           try {
             const answer = await acceptMatch(ride.rideId!);
-            Alert.alert(
+            showAlert(
               'Ride accepted',
               answer === 'confirmed'
                 ? `Trip with ${driverName} confirmed.`
@@ -207,22 +209,22 @@ function buildRideActions(
             );
             onChanged();
           } catch (error) {
-            Alert.alert('Could not accept ride', errorMessage(error));
+            showAlert('Could not accept ride', errorMessage(error));
           }
         },
       }),
       onDecline: async () => {
         if (!approvable) {
-          Alert.alert('Not available yet', 'Declining a ride from this view is not wired up.');
+          showAlert('Not available yet', 'Declining a ride from this view is not wired up.');
           return;
         }
         try {
           await declineMatch(ride.rideId!);
           // Declining cancels the request; the rider books again to be rematched.
-          Alert.alert('Ride declined', 'Your request has been cancelled. Book again to find another driver.');
+          showAlert('Ride declined', 'Your request has been cancelled. Book again to find another driver.');
           onChanged();
         } catch (error) {
-          Alert.alert('Could not decline ride', errorMessage(error));
+          showAlert('Could not decline ride', errorMessage(error));
         }
       },
     };
@@ -233,21 +235,21 @@ function buildRideActions(
   // above, which the matcher relies on.
   const confirmed = ride.status === 'confirmed';
   return {
-    onEdit: () => editComingSoon('request'),
+    onEdit: () => editComingSoon(showAlert, 'request'),
     onCancel: async () => {
       if (!ride.rideId) {
-        Alert.alert('Not available yet', 'Cancelling a ride from this view is not wired up.');
+        showAlert('Not available yet', 'Cancelling a ride from this view is not wired up.');
         return;
       }
       try {
         await (confirmed ? cancelConfirmedRequest(ride.rideId) : deleteRideRequest(ride.rideId));
-        Alert.alert(
+        showAlert(
           confirmed ? 'Ride canceled' : 'Ride request canceled',
           confirmed ? 'This ride has been canceled.' : 'This ride request has been canceled.',
         );
         onChanged();
       } catch (error) {
-        Alert.alert('Could not cancel ride', errorMessage(error));
+        showAlert('Could not cancel ride', errorMessage(error));
       }
     },
   };
@@ -265,13 +267,16 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemedAlertProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemedAlertProvider>
   );
 }
 
 function AppContent() {
+  const showAlert = useThemedAlert();
   const [activeTab, setActiveTab] = useState<NavigationTab>('home');
   const [navHidden, setNavHidden] = useState(false);
   const [notificationsList, setNotificationsList] = useState<NotificationItem[]>([]);
@@ -387,7 +392,7 @@ function AppContent() {
         if (data.status !== 'cancelled' && isToday(data.date)) {
           upcomingNotifs.push({
             id: `upcoming-req-${doc.id}`,
-            text: `Upcoming ride to ${getDestination(data)} today at ${data.departureTime || 'scheduled time'}.`,
+            text: `Upcoming ride to ${getDestination(data)} today at ${data.departureTime ? formatTime12h(data.departureTime) : 'scheduled time'}.`,
             type: 'upcoming',
           });
         }
@@ -399,7 +404,7 @@ function AppContent() {
         if (data.status !== 'cancelled' && isToday(data.date)) {
           upcomingNotifs.push({
             id: `upcoming-offer-${doc.id}`,
-            text: `Upcoming drive to ${getDestination(data)} today at ${data.departureTime || 'scheduled time'}.`,
+            text: `Upcoming drive to ${getDestination(data)} today at ${data.departureTime ? formatTime12h(data.departureTime) : 'scheduled time'}.`,
             type: 'upcoming',
           });
         }
@@ -439,7 +444,7 @@ function AppContent() {
         const text = getOfferNotificationText(event, audience, {
           destination: getDestination(data),
           date: formatDate(data.date),
-          time: data.departureTime || 'scheduled time',
+          time: data.departureTime ? formatTime12h(data.departureTime) : 'scheduled time',
         });
         appendNotification({
           id: `offer-event-${audience}-${offerId}-${event.type}-${eventId}`,
@@ -493,7 +498,7 @@ function AppContent() {
         ) {
           appendNotification({
             id: `cancel-req-${change.doc.id}`,
-            text: `Ride request to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] || 'scheduled time'} was cancelled.`,
+            text: `Ride request to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] ? formatTime12h(data['departureTime']) : 'scheduled time'} was cancelled.`,
             type: 'cancellation',
           });
         }
@@ -535,7 +540,7 @@ function AppContent() {
 
   // The same handlers for a card's own Accept button as for its details page, so
   // accepting from a Home or Dashboard card really writes, not just confirms on screen.
-  const rideActionsFor = (ride: RideCardProps) => buildRideActions(ride, ride.driver.name, afterRideChange);
+  const rideActionsFor = (ride: RideCardProps) => buildRideActions(ride, ride.driver.name, afterRideChange, showAlert);
 
   const openRideDetails = (rideCard: RideCardProps, backLabel: string) => {
     const detailRide = toDetailRide(rideCard);
@@ -603,7 +608,7 @@ function AppContent() {
           <CalendarPage
             key={dataVersion}
             onOpenRide={(ride, date) =>
-              setSelectedRide({ ride, date, backLabel: 'Calendar', ...buildRideActions(ride, ride.driver, afterRideChange) })
+              setSelectedRide({ ride, date, backLabel: 'Calendar', ...buildRideActions(ride, ride.driver, afterRideChange, showAlert) })
             }
             onNewRide={(date) => {
               setBookingDate(date);

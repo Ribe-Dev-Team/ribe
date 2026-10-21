@@ -3,6 +3,7 @@ import { Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles, { colors } from '../styles';
 import { CalendarRideRowProps } from './Calendar.schema';
+import { formatTime12h } from '../utility/times';
 
 export default function CalendarRideRow({ ride, statusLabel, statusColor, onPress }: CalendarRideRowProps) {
   return (
@@ -14,7 +15,7 @@ export default function CalendarRideRow({ ride, statusLabel, statusColor, onPres
     >
       <View style={styles.rideTopRow}>
         <Text style={styles.rideStatus}><Text style={{ color: statusColor }}>●</Text> {statusLabel}</Text>
-        <Text style={styles.rideTime}>{ride.time}{ride.duration ? ` (${ride.duration})` : ''}</Text>
+        <Text style={styles.rideTime}>{formatTime12h(ride.time)}{ride.duration ? ` (${ride.duration})` : ''}</Text>
       </View>
       <Text style={styles.rideDetail}>•  {ride.start}</Text>
       <Text style={styles.rideDetail}>▰  {ride.destination}</Text>

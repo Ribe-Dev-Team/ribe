@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -21,6 +20,7 @@ import styles, { colors } from '../styles';
 import PressableScale from '../components/PressableScale';
 import { isValidPhoneNumber } from './schema/user.validation';
 import { formatPhone } from '../utility/phone';
+import { useThemedAlert } from '../components/ThemedDialog';
 
 interface ProfilePageProps {
   onLogout: () => void;
@@ -28,6 +28,7 @@ interface ProfilePageProps {
 }
 
 export default function ProfilePage({ onLogout, onOpenDriverRegistration }: ProfilePageProps) {
+  const showAlert = useThemedAlert();
   const { user, profileData, submitting, updateProfileDetails } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [degree, setDegree] = useState(profileData?.degree || '');
@@ -43,7 +44,7 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
   const profileEmail = profileData?.email || user?.email || 'No email added';
   const profileDob = profileData?.dob || 'Not added';
 
-  const confirmLogout = () => Alert.alert(
+  const confirmLogout = () => showAlert(
     'Sign out?',
     'Are you sure you want to sign out of Ribe?',
     [

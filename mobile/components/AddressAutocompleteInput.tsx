@@ -91,9 +91,8 @@ export default function AddressAutocompleteInput({
   };
 
   const handleBlur = () => {
-    // Delay hiding: blur fires as soon as a dropdown item is touched, before its onPress
-    // resolves, so hiding immediately would unmount the row mid-tap and swallow the selection.
-    setTimeout(() => setShowDropdown(false), 150);
+    // Keep suggestions available after the keyboard is dismissed so the user
+    // can still choose a location without reopening the keyboard.
     onBlur?.();
 
     // Not when a suggestion was picked: the blur can still see the half-typed
@@ -150,6 +149,7 @@ export default function AddressAutocompleteInput({
 
 const localStyles = StyleSheet.create({
   wrapper: {
+    position: 'relative',
     zIndex: 20,
   },
   spinner: {

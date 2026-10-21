@@ -3,11 +3,11 @@
 // and the details page's Edit button for a booking still searching.
 
 import * as React from 'react';
-import { Alert } from 'react-native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
 import DriveControls from '../../mobile/components/DriveControls';
 import RideDetailPage from '../../mobile/pages/RideDetailPage';
 import { fetchRideDetails } from '../../mobile/services/rideData';
+import { renderWithThemedAlerts } from '../themedRender';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('../../mobile/services/rideData', () => ({
@@ -16,43 +16,36 @@ jest.mock('../../mobile/services/rideData', () => ({
 }));
 jest.useRealTimers();
 
-/** The buttons of the most recent Alert.alert call. */
-function lastAlertButtons(spy: jest.SpyInstance) {
-  return spy.mock.calls[spy.mock.calls.length - 1][2] as Array<{ text: string; onPress?: () => void }>;
-}
-
 describe('DriveControls', () => {
   it('says what the lock does, and locks the drive after confirming', async () => {
-    const alert = jest.spyOn(Alert, 'alert');
     const onSetLocked = jest.fn();
-    await render(<DriveControls seats={{ filled: 1, total: 4, open: true, locked: false }} onSetLocked={onSetLocked} />);
+    await renderWithThemedAlerts(<DriveControls seats={{ filled: 1, total: 4, open: true, locked: false }} onSetLocked={onSetLocked} />);
 
     expect(screen.getByText('Lock · No More Passengers')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Stop taking passengers'));
-    lastAlertButtons(alert).find((b) => b.text === 'Lock Drive')!.onPress!();
+    await fireEvent.press(screen.getByText('Lock Drive'));
 
     expect(onSetLocked).toHaveBeenCalledWith(true);
   });
 
   it('offers Seats until the drive is locked, then takes it away', async () => {
     const onChangeSeats = jest.fn();
-    await render(<DriveControls seats={{ filled: 1, total: 4, open: true, locked: false }} onChangeSeats={onChangeSeats} />);
+    await renderWithThemedAlerts(<DriveControls seats={{ filled: 1, total: 4, open: true, locked: false }} onChangeSeats={onChangeSeats} />);
     expect(screen.getByText('Seats (4)')).toBeTruthy();
 
-    await render(<DriveControls seats={{ filled: 1, total: 4, open: false, locked: true }} onChangeSeats={onChangeSeats} />);
+    await renderWithThemedAlerts(<DriveControls seats={{ filled: 1, total: 4, open: false, locked: true }} onChangeSeats={onChangeSeats} />);
     expect(screen.queryByLabelText('Change number of seats')).toBeNull();
   });
 
   it('unlocks a locked drive, but offers nothing for a car that is simply full', async () => {
-    const alert = jest.spyOn(Alert, 'alert');
     const onSetLocked = jest.fn();
-    const { rerender } = await render(
+    const { rerender } = await renderWithThemedAlerts(
       <DriveControls seats={{ filled: 2, total: 4, open: false, locked: true }} onSetLocked={onSetLocked} />,
     );
 
     expect(screen.getByText('Unlock · Take More')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('Take more passengers'));
-    lastAlertButtons(alert).find((b) => b.text === 'Unlock')!.onPress!();
+    await fireEvent.press(screen.getByText('Unlock'));
     expect(onSetLocked).toHaveBeenCalledWith(false);
 
     await rerender(<DriveControls seats={{ filled: 4, total: 4, open: false, locked: false }} onSetLocked={onSetLocked} />);
@@ -61,7 +54,7 @@ describe('DriveControls', () => {
 
   it('changes the number of seats, never below the riders aboard and the one deciding', async () => {
     const onChangeSeats = jest.fn();
-    await render(
+    await renderWithThemedAlerts(
       <DriveControls seats={{ filled: 2, total: 5, open: true, locked: false }} riderDeciding onChangeSeats={onChangeSeats} />,
     );
 
@@ -82,7 +75,7 @@ describe('on the ride details page', () => {
   };
   const show = async (ride: typeof offer | Record<string, unknown>, props: Record<string, unknown> = {}) => {
     (fetchRideDetails as jest.Mock).mockResolvedValue({ passengers: [{ name: 'Ben' }], journey: [], mapPoints: [] });
-    await render(<RideDetailPage ride={ride as never} date={new Date()} onBack={() => {}} {...props} />);
+    await renderWithThemedAlerts(<RideDetailPage ride={ride as never} date={new Date()} onBack={() => {}} {...props} />);
     await screen.findByText('Ben');
   };
 

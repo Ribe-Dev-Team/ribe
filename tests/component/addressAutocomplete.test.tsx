@@ -62,3 +62,15 @@ it('still geocodes an address typed without picking a suggestion', async () => {
 
   expect(mockGeocodeCalls).toEqual(['14 Example St, Clayton VIC']);
 });
+
+it('keeps location suggestions visible after the keyboard is dismissed', async () => {
+  await render(<Field onResolved={() => {}} />);
+  const input = screen.getByPlaceholderText('Address');
+
+  await fireEvent(input, 'focus');
+  await fireEvent.changeText(input, '12 Exam');
+  await act(() => new Promise((resolve) => setTimeout(resolve, 350)));
+  await fireEvent(input, 'blur');
+
+  expect(screen.getByText('12 Example St, Clayton VIC')).toBeTruthy();
+});

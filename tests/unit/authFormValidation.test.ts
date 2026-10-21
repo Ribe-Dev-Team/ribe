@@ -30,13 +30,17 @@ describe('getFormValidationError - login mode', () => {
     expect(getFormValidationError(validLogin)).toBeNull();
   });
 
+  it('accepts existing accounts with a non-Monash email address', () => {
+    expect(getFormValidationError({ ...validLogin, email: 'old.account@gmail.com' })).toBeNull();
+  });
+
   it('requires an email', () => {
     expect(getFormValidationError({ ...validLogin, email: '' })).toBe('Email is required.');
   });
 
   it('rejects a malformed email', () => {
     expect(getFormValidationError({ ...validLogin, email: 'not-an-email' })).toBe(
-      'Please enter a valid Monash email address.',
+      'Please enter a valid email address.',
     );
   });
 
@@ -72,6 +76,12 @@ describe('getFormValidationError - signup mode', () => {
 
   it('rejects a malformed email', () => {
     expect(getFormValidationError({ ...validSignup, email: 'not-an-email' })).toBe(
+      'Please enter a valid Monash email address.',
+    );
+  });
+
+  it('continues to require a Monash email for new accounts', () => {
+    expect(getFormValidationError({ ...validSignup, email: 'new.account@gmail.com' })).toBe(
       'Please enter a valid Monash email address.',
     );
   });

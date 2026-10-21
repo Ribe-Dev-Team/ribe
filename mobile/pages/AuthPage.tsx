@@ -21,6 +21,7 @@ import DatePickerModal from '../components/DatePickerModal';
 import PressableScale from '../components/PressableScale';
 import PasswordInput from '../components/PasswordInput';
 import { formatPhone } from '../utility/phone';
+import { useThemedAlert } from '../components/ThemedDialog';
 import {
   getDriverValidationError,
   MAX_PLATE_LENGTH,
@@ -107,6 +108,7 @@ export default function AuthPage({
   handleLogin,
   handleSignup,
 }: AuthPageProps) {
+  const showAlert = useThemedAlert();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
@@ -287,12 +289,19 @@ export default function AuthPage({
       },
     );
     if (success) {
-      alert('Account created! Please check your email to verify your account, then log in.');
-      setMode('login');
-      setSignupStep('about');
-      // Clear fields to avoid logging in with password if user navigates back
-      setPassword('');
-      setConfirmPassword('');
+      showAlert(
+        'Account created',
+        'Please check your email to verify your account, then log in.',
+        [{
+          text: 'OK',
+          onPress: () => {
+            setMode('login');
+            setSignupStep('about');
+            setPassword('');
+            setConfirmPassword('');
+          },
+        }],
+      );
     }
   };
 

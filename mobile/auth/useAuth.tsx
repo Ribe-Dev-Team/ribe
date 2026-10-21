@@ -2,9 +2,9 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  sendEmailVerification,
   updateProfile,
   type User,
 } from 'firebase/auth';
@@ -122,8 +122,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && !currentUser.emailVerified) {
-        // If they just signed up or haven't verified yet, ignore them in React state.
-        // We handle signing them out in handleSignup/handleLogin.
         setUser(null);
         setProfileData(null);
         setLoading(false);
