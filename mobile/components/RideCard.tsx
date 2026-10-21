@@ -135,11 +135,18 @@ export interface RideCardProps {
   /** Who's driving: a rider's matched driver, or on a driver's own card,
    *  themselves. `vehicle` is make and model; `avatarUri` their profile photo. */
   driver: { uid?: string; name: string; vehicle: string; colour?: string; avatarUri?: string };
+  /** A driver's 'awaiting' card only: the rider they're being asked to accept,
+   *  by first name - the same way their stop is labelled. */
+  rider?: { uid?: string; name: string; degree?: string; avatarUri?: string };
   plate: string;
   /** When a driver match was found - only used for 'awaiting' cards to show a 12h approval countdown */
   matchedAt?: Date;
   /** The matcher's enforced accept-by time; when present the countdown runs to this instead */
   acceptDeadline?: Date;
+  /** Only relevant for 'awaiting' cards - a match needs both the rider and the
+   *  driver to accept. Whether this person has, and whether the other side has. */
+  youAccepted?: boolean;
+  otherAccepted?: boolean;
   /** Only relevant for 'confirmed' cards - driver's phone, masked until 12h before pickup */
   driverPhone?: string;
   /** Exact pickup date/time - used to decide when driverPhone gets revealed */
@@ -149,7 +156,9 @@ export interface RideCardProps {
   onDecline?: () => void;
   /** Opens the full ride details page. Falls back to the in-card modal when omitted. */
   onSeeDetails?: () => void;
-  /** Opens the driver's full profile page. Falls back to the in-card modal when omitted. */
+  /** Opens the other person's full profile page: the driver on a rider's card,
+   *  or the rider being asked on a driver's awaiting card. Falls back to the
+   *  in-card modal on a rider's card when omitted. */
   onOpenDriverProfile?: () => void;
 }
 
@@ -164,9 +173,12 @@ export default function RideCard({
   seats,
   cost,
   driver,
+  rider,
   plate,
   matchedAt,
   acceptDeadline,
+  youAccepted,
+  otherAccepted,
   driverPhone,
   pickupDateTime,
   onAccept,
@@ -183,9 +195,15 @@ export default function RideCard({
   const phoneRevealed = msUntilPickup <= PHONE_REVEAL_WINDOW_MS;
   const [showPhoneInfo, setShowPhoneInfo] = useState(false);
   const [detailsVisible, setDetailsVisible] = useState(false);
-  // Only riders answer a match. A driver is told a rider was found and how long
-  // the rider has to accept.
+  // A match needs both the rider and the driver to accept, in either order.
+  // Each sees Accept until they have, then waits on the other side.
   const isDriver = kind === 'offer';
+  const otherSide = isDriver ? 'rider' : 'driver';
+  const countdownText = (left: string) => youAccepted
+    ? `You've accepted. Waiting for the ${otherSide} - they have ${left} to accept${isDriver ? '.' : ', or you\'ll be matched with someone else.'}`
+    : isDriver
+      ? `Rider found. You have ${left} to accept or decline them${otherAccepted ? ' - they have already accepted.' : '.'}`
+      : `You have ${left} to review and accept before this trip is canceled${otherAccepted ? '. Your driver has already accepted.' : '.'}`;
   // Seats, locking, editing and cancelling are on the details page - the
   // card only shows where things stand.
   const seatLabel = !seats ? '' : seats.open ? 'Still looking' : seats.locked ? 'Locked' : 'Full';
@@ -247,11 +265,7 @@ export default function RideCard({
         <View style={styles.countdownBanner}>
           <Ionicons name="time-outline" size={14} color={colors.darkBlue} />
           <Text style={styles.countdownText}>
-            {remainingMs <= 0
-              ? 'This match has expired.'
-              : isDriver
-                ? `Rider found. They have ${formatCountdown(remainingMs)} to review and accept before this match is cancelled and a new rider is searched for.`
-                : `You have ${formatCountdown(remainingMs)} to review and accept before this trip is canceled.`}
+            {remainingMs <= 0 ? 'This match has expired.' : countdownText(formatCountdown(remainingMs))}
           </Text>
         </View>
       )}
@@ -281,6 +295,31 @@ export default function RideCard({
         </View>
       )}
 
+      {/* Who the driver is being asked to take, so they can decide. */}
+      {isDriver && status === 'awaiting' && rider && (
+        <View style={styles.driverSection}>
+          <TouchableOpacity
+            style={styles.driverRow}
+            accessibilityLabel={`View ${rider.name}'s profile`}
+            disabled={!onOpenDriverProfile}
+            onPress={onOpenDriverProfile}
+          >
+            {rider.avatarUri ? (
+              <Image source={{ uri: rider.avatarUri }} style={styles.avatar} accessibilityLabel={`${rider.name}'s profile photo`} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Ionicons name="person" size={16} color={colors.white} />
+              </View>
+            )}
+            <View style={styles.driverCopy}>
+              <Text style={styles.driverName} numberOfLines={1}>{rider.name}</Text>
+              <Text style={styles.vehicleText} numberOfLines={1}>{rider.degree || 'Monash student'}</Text>
+            </View>
+          </TouchableOpacity>
+          {onOpenDriverProfile && <Ionicons name="chevron-forward" size={16} color={colors.white} />}
+        </View>
+      )}
+
       {/* A driver's riders: one icon each, however many seats the car has. */}
       {isDriver && seats && (
         <View style={styles.seatSection}>
@@ -298,14 +337,20 @@ export default function RideCard({
         </View>
       )}
 
-      {/* A rider's one decision on a match, right on the card. Everything else
-          - editing, cancelling, a driver's seats and lock - is on the details page. */}
-      {status === 'awaiting' && !isDriver && (
+      {/* The one decision on a match, right on the card - for the rider and the
+          driver alike. Everything else - declining, editing, cancelling, a
+          driver's seats and lock - is on the details page. */}
+      {status === 'awaiting' && (youAccepted ? (
+        <View style={[styles.waitingLabel, styles.footer]}>
+          <Ionicons name="hourglass-outline" size={14} color={colors.white} />
+          <Text style={styles.searchingText}>Waiting for {otherSide}</Text>
+        </View>
+      ) : (
         <TouchableOpacity style={[styles.cardAcceptButton, styles.footer]} onPress={onAccept}>
           <Ionicons name="checkmark" size={16} color={colors.white} />
           <Text style={styles.acceptText}>Accept</Text>
         </TouchableOpacity>
-      )}
+      ))}
       {status === 'pending' && (
         <View style={[styles.searchingRow, styles.footer]}>
           <Ionicons name="search" size={14} color={colors.white} />
@@ -361,7 +406,7 @@ export default function RideCard({
               </Text>
             )}
 
-            {status === 'awaiting' && !isDriver ? (
+            {status === 'awaiting' ? (
               <View style={styles.modalButtonRow}>
                 <TouchableOpacity
                   style={styles.declineButton}
@@ -372,15 +417,21 @@ export default function RideCard({
                 >
                   <Text style={styles.declineText}>Decline</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.modalAcceptButton}
-                  onPress={() => {
-                    setDetailsVisible(false);
-                    onAccept?.();
-                  }}
-                >
-                  <Text style={styles.modalAcceptText}>Accept</Text>
-                </TouchableOpacity>
+                {youAccepted ? (
+                  <TouchableOpacity style={styles.declineButton} onPress={() => setDetailsVisible(false)}>
+                    <Text style={styles.declineText}>Close</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.modalAcceptButton}
+                    onPress={() => {
+                      setDetailsVisible(false);
+                      onAccept?.();
+                    }}
+                  >
+                    <Text style={styles.modalAcceptText}>Accept</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               <TouchableOpacity style={styles.closeButton} onPress={() => setDetailsVisible(false)}>
@@ -611,6 +662,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.confirmed,
     borderRadius: 14,
     paddingVertical: 10,
+  },
+  // In Accept's place once you've accepted: the same footprint, not a button.
+  waitingLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
   },
   acceptText: {
     color: colors.white,

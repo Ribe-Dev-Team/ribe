@@ -135,11 +135,15 @@ export default function RideDetailPage({
 }: RideDetailPageProps) {
 	const [details, setDetails] = useState<RideDetails | null>(null);
 	const isConfirmed = ride.status === 'confirmed';
-	// Drivers don't answer matches, so their awaiting offer reads as a rider found.
+	// A match needs both sides to accept; once you have, you're waiting on the other.
 	const isDriver = ride.kind === 'offer';
 	const isMatched = ride.status === 'confirmed' || ride.status === 'awaiting';
 	const status = ride.status === 'confirmed' ? 'Confirmed Ride'
-		: ride.status === 'awaiting' ? (isDriver ? 'Rider Found - Awaiting Their Confirmation' : 'Awaiting Confirmation')
+		: ride.status === 'awaiting' ? (
+			ride.youAccepted ? `You Accepted - Waiting for the ${isDriver ? 'Rider' : 'Driver'}`
+			: isDriver ? `Rider Found - ${ride.otherAccepted ? 'They Accepted, ' : ''}Waiting for Your Answer`
+			: `Awaiting Your Confirmation${ride.otherAccepted ? ' - Your Driver Accepted' : ''}`
+		)
 		: 'Pending Ride';
 	// What the time at the top is: once the trip is planned, when the driver
 	// leaves or the rider is collected; until then, the window they booked.
@@ -248,10 +252,12 @@ export default function RideDetailPage({
 					<Pressable
 						onPress={() =>
 							Alert.alert(
-								'Decline this ride?',
-								'Are you sure you want to decline this ride?',
+								isDriver ? 'Decline this rider?' : 'Decline this ride?',
+								isDriver
+									? 'They will go back to being matched with another driver, and your seat opens up again.'
+									: 'Are you sure you want to decline this ride?',
 								[
-									{ text: 'Keep Ride', style: 'cancel' },
+									{ text: isDriver ? 'Keep Rider' : 'Keep Ride', style: 'cancel' },
 									{ text: 'Decline', style: 'destructive', onPress: onDecline },
 								],
 							)
@@ -260,9 +266,11 @@ export default function RideDetailPage({
 					>
 						<Text style={styles.dangerButtonText}>Decline</Text>
 					</Pressable>
-					<Pressable onPress={onAccept} style={[styles.successButton, { marginTop: 0 }]}>
-						<Text style={styles.successButtonText}>Accept</Text>
-					</Pressable>
+					{onAccept && (
+						<Pressable onPress={onAccept} style={[styles.successButton, { marginTop: 0 }]}>
+							<Text style={styles.successButtonText}>Accept</Text>
+						</Pressable>
+					)}
 				</View>
 			)}
 

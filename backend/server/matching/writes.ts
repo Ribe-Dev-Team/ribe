@@ -30,6 +30,8 @@ export interface StoredOffer {
   confirmedRequestIds?: string[];
   /** False once the driver locks the trip: no more passengers. Absent = true. */
   acceptingMore?: boolean;
+  /** The rider in the pending slot has accepted, and the driver hasn't yet. */
+  riderAccepted?: boolean;
 }
 
 /**
@@ -234,8 +236,11 @@ export const REQUEST_MATCH_FIELDS = [
   'routeIndex', 'pickupAt', 'arriveAt',
 ];
 
-/** An offer's pending-slot fields, removed when the slot is freed. */
-export const OFFER_SLOT_FIELDS = ['matchedRiderId', 'matchedAt', 'acceptDeadline', 'pendingSchedule'];
+/** An offer's pending-slot fields, removed when the slot is freed. The two
+ *  answers go with it, so neither carries over to the next rider matched. */
+export const OFFER_SLOT_FIELDS = [
+  'matchedRiderId', 'matchedAt', 'acceptDeadline', 'pendingSchedule', 'riderAccepted', 'driverAccepted',
+];
 
 export type Settlement = 'RELEASED' | 'EXPIRED' | 'VACATED';
 
@@ -248,18 +253,23 @@ export interface Settled {
 
 /**
  * Bring a matched request (awaiting approval or confirmed) in line with its
- * offer. Only the rider answers a match, and the driver can't write the
- * rider's booking - so when something happens on the driver's side, the
- * rider's request catches up here:
+ * offer. A match needs both the rider and the driver to accept, but the
+ * driver's phone can only write the rider's booking while they're matched -
+ * so when the driver removes their whole offer, the rider's request catches
+ * up here:
  *
  *   RELEASED  the driver removed their offer (or it's gone, or no longer has
  *             this rider): back to looking, every match field removed, so the
- *             next run can find them someone else
+ *             next run can find them someone else. Also when the deadline
+ *             passes with the rider having accepted and only the driver not
+ *             answering - the rider did nothing wrong, so they aren't expired
  *   EXPIRED   the rider didn't answer by the deadline: the request expires -
  *             RideCard already tells the rider the trip is cancelled - and the
  *             driver's slot is freed for the next run
- *   VACATED   a confirmed rider cancelled (cancelConfirmedRequest): their seat
- *             comes off the driver's offer, which the rider's phone can't write.
+ *   VACATED   a confirmed rider cancelled (cancelConfirmedRequest) and their
+ *             seat is still on the driver's offer. The app takes it off at once
+ *             when it can; it's left here only when another rider was deciding
+ *             on the car, or the Firestore rules refused the app's write.
  *             Waits while another rider is deciding on that car - their proposed
  *             route and pickup position include the departed rider - and goes
  *             ahead once they answer or their match expires.
@@ -311,12 +321,14 @@ export function planSettle(
   if (!holding) return released;
 
   if (!request.acceptDeadline || request.acceptDeadline > now) return null;
+  // Back in the pool - unless the driver locked the trip meanwhile and has
+  // passengers, in which case it's done.
+  const freedSlot = { set: { status: settledOfferStatus(offer!), pendingRequestId: null }, remove: OFFER_SLOT_FIELDS };
+  if (offer!.riderAccepted) return { ...released, offer: freedSlot };
   return {
     outcome: 'EXPIRED',
     request: { set: { status: 'expired' }, remove: [] },
-    // Back in the pool - unless the driver locked the trip meanwhile and has
-    // passengers, in which case it's done.
-    offer: { set: { status: settledOfferStatus(offer!), pendingRequestId: null }, remove: OFFER_SLOT_FIELDS },
+    offer: freedSlot,
   };
 }
 

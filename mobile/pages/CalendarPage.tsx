@@ -33,6 +33,11 @@ export interface Ride {
   driverUid?: string;
   vehicle: string;
   id?: string;
+  /** Awaiting only: whether this person, and the other side, have accepted. */
+  youAccepted?: boolean;
+  otherAccepted?: boolean;
+  /** A driver's awaiting drive only: the rider they're being asked to accept. */
+  rider?: RideCardProps['rider'];
   co2SavedKg?: number;
   /** Read from Firestore; worked out by the matching runner. */
   costSplit?: RideCostSplit;
@@ -112,6 +117,8 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             vehicle: ride.driver.vehicle,
             co2SavedKg: ride.co2SavedKg,
             id: ride.id,
+            youAccepted: ride.youAccepted,
+            otherAccepted: ride.otherAccepted,
             costSplit: ride.costSplit,
             seats: ride.seats,
           })),
@@ -128,6 +135,9 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
             vehicle: ride.driver.vehicle,
             co2SavedKg: ride.co2SavedKg,
             id: ride.id,
+            youAccepted: ride.youAccepted,
+            otherAccepted: ride.otherAccepted,
+            rider: ride.rider,
             costSplit: ride.costSplit,
             seats: ride.seats,
           })),

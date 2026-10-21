@@ -4,8 +4,8 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  updateProfile,
   sendEmailVerification,
+  updateProfile,
   type User,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -121,6 +121,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser && !currentUser.emailVerified) {
+        // If they just signed up or haven't verified yet, ignore them in React state.
+        // We handle signing them out in handleSignup/handleLogin.
+        setUser(null);
+        setProfileData(null);
+        setLoading(false);
+        return;
+      }
+
       setUser(currentUser);
 
       if (!currentUser) {
@@ -222,7 +231,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      if (!userCredential.user.emailVerified) {
+        await firebaseSignOut(auth);
+        setError('Please verify your email address to log in.');
+        return;
+      }
     } catch (err) {
       setError(getAuthErrorMessage(err));
     } finally {
@@ -313,12 +327,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }
 
+      setProfileData((currentProfile) => ({
+        ...(currentProfile ?? {}),
+        ...profilePayload,
+      }));
+
       await sendEmailVerification(currentUser);
       await firebaseSignOut(auth);
-      
+      setError('Account created. Please check your email to verify your account before logging in.');
       return true;
     } catch (err) {
       setError(getAuthErrorMessage(err));
+      return false;
       return false;
     } finally {
       setSubmitting(false);

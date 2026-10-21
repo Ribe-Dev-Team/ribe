@@ -61,6 +61,12 @@ export interface TripSchedule {
   departAt: Timestamp; // the driver sets off
   arriveAt: Timestamp; // the driver reaches their own destination
   stops: TripStop[];   // every rider, in pickup order
+  /*
+  Set when a rider cancelled and their stop was simply taken out
+  (cancelConfirmedRequest): the others' times are still the old route's, so the
+  runner re-plans it on its next run, which also clears this.
+  */
+  needsReplan?: boolean;
   costs?: TripCosts;
   emissionsSavedKg?: number;
 }
@@ -79,7 +85,21 @@ export interface RideOffer {
   seatCapacity: number;
   createdAt?: string;
   pendingRequestId?: string | null;
+  /*
+  The uid of the rider in that pending slot. The published Firestore rules let
+  a user update someone else's offer only when this matches them, and the
+  rider's Accept/Decline updates the driver's offer - so it's required, not
+  informational. Cleared again once the match is confirmed or declined.
+  */
   matchedRiderId?: string;
+  /*
+  Who has accepted the rider in the pending slot so far. A match is confirmed
+  only once BOTH have, in either order: whoever accepts second confirms it.
+  Pending-slot fields, so they're removed whenever the slot is freed and can't
+  carry over to the next rider matched.
+  */
+  riderAccepted?: boolean;
+  driverAccepted?: boolean;
   confirmedRequestIds?: string[];
   acceptingMore?: boolean;
   matchedAt?: Timestamp;
