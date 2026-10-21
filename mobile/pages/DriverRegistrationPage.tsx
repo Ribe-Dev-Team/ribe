@@ -98,7 +98,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 This is what passengers see when they book a ride with you, so make sure it's accurate.
               </Text>
 
-              <Text style={styles.profileLabel}>Vehicle make</Text>
+              <Text style={styles.profileLabel}>Vehicle Make</Text>
               <TextInput
                 autoCapitalize="words"
                 onChangeText={setVehicleMake}
@@ -108,7 +108,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 value={vehicleMake}
               />
 
-              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Vehicle model</Text>
+              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Vehicle Model</Text>
               <TextInput
                 autoCapitalize="words"
                 onChangeText={setVehicleModel}
@@ -118,7 +118,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 value={vehicleModel}
               />
 
-              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Vehicle color</Text>
+              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Vehicle Color</Text>
               <TextInput
                 autoCapitalize="words"
                 onChangeText={setVehicleColor}
@@ -128,7 +128,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 value={vehicleColor}
               />
 
-              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>License plate</Text>
+              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>License Plate</Text>
               <TextInput
                 autoCapitalize="characters"
                 maxLength={MAX_PLATE_LENGTH}
@@ -139,7 +139,7 @@ export default function DriverRegistrationPage({ onDone }: DriverRegistrationPag
                 value={licensePlate}
               />
 
-              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Seats available</Text>
+              <Text style={[styles.profileLabel, localStyles.fieldSpacing]}>Seats Available</Text>
               <TextInput
                 keyboardType="number-pad"
                 maxLength={1}

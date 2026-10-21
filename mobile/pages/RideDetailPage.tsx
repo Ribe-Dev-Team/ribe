@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Image, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import RideMap, { markerColor } from '../components/RideMap';
 import CostSplitPanel from '../components/CostSplitPanel';
+import DriveControls from '../components/DriveControls';
 import { fetchRideDetails, JourneyStop, RideCar, RideDetails, RidePerson } from '../services/rideData';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
 import GreenhouseEmissionCard from '../components/GreenhouseEmissionCard';
@@ -17,6 +18,12 @@ interface RideDetailPageProps {
 	onAccept?: () => Promise<void> | void;
 	onDecline?: () => Promise<void> | void;
 	onCancel?: () => Promise<void> | void;
+	/** A booking still searching: change it. */
+	onEdit?: () => void;
+	/** A driver's own drive: stop (true) or resume (false) taking passengers. */
+	onSetLocked?: (locked: boolean) => void;
+	/** A driver's own drive: change how many passengers it takes. */
+	onChangeSeats?: (seats: number) => void;
 }
 
 function formatDate(date: Date) {
@@ -38,15 +45,43 @@ function Avatar({ person }: { person: RidePerson }) {
 		: <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(person.name)}</Text></View>;
 }
 
-function PersonRow({ person, subtitle }: { person: RidePerson; subtitle?: string }) {
+function PersonRow({ person, subtitle, children }: { person: RidePerson; subtitle?: string; children?: React.ReactNode }) {
 	return (
 		<View style={styles.personRow}>
 			<Avatar person={person} />
 			<View style={styles.personCopy}>
 				<Text style={styles.personName}>{person.name}{person.awaiting ? '  ·  awaiting' : ''}</Text>
 				{subtitle ? <Text style={styles.personBio}>{subtitle}</Text> : null}
+				{children}
 			</View>
 		</View>
+	);
+}
+
+/** Someone's number, masked until 12 hours before the trip as on the ride
+ *  card; once shown, buttons to call or text them - say, where the car is
+ *  parked at uni. */
+function ContactLine({ name, phone, revealed }: { name: string; phone?: string; revealed: boolean }) {
+	if (!phone) return <Text style={styles.infoLine}>Contact  ·  Not shared</Text>;
+	const digits = phone.replace(/[^\d+]/g, '');
+	return (
+		<>
+			<Text style={styles.infoLine}>
+				Contact  ·  {revealed ? formatPhone(phone) : `${maskPhone(phone)} (shown 12h before pickup)`}
+			</Text>
+			{revealed && (
+				<View style={styles.contactActions}>
+					<Pressable accessibilityLabel={`Call ${name}`} onPress={() => Linking.openURL(`tel:${digits}`)} style={styles.contactButton}>
+						<Ionicons name="call-outline" size={13} color={colors.white} />
+						<Text style={styles.contactButtonText}>Call</Text>
+					</Pressable>
+					<Pressable accessibilityLabel={`Text ${name}`} onPress={() => Linking.openURL(`sms:${digits}`)} style={styles.contactButton}>
+						<Ionicons name="chatbubble-outline" size={13} color={colors.white} />
+						<Text style={styles.contactButtonText}>Text</Text>
+					</Pressable>
+				</View>
+			)}
+		</>
 	);
 }
 
@@ -85,7 +120,7 @@ function CarSection({ title, car }: { title: string; car?: RideCar }) {
 	return (
 		<Section title={title}>
 			<View style={styles.carRow}>
-				<Text style={styles.carIcon}>▣</Text>
+				<Ionicons name="car-outline" size={30} color={colors.white} style={styles.carIcon} />
 				<View>
 					<Text style={styles.personName}>{name || 'Vehicle details not added yet'}</Text>
 					<Text style={styles.infoLine}>Plate  ·  {car?.plate ?? 'Not shared'}</Text>
@@ -95,19 +130,21 @@ function CarSection({ title, car }: { title: string; car?: RideCar }) {
 	);
 }
 
-export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel }: RideDetailPageProps) {
+export default function RideDetailPage({
+	ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel, onEdit, onSetLocked, onChangeSeats,
+}: RideDetailPageProps) {
 	const [details, setDetails] = useState<RideDetails | null>(null);
 	const isConfirmed = ride.status === 'confirmed';
 	// A match needs both sides to accept; once you have, you're waiting on the other.
 	const isDriver = ride.kind === 'offer';
 	const isMatched = ride.status === 'confirmed' || ride.status === 'awaiting';
-	const status = ride.status === 'confirmed' ? 'Confirmed ride'
+	const status = ride.status === 'confirmed' ? 'Confirmed Ride'
 		: ride.status === 'awaiting' ? (
-			ride.youAccepted ? `You accepted - waiting for the ${isDriver ? 'rider' : 'driver'}`
-			: isDriver ? `Rider found - ${ride.otherAccepted ? 'they accepted, ' : ''}waiting for your answer`
-			: `Awaiting your confirmation${ride.otherAccepted ? ' - your driver accepted' : ''}`
+			ride.youAccepted ? `You Accepted - Waiting for the ${isDriver ? 'Rider' : 'Driver'}`
+			: isDriver ? `Rider Found - ${ride.otherAccepted ? 'They Accepted, ' : ''}Waiting for Your Answer`
+			: `Awaiting Your Confirmation${ride.otherAccepted ? ' - Your Driver Accepted' : ''}`
 		)
-		: 'Pending ride';
+		: 'Pending Ride';
 	// What the time at the top is: once the trip is planned, when the driver
 	// leaves or the rider is collected; until then, the window they booked.
 	const timeLabel = !ride.duration ? 'travel window' : isDriver ? 'leave time' : 'pick-up time';
@@ -138,8 +175,9 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			{ kind: 'start', title: isDriver ? 'Departure' : 'Pickup', address: ride.start, time: ride.time },
 			{ kind: 'end', title: 'Drop-off', address: ride.destination },
 		];
-	// As on the ride card: a confirmed rider sees their driver's number in full
-	// from 12 hours before pickup, and only its first digits before that.
+	// As on the ride card: numbers show in full from 12 hours before the trip,
+	// and only their first digits before that. A confirmed rider sees their
+	// driver's; a driver, each confirmed passenger's.
 	const phoneRevealed = details?.startsAt !== undefined
 		&& details.startsAt.getTime() - Date.now() <= PHONE_REVEAL_WINDOW_MS;
 
@@ -148,7 +186,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 			<Pressable accessibilityLabel={`Back to ${backLabel}`} onPress={onBack} style={styles.backButton}><Text style={styles.backButtonText}>‹</Text><Text style={styles.backButtonLabel}>{backLabel}</Text></Pressable>
 			<View style={styles.detailTitleRow}>
 				{isDriver && <Ionicons name="car-sport" size={28} color={colors.white} accessibilityLabel="Driving" />}
-				<Text style={styles.detailTitle}>{isDriver ? 'Drive details' : 'Ride details'}</Text>
+				<Text style={styles.detailTitle}>{isDriver ? 'Drive Details' : 'Ride Details'}</Text>
 			</View>
 			<Text style={styles.detailDate}>{formatDate(date)}</Text>
 
@@ -160,35 +198,44 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 
 			{isDriver ? (
 				<>
-					<Section title="Your passengers">
+					<Section title="Your Passengers">
 						{loading ? <Text style={styles.mutedDetail}>Loading passengers...</Text>
 							: details.passengers.length === 0 ? <Text style={styles.mutedDetail}>Passengers will appear here once riders are matched to your drive.</Text>
-							: details.passengers.map((person, index) => <PersonRow key={index} person={person} subtitle={aboutOf(person)} />)}
+							: details.passengers.map((person, index) => (
+								<PersonRow key={index} person={person} subtitle={aboutOf(person)}>
+									{person.phone ? <ContactLine name={person.name} phone={person.phone} revealed={phoneRevealed} /> : null}
+								</PersonRow>
+							))}
+						{/* How many seats it offers, and whether it's still taking riders. */}
+						{ride.seats && (
+							<DriveControls
+								seats={ride.seats}
+								riderDeciding={ride.status === 'awaiting'}
+								onSetLocked={onSetLocked}
+								onChangeSeats={onChangeSeats}
+							/>
+						)}
 					</Section>
-					{!loading && <CarSection title="Your car" car={details.car} />}
+					{!loading && <CarSection title="Your Car" car={details.car} />}
 				</>
 			) : !isMatched ? (
-				<Section title="Your driver"><Text style={styles.mutedDetail}>A driver will appear here once you're matched.</Text></Section>
+				<Section title="Your Driver"><Text style={styles.mutedDetail}>A driver will appear here once you're matched.</Text></Section>
 			) : (
 				<>
-					<Section title="Your driver">
+					<Section title="Your Driver">
 						{loading ? <Text style={styles.mutedDetail}>Loading driver details...</Text>
 							: !driver ? <Text style={styles.mutedDetail}>Driver details aren't available right now.</Text>
 							: (
 								<>
 									<PersonRow person={driver} subtitle={driver.bio ?? 'This driver has not added a bio yet.'} />
 									<Text style={styles.infoLine}>Degree  ·  {driver.degree ?? 'Not added'}</Text>
-									{isConfirmed && (
-										<Text style={styles.infoLine}>
-											Contact  ·  {driver.phone ? (phoneRevealed ? formatPhone(driver.phone) : `${maskPhone(driver.phone)} (shown 12h before pickup)`) : 'Not shared'}
-										</Text>
-									)}
+									{isConfirmed && <ContactLine name={driver.name} phone={driver.phone} revealed={phoneRevealed} />}
 								</>
 							)}
 					</Section>
-					{!loading && driver && <CarSection title="Driver's car" car={details.car} />}
+					{!loading && driver && <CarSection title="Driver's Car" car={details.car} />}
 					{!loading && (
-						<Section title="Other riders">
+						<Section title="Other Riders">
 							{details.passengers.length === 0
 								? <Text style={styles.mutedDetail}>{isConfirmed ? "You're the only rider so far." : 'No other riders are confirmed in this car yet.'}</Text>
 								: details.passengers.map((person, index) => <PersonRow key={index} person={person} subtitle={aboutOf(person)} />)}
@@ -227,6 +274,12 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 				</View>
 			)}
 
+			{ride.status === 'pending' && onEdit && (
+				<Pressable onPress={onEdit} style={[styles.secondaryButton, { flex: 0, marginTop: 14 }]}>
+					<Text style={styles.secondaryButtonText}>{isDriver ? 'Edit Offer' : 'Edit Request'}</Text>
+				</Pressable>
+			)}
+
 			{(isConfirmed || ride.status === 'pending' || isDriver) && onCancel && (
 				<Pressable
 					onPress={() =>
@@ -259,7 +312,7 @@ export default function RideDetailPage({ ride, date, backLabel = 'Calendar', onB
 					}
 					style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
 				>
-					<Text style={styles.dangerButtonText}>{isDriver ? 'Remove offer' : ride.status === 'pending' ? 'Cancel pending ride' : 'Cancel ride'}</Text>
+					<Text style={styles.dangerButtonText}>{isDriver ? 'Remove Offer' : ride.status === 'pending' ? 'Cancel Pending Ride' : 'Cancel Ride'}</Text>
 				</Pressable>
 			)}
 		</ScrollView>

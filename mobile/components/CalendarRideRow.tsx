@@ -22,7 +22,7 @@ export default function CalendarRideRow({ ride, statusLabel, statusColor, onPres
       <Text style={styles.driverName}>●  {ride.driver}</Text>
       <Text style={styles.vehicleText}>     {ride.vehicle}</Text>
       <View style={styles.seeMoreLink}>
-        <Text style={styles.seeMoreLinkText}>See details</Text>
+        <Text style={styles.seeMoreLinkText}>See Details</Text>
         <Ionicons name="chevron-forward" size={13} color={colors.white} />
       </View>
     </Pressable>

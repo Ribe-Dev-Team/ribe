@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../styles';
-import NumberStepper from './NumberStepper';
+import sharedStyles, { colors } from '../styles';
 import { RideCostSplit } from '../utility/costDisplay';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
-import { MAX_CAR_SEATS } from '../pages/schema/user.validation';
 
 const APPROVAL_WINDOW_MS = 12 * 60 * 60 * 1000;
 
@@ -71,6 +69,15 @@ const ordinalSuffix = (day: number) => {
     default: return 'th';
   }
 };
+
+/** Just the street part of an address - "12 Example St" from
+ *  "Unit 3, 12 Example St, Clayton VIC 3168, Australia". The suburb and the rest
+ *  are on the details page. A place with no street number (e.g. "Monash
+ *  University Clayton") keeps its first part. */
+export function shortAddress(address: string) {
+  const parts = address.split(',').map((part) => part.trim()).filter(Boolean);
+  return parts.find((part) => /\d+\w*\s+[A-Za-z]/.test(part)) ?? parts[0] ?? address;
+}
 
 export function formatRideDate(date: Date) {
   const weekday = date.toLocaleDateString('en-US', { weekday: 'short' });
@@ -147,19 +154,12 @@ export interface RideCardProps {
   /** Only relevant for 'awaiting' cards - wired to the See Details modal's Accept/Decline buttons */
   onAccept?: () => void;
   onDecline?: () => void;
-  /** Only relevant for 'pending' cards */
-  onEdit?: () => void;
-  onCancel?: () => void;
   /** Opens the full ride details page. Falls back to the in-card modal when omitted. */
   onSeeDetails?: () => void;
   /** Opens the other person's full profile page: the driver on a rider's card,
    *  or the rider being asked on a driver's awaiting card. Falls back to the
    *  in-card modal on a rider's card when omitted. */
   onOpenDriverProfile?: () => void;
-  /** Driver only: stop (true) or resume (false) taking passengers. */
-  onSetLocked?: (locked: boolean) => void;
-  /** Driver only: change how many passengers the drive takes. */
-  onChangeSeats?: (seats: number) => void;
 }
 
 export default function RideCard({
@@ -168,14 +168,10 @@ export default function RideCard({
   date,
   pickup,
   destination,
-  etaMinutes,
   readyBy,
   timeWindow,
   seats,
-  arriveBy,
-  stops,
   cost,
-  co2SavedKg,
   driver,
   rider,
   plate,
@@ -187,12 +183,8 @@ export default function RideCard({
   pickupDateTime,
   onAccept,
   onDecline,
-  onEdit,
-  onCancel,
   onSeeDetails,
   onOpenDriverProfile,
-  onSetLocked,
-  onChangeSeats,
 }: RideCardProps) {
   const accent = statusAccent[status];
   const remainingMs = useApprovalCountdown(
@@ -201,7 +193,6 @@ export default function RideCard({
   );
   const msUntilPickup = useTimeUntil(status === 'confirmed' ? pickupDateTime : undefined);
   const phoneRevealed = msUntilPickup <= PHONE_REVEAL_WINDOW_MS;
-  const [showCostInfo, setShowCostInfo] = useState(false);
   const [showPhoneInfo, setShowPhoneInfo] = useState(false);
   const [detailsVisible, setDetailsVisible] = useState(false);
   // A match needs both the rider and the driver to accept, in either order.
@@ -213,109 +204,61 @@ export default function RideCard({
     : isDriver
       ? `Rider found. You have ${left} to accept or decline them${otherAccepted ? ' - they have already accepted.' : '.'}`
       : `You have ${left} to review and accept before this trip is canceled${otherAccepted ? '. Your driver has already accepted.' : '.'}`;
-  const confirmRemoveOffer = () =>
-    Alert.alert(
-      'Remove this drive offer?',
-      'Any rider matched to it will go back to searching for another driver.',
-      [
-        { text: 'Keep Offer', style: 'cancel' },
-        { text: 'Remove Offer', style: 'destructive', onPress: onCancel },
-      ],
-    );
+  // Seats, locking, editing and cancelling are on the details page - the
+  // card only shows where things stand.
+  const seatLabel = !seats ? '' : seats.open ? 'Still looking' : seats.locked ? 'Locked' : 'Full';
 
-  // Seats: a rider sees them once confirmed; a driver always sees their own.
-  const showSeats = Boolean(seats) && (isDriver || status === 'confirmed');
-  // A rider deciding on a match holds a seat too, so seats can't drop below it.
-  const seatsTaken = (seats?.filled ?? 0) + (isDriver && status === 'awaiting' ? 1 : 0);
-  const [seatEditorVisible, setSeatEditorVisible] = useState(false);
-  const [seatDraft, setSeatDraft] = useState(seats?.total ?? 1);
-  // Locked, the car is as full as it's going to get: it reads 1/1, not 1/3,
-  // because the empty seats aren't on offer any more.
-  const seatTotal = seats && seats.locked && seats.filled > 0 ? seats.filled : seats?.total ?? 0;
-  // The driver's own controls: seats until the drive is locked (a locked car
-  // takes nobody new, so its seat count would change nothing), lock/unlock
-  // once someone's aboard (a full car that isn't locked has nothing to lock).
-  const canEditSeats = isDriver && Boolean(onChangeSeats) && !seats?.locked;
-  const canToggleLock = isDriver && Boolean(onSetLocked) && (seats?.filled ?? 0) > 0
-    && Boolean(seats?.open || seats?.locked);
-  const seatLabel = !seats ? '' : seats.open
-    ? (isDriver ? 'Still looking for passengers' : 'Driver may add passengers')
-    : !isDriver ? 'No more passengers will be added'
-      : seats.locked ? 'Locked' : 'Full';
-
-  const confirmLockToggle = () => {
-    if (!seats || !onSetLocked) return;
-    if (seats.open) {
-      Alert.alert(
-        'Stop taking passengers?',
-        `You keep the ${seats.filled} rider${seats.filled === 1 ? '' : 's'} already confirmed. No new riders will be matched to this drive.`,
-        [
-          { text: 'Keep Looking', style: 'cancel' },
-          { text: 'Lock Drive', onPress: () => onSetLocked(true) },
-        ],
-      );
-    } else {
-      Alert.alert(
-        'Take more passengers?',
-        'This drive goes back into matching for its free seats. New riders still have to fit your route and everyone\'s arrival time.',
-        [
-          { text: 'Keep Locked', style: 'cancel' },
-          { text: 'Unlock', onPress: () => onSetLocked(false) },
-        ],
-      );
-    }
-  };
-
-  // The whole card opens the details, as "See more information" does. The
+  // The whole card opens the details, as "See More Information" does. The
   // buttons inside it still take their own presses - the innermost one wins.
   const openDetails = () => (onSeeDetails ? onSeeDetails() : setDetailsVisible(true));
   // "Toyota Corolla · Blue" - colour is left off when the driver hasn't added it.
   const vehicleLine = [driver.vehicle, driver.colour].filter(Boolean).join(' · ');
 
+  // The one thing to know at a glance, largest on the card: when to be out the
+  // door. A rider's is when to be ready for pickup, a driver's when to leave.
+  // Still searching there's no planned time, just the window they booked.
+  const hero = timeWindow
+    ? { label: 'Your window', value: `${timeWindow.from}–${timeWindow.to}` }
+    : isDriver
+      ? { label: 'Leave at', value: pickup.time }
+      : { label: 'Be ready by', value: readyBy ?? pickup.time };
+  const riders = seats?.filled ?? 0;
+
   return (
     <Pressable
       testID="ride-card"
       onPress={openDetails}
-      // Not one accessible element: that would hide every button inside from
-      // screen readers. Their way to the details is the "See more information" link.
+      // Not one accessible element: that would hide the buttons inside from
+      // screen readers. Their way to the details is the "See More Information" link.
       accessible={false}
       style={({ pressed }) => [styles.card, { borderLeftColor: accent }, pressed && styles.cardPressed]}
     >
+      {/* Date and price up top, quieter than the time below them. The rest -
+          stops on the way, full addresses, CO2, the cost breakdown - is on the
+          details page. */}
       <View style={styles.topRow}>
-        <View style={styles.statusRow}>
-          <View style={[styles.statusDot, { backgroundColor: accent }]} />
-          <Text style={styles.statusLabel}>{formatRideDate(date)}</Text>
+        <Text style={styles.dateText}>{formatRideDate(date)}</Text>
+        <View style={styles.priceRow}>
+          <Ionicons name="cash-outline" size={14} color={colors.confirmedLight} />
+          <Text style={styles.priceText}>{cost}</Text>
         </View>
-        {/* Still searching: the window they gave, not a trip length - nothing
-            has been planned yet, so there is no trip to time. */}
-        <Text style={styles.etaBadge}>
-          {timeWindow ? `${timeWindow.from}–${timeWindow.to}` : `${etaMinutes} min`}
-        </Text>
       </View>
 
-      <View style={styles.stopRow}>
-        <Ionicons name="ellipse" size={10} color={colors.white} style={styles.stopIcon} />
-        <Text style={styles.stopAddress} numberOfLines={1}>{pickup.address}</Text>
-        <Text style={styles.stopTime}>{timeWindow ? `from ${timeWindow.from}` : pickup.time}</Text>
-      </View>
-      {readyBy && <Text style={styles.readyBy}>Be ready by {readyBy}</Text>}
-      {/* The other pickups on the way, in route order. A card showing a range
-          has no planned trip, so no stops to time. */}
-      {!timeWindow && stops?.map((stop, index) => (
-        <React.Fragment key={`${stop.label}-${index}`}>
-          <View style={styles.stopConnector} />
-          <View style={styles.stopRow} accessibilityLabel={`Stop: ${stop.label}, ${stop.time}`}>
-            <Ionicons name="ellipse-outline" size={10} color={colors.white} style={styles.stopIcon} />
-            <Text style={styles.stopAddress} numberOfLines={1}>{stop.label}</Text>
-            <Text style={styles.stopTime}>{stop.time}</Text>
-          </View>
-        </React.Fragment>
-      ))}
-      <View style={styles.stopConnector} />
-      <View style={styles.stopRow}>
-        <Ionicons name="location" size={13} color={colors.white} style={styles.stopIcon} />
-        <Text style={styles.stopAddress} numberOfLines={1}>{destination.address}</Text>
-        <Text style={styles.stopTime}>{timeWindow ? `by ${timeWindow.to}` : `ETA ${destination.eta}`}</Text>
+      <Text style={styles.heroLabel}>{hero.label}</Text>
+      <Text style={styles.heroTime}>{hero.value}</Text>
+
+      <View style={styles.route}>
+        <View style={styles.stopRow}>
+          <Ionicons name="ellipse" size={10} color={colors.white} style={styles.stopIcon} />
+          <Text style={styles.stopAddress} numberOfLines={1}>{shortAddress(pickup.address)}</Text>
+          <Text style={styles.stopTime}>{timeWindow ? `from ${timeWindow.from}` : pickup.time}</Text>
+        </View>
+        <View style={styles.stopConnector} />
+        <View style={styles.stopRow}>
+          <Ionicons name="location" size={13} color={colors.white} style={styles.stopIcon} />
+          <Text style={styles.stopAddress} numberOfLines={1}>{shortAddress(destination.address)}</Text>
+          <Text style={styles.stopTime}>{timeWindow ? `by ${timeWindow.to}` : `ETA ${destination.eta}`}</Text>
+        </View>
       </View>
 
       {status === 'awaiting' && matchedAt && (
@@ -327,249 +270,100 @@ export default function RideCard({
         </View>
       )}
 
-      <View style={styles.statsRow}>
-        <View style={styles.statInline}>
-          <Ionicons name="cash-outline" size={13} color={colors.white} />
-          <Text style={styles.statInlineText}>{cost}</Text>
+      {/* A rider's driver and car, to spot them at pickup. A driver's own card
+          shows their riders instead, below. */}
+      {!isDriver && status !== 'pending' && (
+        <View style={styles.driverSection}>
           <TouchableOpacity
-            accessibilityLabel="What does this fee cover?"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            onPress={() => setShowCostInfo((v) => !v)}
+            style={styles.driverRow}
+            accessibilityLabel="View driver profile"
+            onPress={() => (onOpenDriverProfile ? onOpenDriverProfile() : openDetails())}
           >
-            <Ionicons name="information-circle-outline" size={13} color={colors.white} style={{ opacity: 0.7 }} />
+            {driver.avatarUri ? (
+              <Image source={{ uri: driver.avatarUri }} style={styles.avatar} accessibilityLabel={`${driver.name}'s profile photo`} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Ionicons name="person" size={16} color={colors.white} />
+              </View>
+            )}
+            <View style={styles.driverCopy}>
+              <Text style={styles.driverName} numberOfLines={1}>{driver.name}</Text>
+              <Text style={styles.vehicleText} numberOfLines={1}>{vehicleLine}</Text>
+            </View>
           </TouchableOpacity>
-        </View>
-        <Text style={styles.statSeparator}>·</Text>
-        <View style={styles.statInline}>
-          <Ionicons name="leaf-outline" size={13} color={colors.confirmedLight} />
-          <Text style={styles.statInlineText}>{co2SavedKg}kg CO2 saved</Text>
-        </View>
-      </View>
-
-      {showCostInfo && (
-        <View style={styles.infoNote}>
-          <Text style={styles.infoNoteText}>
-            {isDriver
-              ? 'What your passengers are suggested to contribute towards fuel, excluding parking. See the FAQ for more information.'
-              : 'This is the recommended fee to pay towards fuel, excluding parking. See the FAQ for more information.'}
-          </Text>
+          <Text style={sharedStyles.plateBadge}>{plate}</Text>
         </View>
       )}
-
-      <View style={styles.divider} />
 
       {/* Who the driver is being asked to take, so they can decide. */}
-      {status === 'awaiting' && isDriver && rider && (
-        <TouchableOpacity
-          style={[styles.driverRow, styles.riderRow]}
-          accessibilityLabel={`View ${rider.name}'s profile`}
-          disabled={!onOpenDriverProfile}
-          onPress={onOpenDriverProfile}
-        >
-          {rider.avatarUri ? (
-            <Image source={{ uri: rider.avatarUri }} style={styles.avatar} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Ionicons name="person" size={16} color={colors.white} />
-            </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.driverName}>{rider.name}</Text>
-            <Text style={styles.vehicleText}>{rider.degree || 'Monash student'}</Text>
-          </View>
-          {onOpenDriverProfile && <Ionicons name="chevron-forward" size={16} color={colors.white} />}
-        </TouchableOpacity>
-      )}
-
-      {status === 'awaiting' ? (
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.seeDetailsButton} onPress={openDetails}>
-            <Ionicons name="eye-outline" size={16} color={colors.white} />
-            <Text style={styles.seeDetailsText}>See Details</Text>
-          </TouchableOpacity>
-          {youAccepted ? (
-            <View style={styles.waitingLabel}>
-              <Ionicons name="hourglass-outline" size={14} color={colors.white} />
-              <Text style={styles.searchingText}>Waiting for {otherSide}</Text>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.acceptButton} onPress={onAccept}>
-              <Ionicons name="checkmark" size={16} color={colors.white} />
-              <Text style={styles.acceptText}>Accept</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      ) : status === 'pending' ? (
-        <>
-          <View style={styles.footerRow}>
-            <View style={styles.searchingRow}>
-              <Ionicons name="search" size={14} color={colors.white} />
-              <Text style={styles.searchingText}>{isDriver ? 'Searching for riders...' : 'Searching for driver...'}</Text>
-            </View>
-            <View style={styles.pendingIconRow}>
-              <TouchableOpacity
-                accessibilityLabel="Edit ride request"
-                style={styles.pendingIconButton}
-                onPress={onEdit}
-              >
-                <Ionicons name="create-outline" size={16} color={colors.white} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                accessibilityLabel={isDriver ? 'Remove drive offer' : 'Cancel ride request'}
-                style={[styles.pendingIconButton, styles.cancelIconButton]}
-                onPress={() => isDriver ? confirmRemoveOffer() :
-                  Alert.alert(
-                    'Cancel ride request?',
-                    'Are you sure you want to cancel this ride request?',
-                    [
-                      { text: 'Keep Request', style: 'cancel' },
-                      { text: 'Cancel Ride', style: 'destructive', onPress: onCancel },
-                    ],
-                  )
-                }
-              >
-                <Ionicons name="close" size={16} color={colors.white} />
-              </TouchableOpacity>
-            </View>
-          </View>
-          <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
-            <Text style={styles.seeMoreLinkText}>See more information</Text>
-            <Ionicons name="chevron-forward" size={13} color={colors.white} />
-          </TouchableOpacity>
-        </>
-      ) : (
-        <>
-          <View style={styles.footerRow}>
-            {/* A rider's driver opens their profile; on a driver's own card
-                the row is them, so it opens the drive's details instead. */}
-            <TouchableOpacity
-              style={styles.driverRow}
-              accessibilityLabel={isDriver ? 'Your car' : 'View driver profile'}
-              onPress={() => (!isDriver && onOpenDriverProfile ? onOpenDriverProfile() : openDetails())}
-            >
-              {driver.avatarUri ? (
-                <Image source={{ uri: driver.avatarUri }} style={styles.avatar} accessibilityLabel={`${driver.name}'s profile photo`} />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Ionicons name="person" size={16} color={colors.white} />
-                </View>
-              )}
-              <View>
-                <Text style={styles.driverName}>{driver.name}</Text>
-                <Text style={styles.vehicleText}>{vehicleLine}</Text>
+      {isDriver && status === 'awaiting' && rider && (
+        <View style={styles.driverSection}>
+          <TouchableOpacity
+            style={styles.driverRow}
+            accessibilityLabel={`View ${rider.name}'s profile`}
+            disabled={!onOpenDriverProfile}
+            onPress={onOpenDriverProfile}
+          >
+            {rider.avatarUri ? (
+              <Image source={{ uri: rider.avatarUri }} style={styles.avatar} accessibilityLabel={`${rider.name}'s profile photo`} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Ionicons name="person" size={16} color={colors.white} />
               </View>
-            </TouchableOpacity>
-            <Text style={styles.plateBadge}>{plate}</Text>
-          </View>
-          {/* "See more information" for an upcoming ride is at the very
-              bottom of the card, below the seats - see after the seat section. */}
-        </>
+            )}
+            <View style={styles.driverCopy}>
+              <Text style={styles.driverName} numberOfLines={1}>{rider.name}</Text>
+              <Text style={styles.vehicleText} numberOfLines={1}>{rider.degree || 'Monash student'}</Text>
+            </View>
+          </TouchableOpacity>
+          {onOpenDriverProfile && <Ionicons name="chevron-forward" size={16} color={colors.white} />}
+        </View>
       )}
 
-      {showSeats && seats && (
+      {/* A driver's riders: one icon each, however many seats the car has. */}
+      {isDriver && seats && (
         <View style={styles.seatSection}>
-          {/* The status gets the whole line - the driver's buttons sit on
-              their own row below, so they never squeeze it out. */}
           <View style={styles.seatRow}>
-            <Ionicons name="people" size={14} color={colors.white} />
-            <Text style={styles.seatCount}>{seats.filled}/{seatTotal} seats</Text>
+            <View style={styles.riderIcons} accessibilityLabel={`${riders} rider${riders === 1 ? '' : 's'}`}>
+              {Array.from({ length: riders }, (_, index) => (
+                <Ionicons key={index} name="person" size={16} color={colors.white} testID="rider-icon" />
+              ))}
+            </View>
+            <Text style={styles.seatCount}>
+              {riders === 0 ? 'No riders yet' : `${riders} rider${riders === 1 ? '' : 's'}`}
+            </Text>
             <Text style={styles.seatLabel}>{seatLabel}</Text>
           </View>
-          {/* A progress bar of the car filling up: green for seats taken,
-              orange for seats still on offer (1 of 3 = one third green). Once
-              the car is full or locked there's nothing left on offer, so it's
-              all green. */}
-          {seats.filled > 0 && (
-            <View style={styles.seatBar} accessibilityLabel={seats.open ? 'Confirmed, still taking passengers' : 'Confirmed, no more passengers'}>
-              <View
-                testID="seat-bar-taken"
-                style={[styles.seatBarPart, { flex: seats.open ? seats.filled : 1, backgroundColor: colors.confirmed }]}
-              />
-              {seats.open && (
-                <View
-                  testID="seat-bar-free"
-                  style={[styles.seatBarPart, { flex: seats.total - seats.filled, backgroundColor: colors.awaiting }]}
-                />
-              )}
-            </View>
-          )}
-          {!isDriver && seats.open && (
-            <Text style={styles.seatNote}>
-              Your driver may still pick up more passengers on the way. You'll still arrive by {arriveBy ?? 'your requested time'}.
-            </Text>
-          )}
-          {(canEditSeats || canToggleLock) && (
-            <View style={styles.seatActionRow}>
-              {canEditSeats && (
-                <TouchableOpacity
-                  accessibilityLabel="Change number of seats"
-                  style={styles.seatAction}
-                  onPress={() => { setSeatDraft(seats.total); setSeatEditorVisible(true); }}
-                >
-                  <Ionicons name="create-outline" size={14} color={colors.white} />
-                  <Text style={styles.seatActionText}>Seats</Text>
-                </TouchableOpacity>
-              )}
-              {canToggleLock && (
-                <TouchableOpacity
-                  accessibilityLabel={seats.open ? 'Stop taking passengers' : 'Take more passengers'}
-                  style={styles.seatAction}
-                  onPress={confirmLockToggle}
-                >
-                  <Ionicons name={seats.open ? 'lock-closed-outline' : 'lock-open-outline'} size={14} color={colors.white} />
-                  <Text style={styles.seatActionText}>{seats.open ? 'Lock' : 'Unlock'}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
         </View>
       )}
 
-      {status === 'confirmed' && (
-        <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
-          <Text style={styles.seeMoreLinkText}>See more information</Text>
-          <Ionicons name="chevron-forward" size={13} color={colors.white} />
+      {/* The one decision on a match, right on the card - for the rider and the
+          driver alike. Everything else - declining, editing, cancelling, a
+          driver's seats and lock - is on the details page. */}
+      {status === 'awaiting' && (youAccepted ? (
+        <View style={[styles.waitingLabel, styles.footer]}>
+          <Ionicons name="hourglass-outline" size={14} color={colors.white} />
+          <Text style={styles.searchingText}>Waiting for {otherSide}</Text>
+        </View>
+      ) : (
+        <TouchableOpacity style={[styles.cardAcceptButton, styles.footer]} onPress={onAccept}>
+          <Ionicons name="checkmark" size={16} color={colors.white} />
+          <Text style={styles.acceptText}>Accept</Text>
         </TouchableOpacity>
+      ))}
+      {status === 'pending' && (
+        <View style={[styles.searchingRow, styles.footer]}>
+          <Ionicons name="search" size={14} color={colors.white} />
+          <Text style={styles.searchingText}>{isDriver ? 'Searching for riders...' : 'Searching for driver...'}</Text>
+        </View>
       )}
 
-      <Modal
-        visible={seatEditorVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSeatEditorVisible(false)}
-      >
-        <Pressable style={styles.modalBackdrop} onPress={() => setSeatEditorVisible(false)}>
-          <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalDriverName}>Seats for this drive</Text>
-            <Text style={styles.seatEditorHint}>
-              {seatsTaken > 0
-                ? `${seatsTaken} already taken, so at least ${seatsTaken}.`
-                : 'How many passengers you can take.'}
-            </Text>
-            <NumberStepper
-              value={seatDraft}
-              onChange={setSeatDraft}
-              min={Math.max(1, seatsTaken)}
-              max={MAX_CAR_SEATS}
-              style={styles.seatEditorStepper}
-            />
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity style={styles.declineButton} onPress={() => setSeatEditorVisible(false)}>
-                <Text style={styles.declineText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.acceptButton}
-                onPress={() => {
-                  setSeatEditorVisible(false);
-                  if (seats && seatDraft !== seats.total) onChangeSeats?.(seatDraft);
-                }}
-              >
-                <Text style={styles.acceptText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* The whole card opens the details too; this says so, and is the way in
+          for screen readers. */}
+      <TouchableOpacity style={styles.seeMoreLink} onPress={openDetails}>
+        <Text style={styles.seeMoreLinkText}>See More Information</Text>
+        <Ionicons name="chevron-forward" size={13} color={colors.white} />
+      </TouchableOpacity>
 
       <Modal
         visible={detailsVisible}
@@ -666,27 +460,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusLabel: {
-    color: colors.white,
+  dateText: {
+    color: colors.whiteA85,
     fontSize: 13,
     fontWeight: '600',
   },
-  etaBadge: {
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  priceText: {
+    color: colors.confirmedLight,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  // The time to be out the door - the biggest thing on the card.
+  heroLabel: {
+    color: colors.whiteA70,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  heroTime: {
     color: colors.white,
-    fontSize: 12,
-    opacity: 0.85,
+    fontFamily: 'Marcellus_400Regular',
+    fontSize: 30,
+    marginTop: 2,
+  },
+  route: {
+    marginTop: 12,
+  },
+  driverSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.whiteA20,
+  },
+  driverCopy: {
+    flexShrink: 1,
+  },
+  riderIcons: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  footer: {
+    marginTop: 14,
   },
   stopRow: {
     flexDirection: 'row',
@@ -703,20 +529,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   stopTime: {
-    color: colors.white,
+    color: colors.whiteA75,
     fontSize: 12,
-    opacity: 0.85,
     marginLeft: 8,
   },
-  readyBy: {
-    color: colors.white,
-    fontSize: 12,
-    opacity: 0.85,
-    marginLeft: 22, // under the address, past the stop icon and gap
-    marginTop: 2,
-  },
   seatSection: {
-    marginTop: 12,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.whiteA20,
   },
   seatRow: {
     flexDirection: 'row',
@@ -725,62 +546,14 @@ const styles = StyleSheet.create({
   },
   seatCount: {
     color: colors.white,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
   },
   seatLabel: {
     flex: 1,
-    color: colors.white,
+    color: colors.whiteA70,
     fontSize: 12,
-    opacity: 0.85,
-  },
-  seatActionRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 8,
-    marginTop: 10,
-  },
-  seatAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.whiteA50,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  seatActionText: {
-    color: colors.white,
-    fontSize: 12,
-  },
-  // Split green/orange when the car may still take a passenger, solid green
-  // once it's full or locked.
-  seatBar: {
-    flexDirection: 'row',
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  seatBarPart: {
-    height: '100%',
-  },
-  seatNote: {
-    color: colors.white,
-    fontSize: 12,
-    opacity: 0.85,
-    marginTop: 6,
-  },
-  seatEditorHint: {
-    color: colors.white,
-    fontSize: 13,
-    opacity: 0.8,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  seatEditorStepper: {
-    marginTop: 14,
+    textAlign: 'right',
   },
   stopConnector: {
     width: 1,
@@ -805,56 +578,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 10,
-  },
-  infoNote: {
-    backgroundColor: colors.whiteA14,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginTop: 6,
-  },
-  infoNoteText: {
-    color: colors.white,
-    fontSize: 11,
-    opacity: 0.9,
-  },
-  statInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  statInlineText: {
-    color: colors.white,
-    fontSize: 12,
-    opacity: 0.9,
-  },
-  statSeparator: {
-    color: colors.white,
-    opacity: 0.4,
-    fontSize: 12,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.whiteA28,
-    marginVertical: 10,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
   driverRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  riderRow: {
-    marginBottom: 10,
+    flexShrink: 1,
   },
   avatar: {
     width: 32,
@@ -879,29 +607,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.78,
   },
-  plateBadge: {
-    color: colors.darkBlue,
-    backgroundColor: colors.white,
-    fontSize: 12,
-    fontWeight: '700',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    overflow: 'hidden',
-  },
-  seeMoreLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    marginTop: 10,
-  },
-  seeMoreLinkText: {
-    color: colors.white,
-    fontSize: 12,
-    fontWeight: '600',
-    opacity: 0.85,
-  },
   modalPhoneRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -925,10 +630,6 @@ const styles = StyleSheet.create({
     marginTop: 18,
     width: '100%',
   },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
   searchingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -940,49 +641,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     opacity: 0.85,
   },
-  pendingIconRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  pendingIconButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.whiteA16,
-  },
-  cancelIconButton: {
-    backgroundColor: colors.pending,
-  },
-  seeDetailsButton: {
-    flex: 1,
+  seeMoreLink: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: colors.whiteA16,
-    borderRadius: 14,
-    paddingVertical: 9,
+    gap: 4,
+    marginTop: 12,
   },
-  seeDetailsText: {
+  seeMoreLinkText: {
     color: colors.white,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
+    opacity: 0.85,
   },
-  acceptButton: {
-    flex: 1,
+  cardAcceptButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     backgroundColor: colors.confirmed,
     borderRadius: 14,
-    paddingVertical: 9,
+    paddingVertical: 10,
   },
   // In Accept's place once you've accepted: the same footprint, not a button.
   waitingLabel: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

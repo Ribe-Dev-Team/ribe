@@ -48,22 +48,17 @@ it("opens a rider's driver's profile from the row", async () => {
   expect(onSeeDetails).not.toHaveBeenCalled();
 });
 
-it("opens the drive's details from a driver's own row, not a profile of themselves", async () => {
-  const onOpenDriverProfile = jest.fn();
-  const onSeeDetails = jest.fn();
+it("doesn't show a driver their own name and car - their riders instead", async () => {
   await render(
     <RideCard
       {...base}
       kind="offer"
       driver={{ ...base.driver, name: "You're driving" }}
-      onOpenDriverProfile={onOpenDriverProfile}
-      onSeeDetails={onSeeDetails}
+      seats={{ filled: 1, total: 3, open: true, locked: false }}
     />,
   );
 
-  expect(screen.getByText("You're driving")).toBeTruthy();
-  await fireEvent.press(screen.getByLabelText('Your car'));
-
-  expect(onSeeDetails).toHaveBeenCalledTimes(1);
-  expect(onOpenDriverProfile).not.toHaveBeenCalled();
+  expect(screen.queryByText("You're driving")).toBeNull();
+  expect(screen.queryByLabelText('View driver profile')).toBeNull();
+  expect(screen.getByText('1 rider')).toBeTruthy();
 });

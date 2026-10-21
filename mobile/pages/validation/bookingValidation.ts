@@ -5,9 +5,10 @@ so it can be unit tested directly without rendering the component.
 
 import { MAX_CAR_SEATS } from '../schema/user.validation';
 import { timePattern, toMinutes } from '../../utility/times';
-import { isFutureDate, parseDateAsStr } from '../../utility/dates';
+import { isFutureDate, parseDateAsStr, startOfDay } from '../../utility/dates';
+import { BOOKING_HORIZON_DAYS } from '../schema/booking.schema';
 
-export { validateTripStep, validateDetailsStep, getTimeOrderWarning, getDetourWarning };
+export { validateTripStep, validateDetailsStep, getTimeOrderWarning, getDetourWarning, latestBookingDate, isBookableDate };
 export type { TripStepErrors, DetailsStepInput, DetailsStepErrors };
 
 interface TripStepErrors {
@@ -32,6 +33,18 @@ interface DetailsStepErrors {
   depTimeErr: string;
   arrTimeErr: string;
   valid: boolean;
+}
+
+/* The last day a ride can be booked for: BOOKING_HORIZON_DAYS after today, at midnight. */
+function latestBookingDate(now: Date = new Date()): Date {
+  const latest = startOfDay(now);
+  latest.setDate(latest.getDate() + BOOKING_HORIZON_DAYS);
+  return latest;
+}
+
+/* Whether a ride can be booked for this day: from tomorrow to the horizon. */
+function isBookableDate(date: Date, now: Date = new Date()): boolean {
+  return startOfDay(date) > startOfDay(now) && startOfDay(date) <= latestBookingDate(now);
 }
 
 /* Warning shown inline when the arrival time isn't after the departure time. */
@@ -74,6 +87,9 @@ function validateDetailsStep(input: DetailsStepInput): DetailsStepErrors {
     valid = false;
   } else if (!isFutureDate(parsedDate)) {
     travelDateErr = `'${travelDate}' must be a future date`;
+    valid = false;
+  } else if (parsedDate > latestBookingDate()) {
+    travelDateErr = `Rides can be booked up to ${BOOKING_HORIZON_DAYS} days ahead`;
     valid = false;
   }
 

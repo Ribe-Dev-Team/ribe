@@ -92,7 +92,7 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
     <ScrollView contentContainerStyle={localStyles.screen} showsVerticalScrollIndicator={false}>
       <Pressable accessibilityLabel="Back to trip" onPress={onBack} style={localStyles.backButton}>
         <Ionicons name="chevron-back" size={22} color={colors.white} />
-        <Text style={localStyles.backButtonText}>Your {role}</Text>
+        <Text style={localStyles.backButtonText}>Your {role === 'rider' ? 'Rider' : 'Driver'}</Text>
       </Pressable>
 
       <View style={localStyles.card}>
@@ -112,12 +112,12 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
         <View style={localStyles.badgeRow}>
           <View style={localStyles.badge}>
             <Ionicons name="checkmark-circle" size={14} color={colors.confirmedLight} />
-            <Text style={localStyles.badgeText}>Monash verified</Text>
+            <Text style={localStyles.badgeText}>Monash Verified</Text>
           </View>
           {role === 'driver' && (
             <View style={localStyles.badge}>
               <Ionicons name="checkmark-circle" size={14} color={colors.confirmedLight} />
-              <Text style={localStyles.badgeText}>Licence checked</Text>
+              <Text style={localStyles.badgeText}>Licence Checked</Text>
             </View>
           )}
         </View>
@@ -143,18 +143,18 @@ export default function DriverProfilePage({ ride, onBack }: DriverProfilePagePro
       <View style={localStyles.statsRow}>
         <View style={localStyles.statChip}>
           <Text style={localStyles.statValue}>{profile.ridesShared}</Text>
-          <Text style={localStyles.statLabel}>rides shared</Text>
+          <Text style={localStyles.statLabel}>Rides Shared</Text>
         </View>
         <View style={localStyles.statChip}>
           <Text style={localStyles.statValue}>{profile.memberSince}</Text>
-          <Text style={localStyles.statLabel}>member since</Text>
+          <Text style={localStyles.statLabel}>Member Since</Text>
         </View>
       </View>
 
       <View style={localStyles.privacyCard}>
         <View style={localStyles.privacyHeader}>
           <Ionicons name="lock-closed-outline" size={14} color={colors.white} />
-          <Text style={localStyles.privacyTitle}>Not shown to you</Text>
+          <Text style={localStyles.privacyTitle}>Not Shown to You</Text>
         </View>
         {role === 'driver' && (
           <Text style={localStyles.privacyLine}>Phone number - unlocks 12 hours before pickup</Text>

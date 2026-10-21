@@ -41,8 +41,8 @@ const details = (overrides: Partial<RideDetails> = {}): RideDetails => ({
     { name: 'Cal' },
   ],
   journey: [
-    { kind: 'start', title: 'Your pickup', address: '2 Ana Rd', time: '~07:41', marker: 'A' },
-    { kind: 'stop', title: 'Pickup · another passenger', time: '~07:50' },
+    { kind: 'start', title: 'Your Pickup', address: '2 Ana Rd', time: '~07:41', marker: 'A' },
+    { kind: 'stop', title: 'Pickup · Another Passenger', time: '~07:50' },
     { kind: 'end', title: 'Drop-off', address: 'Monash University Clayton', time: '~08:20', marker: 'B' },
   ],
   mapPoints: [],
@@ -72,20 +72,20 @@ it('shows the driver and other riders with their photos, initials where there is
 it("titles a rider's page Ride details, with no car icon", async () => {
   await show(ride, details());
 
-  expect(screen.getByText('Ride details')).toBeTruthy();
-  expect(screen.queryByText('Drive details')).toBeNull();
+  expect(screen.getByText('Ride Details')).toBeTruthy();
+  expect(screen.queryByText('Drive Details')).toBeNull();
   expect(screen.queryByLabelText('Driving')).toBeNull();
 });
 
 it('lists the journey stop by stop under the map, with each stop marked as on the map', async () => {
   await show(ride, details());
 
-  expect(screen.getByText('Your pickup')).toBeTruthy();
+  expect(screen.getByText('Your Pickup')).toBeTruthy();
   expect(screen.getByText('2 Ana Rd')).toBeTruthy();
   expect(screen.getAllByText('~07:41')).toHaveLength(2); // the status row's time, and this stop's
   expect(screen.getByText('A')).toBeTruthy();
   // Another rider's pickup: a time, but no marker - it isn't on their map.
-  expect(screen.getByText('Pickup · another passenger')).toBeTruthy();
+  expect(screen.getByText('Pickup · Another Passenger')).toBeTruthy();
   expect(screen.getByLabelText('Not shown on the map')).toBeTruthy();
   expect(screen.getByText('Monash University Clayton')).toBeTruthy();
   expect(screen.getByText('B')).toBeTruthy();
@@ -95,7 +95,7 @@ it('shows the booking window on a trip not planned yet', async () => {
   await show({ ...ride, status: 'pending', time: '07:00–09:00' }, details({
     driver: undefined, passengers: [],
     journey: [
-      { kind: 'start', title: 'Your pickup', address: '2 Ana Rd', marker: 'A' },
+      { kind: 'start', title: 'Your Pickup', address: '2 Ana Rd', marker: 'A' },
       { kind: 'end', title: 'Drop-off', address: 'Monash University Clayton', marker: 'B' },
     ],
   }), /A driver will appear here/);
@@ -124,10 +124,32 @@ it('describes the car in full', async () => {
 
 it("masks the driver's number until 12 hours before pickup, as the ride card does", async () => {
   await show(ride, details());
-  expect(screen.getByText(/0412 •• •• ••/)).toBeTruthy();
+  expect(screen.getByText(/0412 ••• •••/)).toBeTruthy();
 
   await show(ride, details({ startsAt: new Date(Date.now() + 3_600_000) }));
   expect(screen.getByText('Contact  ·  0412 345 678')).toBeTruthy();
+});
+
+it("lets a rider call or text their driver once the number is shown", async () => {
+  await show(ride, details());
+  expect(screen.queryByLabelText('Call Dana Driver')).toBeNull();
+
+  await show(ride, details({ startsAt: new Date(Date.now() + 3_600_000) }));
+  expect(screen.getByLabelText('Call Dana Driver')).toBeTruthy();
+  expect(screen.getByLabelText('Text Dana Driver')).toBeTruthy();
+});
+
+it("shows a driver their confirmed passengers' numbers, masked until 12 hours before", async () => {
+  const offer = { ...ride, kind: 'offer' as const, rideId: 'offer-1' };
+  const passengers = [{ name: 'Ben', phone: '0422222222' }, { name: 'Cal', awaiting: true }];
+
+  await show(offer, details({ driver: undefined, passengers }));
+  expect(screen.getByText(/0422 ••• •••/)).toBeTruthy();
+  expect(screen.getAllByText(/Contact/)).toHaveLength(1); // not Cal, still deciding
+
+  await show(offer, details({ driver: undefined, passengers, startsAt: new Date(Date.now() + 3_600_000) }));
+  expect(screen.getByText('Contact  ·  0422 222 222')).toBeTruthy();
+  expect(screen.getByLabelText('Text Ben')).toBeTruthy();
 });
 
 it('shows a driver their passengers and their own car, not a driver', async () => {
@@ -136,10 +158,10 @@ it('shows a driver their passengers and their own car, not a driver', async () =
     details({ driver: undefined, passengers: [{ name: 'Ben' }, { name: 'Cal', awaiting: true }] }),
   );
 
-  expect(screen.getByText('Drive details')).toBeTruthy();
+  expect(screen.getByText('Drive Details')).toBeTruthy();
   expect(screen.getByLabelText('Driving')).toBeTruthy();
-  expect(screen.getByText('Your passengers')).toBeTruthy();
+  expect(screen.getByText('Your Passengers')).toBeTruthy();
   expect(screen.getByText('Cal  ·  awaiting')).toBeTruthy();
-  expect(screen.getByText('Your car')).toBeTruthy();
-  expect(screen.queryByText('Your driver')).toBeNull();
+  expect(screen.getByText('Your Car')).toBeTruthy();
+  expect(screen.queryByText('Your Driver')).toBeNull();
 });

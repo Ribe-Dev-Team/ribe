@@ -279,7 +279,7 @@ describe('stops on the way to campus', () => {
     const [last] = (await fetchUserRides('req-2-uid')).requests;
 
     expect(first.pickup.time).toBe('~08:22');
-    expect(first.stops).toEqual([{ label: 'Pickup · another passenger', time: '~08:31' }]);
+    expect(first.stops).toEqual([{ label: 'Pickup · Another Passenger', time: '~08:31' }]);
     expect(JSON.stringify(first)).not.toMatch(/Yass|Second Rd/);
     expect(last.stops).toEqual([]); // nobody between them and campus
   });
@@ -291,7 +291,7 @@ describe('stops on the way to campus', () => {
     const [first] = (await fetchUserRides('req-1-uid')).requests;
 
     expect(card.stops?.map((s) => s.label)).toEqual(['Ann · 1 First St', 'Yass · 2 Second Rd']);
-    expect(first.stops).toEqual([{ label: 'Pickup · another passenger', time: '~08:31' }]);
+    expect(first.stops).toEqual([{ label: 'Pickup · Another Passenger', time: '~08:31' }]);
   });
 
   it("marks the rider still deciding on the driver's proposed timetable", async () => {

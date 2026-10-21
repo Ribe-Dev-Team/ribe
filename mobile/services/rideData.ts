@@ -227,6 +227,8 @@ interface StopPerson {
   photoUrl?: string;
   bio?: string;
   degree?: string;
+  /** users/{uid}.phoneNumber - only ever passed on to the car's driver. */
+  phone?: string;
   emissionsSavedKg?: number;
 }
 
@@ -251,7 +253,7 @@ function middleStops(
     const own = stops.findIndex((s) => s.requestId === docId);
     if (own < 0) return undefined;
     return stops.slice(own + 1).map((s) => ({
-      label: 'Pickup · another passenger',
+      label: 'Pickup · Another Passenger',
       time: '~' + formatClock(toDate(s.pickupAt)),
     }));
   }
@@ -270,9 +272,9 @@ function middleStops(
 
 /**
  * The passengers at a car's stops, and the rider each awaiting drive is
- * asking about: first name, photo, bio and degree from users/{uid}, pickup
- * address and point from their request. Once per request; one that can't be
- * read is left out, and the card labels that stop "Passenger N" instead.
+ * asking about: first name, photo, bio, degree and phone from users/{uid},
+ * pickup address and point from their request. Once per request; one that
+ * can't be read is left out, and the card labels that stop "Passenger N" instead.
  */
 async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPerson>> {
   const unique = [...new Set(requestIds)];
@@ -300,6 +302,7 @@ async function fetchStopPeople(requestIds: string[]): Promise<Map<string, StopPe
         photoUrl: text('profilePhotoUrl'),
         bio: text('bio'),
         degree: text('degree'),
+        phone: text('phoneNumber'),
       });
     } catch (error) {
       console.warn('Failed to load a passenger on this trip', id, error);
@@ -672,7 +675,7 @@ export interface RideMapPoint {
 /** One stop on a ride's journey, in route order, as the details page lists it. */
 export interface JourneyStop {
   kind: 'start' | 'stop' | 'end';
-  /** "Departure", "Your pickup", "Pickup · Ana", "Drop-off"... */
+  /** "Departure", "Your Pickup", "Pickup · Ana", "Drop-off"... */
   title: string;
   address?: string;
   /** The planned time, "~07:41"; absent until the matcher has planned the trip. */
@@ -691,6 +694,9 @@ export interface RidePerson {
   photoUrl?: string;
   bio?: string;
   degree?: string;
+  /** Their number, for whoever needs to reach them about the trip: a rider's
+   *  driver, or a driver's confirmed passengers. Never another rider's. */
+  phone?: string;
   /** A rider still deciding on a match to this car - not aboard yet. */
   awaiting?: boolean;
 }
@@ -705,7 +711,7 @@ export interface RideCar {
 /** Everything the details page shows beyond the ride's own card. */
 export interface RideDetails {
   /** A rider's driver, once matched. Absent for a driver's own offer. */
-  driver?: RidePerson & { phone?: string };
+  driver?: RidePerson;
   /** The car the ride is in: the matched driver's, or a driver's own. */
   car?: RideCar;
   /** Everyone else in the car, in pickup order. A rider sees the confirmed
@@ -718,7 +724,7 @@ export interface RideDetails {
   /** The journey's stops that go on the map, marked as `journey` names them. */
   mapPoints: RideMapPoint[];
   /** When this person's trip starts - pickup or departure - for revealing
-   *  the driver's phone number. */
+   *  phone numbers. */
   startsAt?: Date;
 }
 
@@ -790,6 +796,11 @@ export async function fetchRideDetails(rideId: string, kind: 'request' | 'offer'
     degree: p?.degree,
     ...(awaiting ? { awaiting } : {}),
   });
+  // A driver can reach the passengers who've accepted - not one still deciding.
+  const toPassenger = (p: StopPerson | undefined, fallback: string, awaiting: boolean): RidePerson => ({
+    ...toPerson(p, fallback, awaiting),
+    ...(!awaiting && p?.phone ? { phone: p.phone } : {}),
+  });
 
   if (kind === 'offer') {
     const schedule = scheduleFor(record, 'offer', rideId);
@@ -814,7 +825,7 @@ export async function fetchRideDetails(rideId: string, kind: 'request' | 'offer'
 
     return {
       car: carOf(profile),
-      passengers: ids.map((id, i) => toPerson(people.get(id), `Passenger ${i + 1}`, id === record.pendingRequestId)),
+      passengers: ids.map((id, i) => toPassenger(people.get(id), `Passenger ${i + 1}`, id === record.pendingRequestId)),
       ...finishJourney([
         // The driver sets the departure, so it isn't an estimate.
         { kind: 'start', title: 'Departure', ...from, time: schedule ? formatClock(toDate(schedule.departAt)) : undefined },
@@ -835,19 +846,19 @@ export async function fetchRideDetails(rideId: string, kind: 'request' | 'offer'
   // The other riders' stops between this rider's two ends: pickups after
   // theirs going to campus, drop-offs before theirs coming home.
   const othersOnTheWay: DraftStop[] = !schedule || ownIndex < 0 ? [] : (record.toUni
-    ? schedule.stops.slice(ownIndex + 1).map((s) => ({ kind: 'stop' as const, title: 'Pickup · another passenger', time: estimated(s.pickupAt) }))
-    : schedule.stops.slice(0, ownIndex).map((s) => ({ kind: 'stop' as const, title: 'Drop-off · another passenger', time: estimated(s.arriveAt) })));
+    ? schedule.stops.slice(ownIndex + 1).map((s) => ({ kind: 'stop' as const, title: 'Pickup · Another Passenger', time: estimated(s.pickupAt) }))
+    : schedule.stops.slice(0, ownIndex).map((s) => ({ kind: 'stop' as const, title: 'Drop-off · Another Passenger', time: estimated(s.arriveAt) })));
 
   const route = finishJourney(record.toUni
     ? [
-      { kind: 'start', title: 'Your pickup', ...own, time: estimated(ownStop?.pickupAt ?? record.pickupAt) },
+      { kind: 'start', title: 'Your Pickup', ...own, time: estimated(ownStop?.pickupAt ?? record.pickupAt) },
       ...othersOnTheWay,
       { kind: 'end', title: 'Drop-off', ...campus, time: estimated(ownStop?.arriveAt ?? record.arriveAt) },
     ]
     : [
       { kind: 'start', title: 'Pickup', ...campus, time: estimated(ownStop?.pickupAt ?? record.pickupAt) },
       ...othersOnTheWay,
-      { kind: 'end', title: 'Your drop-off', ...own, time: estimated(ownStop?.arriveAt ?? record.arriveAt) },
+      { kind: 'end', title: 'Your Drop-off', ...own, time: estimated(ownStop?.arriveAt ?? record.arriveAt) },
     ]);
   if (!matched) return { ...empty, ...route };
 

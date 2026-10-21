@@ -1,14 +1,19 @@
-// Component tests for the seat section of mobile/components/RideCard.tsx: the
-// seat count, the green / green-and-orange bar, the rider's reassurance note,
-// and the driver's Lock / Seats controls.
+// Component tests for what a dashboard ride card (mobile/components/RideCard.tsx)
+// shows: only the essentials - the date, the time to be ready by (largest), the
+// two ends of the trip by street, the price, a rider's driver and car, a
+// driver's riders as icons. Stops on the way, CO2, full addresses and every
+// control but a rider's Accept are left to the details page.
 
 import * as React from 'react';
-import { Alert, StyleSheet } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import RideCard, { RideCardProps } from '../../mobile/components/RideCard';
+import RideCard, { formatRideDate, RideCardProps, shortAddress } from '../../mobile/components/RideCard';
 
+// A View carrying the icon's testID, so the rider icons can be counted.
 jest.mock('@expo/vector-icons', () => ({
-  Ionicons: () => null,
+  Ionicons: (props: { testID?: string }) => {
+    const { View } = jest.requireActual('react-native');
+    return <View testID={props.testID} />;
+  },
 }));
 
 const base: RideCardProps = {
@@ -24,131 +29,118 @@ const base: RideCardProps = {
   arriveBy: '09:00',
 };
 
-/** A bar segment's flex share. */
-const flexOf = (testID: string) => StyleSheet.flatten(screen.getByTestId(testID).props['style']).flex;
+describe('the essentials', () => {
+  it("puts a rider's ready-by time first, with the date, price, trip ends and their driver's car", async () => {
+    await render(<RideCard {...base} kind="request" readyBy="~08:35" />);
 
-/** The buttons of the most recent Alert.alert call. */
-function lastAlertButtons(spy: jest.SpyInstance) {
-  return spy.mock.calls[spy.mock.calls.length - 1][2] as Array<{ text: string; onPress?: () => void }>;
-}
+    expect(screen.getByText('Be ready by')).toBeTruthy();
+    expect(screen.getByText('~08:35')).toBeTruthy();
+    // On this machine's clock, as the card shows it - CI runs in UTC, where it's still the 4th.
+    expect(screen.getByText(formatRideDate(base.date))).toBeTruthy();
+    expect(screen.getByText('$8.50')).toBeTruthy();
+    expect(screen.getByText('~08:40')).toBeTruthy();
+    expect(screen.getByText('ETA ~08:50')).toBeTruthy();
+    expect(screen.getByText('Sam')).toBeTruthy();
+    expect(screen.getByText('Mazda 3')).toBeTruthy();
+    expect(screen.getByText('ABC123')).toBeTruthy();
+  });
+
+  it('falls back to the pickup time to be ready by before a buffer is planned', async () => {
+    await render(<RideCard {...base} kind="request" />);
+    expect(screen.getByText('Be ready by')).toBeTruthy();
+    expect(screen.getAllByText('~08:40')).toHaveLength(2); // the headline, and the pickup row
+  });
+
+  it('leaves CO2, the trip length and the stops on the way to the details page', async () => {
+    const stops = [{ label: 'Ann · 1 First St', time: '~08:22' }];
+    await render(<RideCard {...base} kind="offer" stops={stops} />);
+
+    expect(screen.queryByText(/CO2/)).toBeNull();
+    expect(screen.queryByText('10 min')).toBeNull();
+    expect(screen.queryByText('Ann · 1 First St')).toBeNull();
+    expect(screen.queryByText('~08:22')).toBeNull();
+  });
+
+  it('shortens each end to its street', async () => {
+    await render(
+      <RideCard
+        {...base}
+        kind="request"
+        pickup={{ address: 'Unit 3, 12 Example St, Clayton VIC 3168, Australia', time: '~08:40' }}
+        destination={{ address: 'Monash University Clayton, Wellington Rd, Clayton VIC', eta: '~08:50' }}
+      />,
+    );
+
+    expect(screen.getByText('12 Example St')).toBeTruthy();
+    // No street number on campus: its name, not the road it's on.
+    expect(screen.getByText('Monash University Clayton')).toBeTruthy();
+    expect(screen.queryByText(/Clayton VIC/)).toBeNull();
+  });
+});
+
+describe('shortAddress', () => {
+  it.each([
+    ['12 Example St, Clayton VIC 3168, Australia', '12 Example St'],
+    ['Unit 3, 12 Example St, Clayton VIC 3168', '12 Example St'],
+    ['12A High St, Kew', '12A High St'],
+    ['Monash University Clayton', 'Monash University Clayton'],
+    ['Box Hill', 'Box Hill'],
+  ])('shortens %s to %s', (address, expected) => {
+    expect(shortAddress(address)).toBe(expected);
+  });
+});
 
 describe('rider view', () => {
-  it('shows a car still taking passengers, and that they will still arrive on time', async () => {
+  it("doesn't show the car's seats or any driver controls", async () => {
     await render(<RideCard {...base} kind="request" seats={{ filled: 2, total: 4, open: true, locked: false }} />);
 
-    expect(screen.getByText('2/4 seats')).toBeTruthy();
-    expect(screen.getByText('Driver may add passengers')).toBeTruthy();
-    expect(screen.getByLabelText('Confirmed, still taking passengers')).toBeTruthy();
-    expect(screen.getByText(/You'll still arrive by 09:00/)).toBeTruthy();
-  });
-
-  it('shows a locked car as full - 2/2, all green, no more passengers', async () => {
-    await render(<RideCard {...base} kind="request" seats={{ filled: 2, total: 4, open: false, locked: true }} />);
-
-    // The two empty seats aren't on offer any more, so they aren't counted.
-    expect(screen.getByText('2/2 seats')).toBeTruthy();
-    expect(screen.getByText('No more passengers will be added')).toBeTruthy();
-    expect(screen.getByLabelText('Confirmed, no more passengers')).toBeTruthy();
-    expect(screen.queryByTestId('seat-bar-free')).toBeNull();
-    expect(screen.queryByText(/You'll still arrive by/)).toBeNull();
-  });
-
-  it('says the same once the car is simply full', async () => {
-    await render(<RideCard {...base} kind="request" seats={{ filled: 3, total: 3, open: false, locked: false }} />);
-
-    expect(screen.getByText('3/3 seats')).toBeTruthy();
-    expect(screen.getByText('No more passengers will be added')).toBeTruthy();
-  });
-
-  it('has no driver controls', async () => {
-    await render(<RideCard {...base} kind="request" seats={{ filled: 1, total: 4, open: true, locked: false }} />);
-
+    expect(screen.queryByTestId('rider-icon')).toBeNull();
     expect(screen.queryByLabelText('Stop taking passengers')).toBeNull();
     expect(screen.queryByLabelText('Change number of seats')).toBeNull();
   });
 });
 
 describe('driver view', () => {
-  it('locks the drive after confirming', async () => {
-    const alert = jest.spyOn(Alert, 'alert');
-    const onSetLocked = jest.fn();
-    await render(
-      <RideCard
-        {...base}
-        kind="offer"
-        seats={{ filled: 1, total: 4, open: true, locked: false }}
-        onSetLocked={onSetLocked}
-      />,
-    );
+  it('shows when to leave, and their riders as one icon each - not their own car', async () => {
+    await render(<RideCard {...base} kind="offer" pickup={{ address: 'Box Hill', time: '08:10' }} seats={{ filled: 2, total: 4, open: true, locked: false }} />);
 
-    expect(screen.getByText('Still looking for passengers')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('Stop taking passengers'));
-    lastAlertButtons(alert).find((b) => b.text === 'Lock Drive')!.onPress!();
-
-    expect(onSetLocked).toHaveBeenCalledWith(true);
+    expect(screen.getByText('Leave at')).toBeTruthy();
+    expect(screen.getAllByText('08:10')).toHaveLength(2);
+    expect(screen.getAllByTestId('rider-icon')).toHaveLength(2); // 2 riders, whatever the 4 seats
+    expect(screen.getByText('2 riders')).toBeTruthy();
+    expect(screen.getByText('Still looking')).toBeTruthy();
+    expect(screen.queryByText('ABC123')).toBeNull();
   });
 
-  it("offers Seats until the drive is locked, then takes it away", async () => {
-    const onChangeSeats = jest.fn();
-    await render(<RideCard {...base} kind="offer" seats={{ filled: 1, total: 4, open: true, locked: false }} onChangeSeats={onChangeSeats} />);
-    expect(screen.getByLabelText('Change number of seats')).toBeTruthy();
+  it('says so when no one has joined yet', async () => {
+    await render(<RideCard {...base} kind="offer" seats={{ filled: 0, total: 3, open: true, locked: false }} />);
 
-    await render(<RideCard {...base} kind="offer" seats={{ filled: 1, total: 4, open: false, locked: true }} onChangeSeats={onChangeSeats} />);
+    expect(screen.queryByTestId('rider-icon')).toBeNull();
+    expect(screen.getByText('No riders yet')).toBeTruthy();
+  });
+
+  it('has no Seats, Lock, Edit or Cancel buttons - those are on the details page', async () => {
+    await render(<RideCard {...base} kind="offer" seats={{ filled: 1, total: 4, open: true, locked: false }} />);
     expect(screen.queryByLabelText('Change number of seats')).toBeNull();
+    expect(screen.queryByLabelText('Stop taking passengers')).toBeNull();
+
+    await render(<RideCard {...base} kind="offer" status="pending" timeWindow={{ from: '07:00', to: '09:00' }} />);
+    expect(screen.queryByLabelText('Edit ride request')).toBeNull();
+    expect(screen.queryByLabelText('Remove drive offer')).toBeNull();
+    expect(screen.queryByText('Remove Offer')).toBeNull();
   });
 
-  it('unlocks a locked drive, but offers nothing for a car that is simply full', async () => {
-    const alert = jest.spyOn(Alert, 'alert');
-    const onSetLocked = jest.fn();
-    const { rerender } = await render(
-      <RideCard {...base} kind="offer" seats={{ filled: 2, total: 4, open: false, locked: true }} onSetLocked={onSetLocked} />,
-    );
-
-    await fireEvent.press(screen.getByLabelText('Take more passengers'));
-    lastAlertButtons(alert).find((b) => b.text === 'Unlock')!.onPress!();
-    expect(onSetLocked).toHaveBeenCalledWith(false);
-
-    await rerender(<RideCard {...base} kind="offer" seats={{ filled: 4, total: 4, open: false, locked: false }} onSetLocked={onSetLocked} />);
-    expect(screen.getByText('Full')).toBeTruthy();
-    expect(screen.queryByLabelText('Take more passengers')).toBeNull();
-  });
-
-  it('changes the number of seats, never below the riders aboard', async () => {
-    const onChangeSeats = jest.fn();
-    await render(
-      <RideCard {...base} kind="offer" seats={{ filled: 2, total: 4, open: true, locked: false }} onChangeSeats={onChangeSeats} />,
-    );
-
-    await fireEvent.press(screen.getByLabelText('Change number of seats'));
-    expect(screen.getByText('2 already taken, so at least 2.')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('Decrease'));
-    await fireEvent.press(screen.getByLabelText('Decrease'));
-    await fireEvent.press(screen.getByLabelText('Decrease')); // stops at 2
-    await fireEvent.press(screen.getByText('Save'));
-
-    expect(onChangeSeats).toHaveBeenCalledWith(2);
-  });
-});
-
-describe('seat bar', () => {
-  it('fills like a progress bar: 1 of 3 taken is one third green, two thirds orange', async () => {
-    await render(<RideCard {...base} kind="request" seats={{ filled: 1, total: 3, open: true, locked: false }} />);
-
-    expect(flexOf('seat-bar-taken')).toBe(1);
-    expect(flexOf('seat-bar-free')).toBe(2);
-  });
-
-  it('is all green once nothing more is on offer', async () => {
-    await render(<RideCard {...base} kind="offer" seats={{ filled: 1, total: 3, open: false, locked: true }} />);
-
-    expect(screen.getByText('1/1 seats')).toBeTruthy();
+  it('shows a locked or full drive as such', async () => {
+    await render(<RideCard {...base} kind="offer" seats={{ filled: 2, total: 4, open: false, locked: true }} />);
     expect(screen.getByText('Locked')).toBeTruthy();
-    expect(screen.queryByTestId('seat-bar-free')).toBeNull();
+
+    await render(<RideCard {...base} kind="offer" seats={{ filled: 4, total: 4, open: false, locked: false }} />);
+    expect(screen.getByText('Full')).toBeTruthy();
   });
 });
 
 describe('times', () => {
-  it('shows the window they gave while still searching, not a trip length', async () => {
+  it('shows the window they gave while still searching, not planned times', async () => {
     await render(
       <RideCard
         {...base}
@@ -161,70 +153,24 @@ describe('times', () => {
       />,
     );
 
+    expect(screen.getByText('Your window')).toBeTruthy();
     expect(screen.getByText('07:30–09:00')).toBeTruthy();
     expect(screen.getByText('from 07:30')).toBeTruthy();
     expect(screen.getByText('by 09:00')).toBeTruthy();
-    expect(screen.queryByText('90 min')).toBeNull();
-  });
-
-  it('shows the planned trip once matched', async () => {
-    await render(<RideCard {...base} kind="request" />);
-
-    expect(screen.getByText('10 min')).toBeTruthy();
-    expect(screen.getByText('~08:40')).toBeTruthy();
-    expect(screen.getByText('ETA ~08:50')).toBeTruthy();
   });
 });
 
 describe('layout', () => {
-  it('puts "See more information" at the bottom of an upcoming ride, below the seats', async () => {
+  it.each(['confirmed', 'awaiting', 'pending'] as const)('ends a %s card with "See More Information"', async (status) => {
     const onSeeDetails = jest.fn();
-    await render(
-      <RideCard {...base} kind="request" seats={{ filled: 1, total: 3, open: true, locked: false }} onSeeDetails={onSeeDetails} />,
-    );
+    await render(<RideCard {...base} kind="request" status={status} matchedAt={new Date()} onAccept={jest.fn()} onSeeDetails={onSeeDetails} />);
 
     const rendered = JSON.stringify(screen.toJSON());
-    expect(rendered.indexOf('See more information')).toBeGreaterThan(rendered.indexOf("You'll still arrive by"));
-    expect(rendered.indexOf('See more information')).toBeGreaterThan(rendered.indexOf('seat-bar-taken'));
+    const last = ['ABC123', 'Accept', 'Searching for driver...'].map((t) => rendered.indexOf(t)).filter((i) => i >= 0);
+    expect(rendered.indexOf('See More Information')).toBeGreaterThan(Math.max(...last));
 
-    await fireEvent.press(screen.getByText('See more information'));
+    await fireEvent.press(screen.getByText('See More Information'));
     expect(onSeeDetails).toHaveBeenCalled();
-  });
-
-  it("gives a driver's buttons their own row, after the seat status", async () => {
-    await render(
-      <RideCard {...base} kind="offer" seats={{ filled: 1, total: 2, open: true, locked: false }} onSetLocked={jest.fn()} onChangeSeats={jest.fn()} />,
-    );
-
-    const rendered = JSON.stringify(screen.toJSON());
-    expect(rendered.indexOf('Still looking for passengers')).toBeLessThan(rendered.indexOf('Stop taking passengers'));
-    expect(rendered.indexOf('seat-bar-taken')).toBeLessThan(rendered.indexOf('Change number of seats'));
-  });
-});
-
-describe('stops', () => {
-  const stops = [
-    { label: 'Ann · 1 First St', time: '~08:22' },
-    { label: 'Yass · 2 Second Rd', time: '~08:31' },
-  ];
-
-  it('lists the pickups on the way between the start and Monash, each with its time', async () => {
-    await render(
-      <RideCard {...base} kind="offer" pickup={{ address: 'Driver Home', time: '08:13' }} stops={stops} />,
-    );
-
-    expect(screen.getByLabelText('Stop: Yass · 2 Second Rd, ~08:31')).toBeTruthy();
-    expect(screen.getByText('~08:22')).toBeTruthy();
-    const rendered = JSON.stringify(screen.toJSON());
-    const order = ['Driver Home', 'Ann · 1 First St', 'Yass · 2 Second Rd', 'Monash University'].map((t) => rendered.indexOf(t));
-    expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(order[0]).toBeGreaterThanOrEqual(0);
-  });
-
-  it('hides them while the card shows a range, with no trip planned', async () => {
-    await render(<RideCard {...base} kind="offer" stops={stops} timeWindow={{ from: '07:00', to: '09:00' }} />);
-
-    expect(screen.queryByText('Ann · 1 First St')).toBeNull();
   });
 });
 

@@ -375,7 +375,10 @@ whatever schedules `npm run match`.
    Both come from fields that never change after submission, so the key is stable
    without being stored. Bookings with no coordinates, a malformed time, a trip
    already under way, or a driver still waiting on a rider are left out and
-   counted in the output.
+   counted in the output. So is anything not yet matched that's more than
+   `BOOKING_HORIZON_DAYS` (14) ahead - the same constant the app limits booking
+   with (`mobile/pages/schema/booking.schema.ts`); it's matched once it comes
+   within reach (`TOO_FAR_AHEAD`).
 4. **Per batch:** build one travel-time matrix (road distances included),
    convert, fill in and price the timetable of any car whose confirmed riders it
    doesn't list or that has no costs yet, run `runMatchingProvisional` with each

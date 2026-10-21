@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
   ScrollView,
@@ -10,6 +9,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
 import RideCard, { RideCardProps, RideStatus } from '../components/RideCard';
 import { useAuth } from '../auth/useAuth';
@@ -21,7 +21,7 @@ interface DashboardPageProps {
   onSeeRideDetails: (ride: RideCardProps) => void;
   onOpenDriverProfile: (ride: RideCardProps) => void;
   /** The real Accept/Decline/Remove handlers (App's buildRideActions) for a card's own buttons. */
-  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline' | 'onCancel' | 'onSetLocked' | 'onChangeSeats'>;
+  rideActions: (ride: RideCardProps) => Pick<RideCardProps, 'onAccept' | 'onDecline'>;
   /** Which of the user's trips this page is: My Rides (their ride requests)
    *  or My Drives (their driving offers) - each its own navigation tab. */
   mode: DashboardMode;
@@ -79,6 +79,20 @@ const DRIVER_LANES: LaneConfig[] = [
 ];
 
 const CARD_GAP = 12;
+
+const laneAccent: Record<RideStatus, string> = {
+  confirmed: colors.confirmed,
+  awaiting: colors.awaiting,
+  pending: colors.pending,
+  cancelled: colors.cancelled,
+};
+
+const laneEmptyIcon: Record<RideStatus, React.ComponentProps<typeof Ionicons>['name']> = {
+  confirmed: 'calendar-outline',
+  awaiting: 'hourglass-outline',
+  pending: 'search-outline',
+  cancelled: 'close-circle-outline',
+};
 
 export default function DashboardPage({
   onScroll, onSeeRideDetails, onOpenDriverProfile, rideActions, mode,
@@ -162,10 +176,22 @@ export default function DashboardPage({
         const rides = ridesForLane(dataset, lane.status, mode);
         return (
           <View key={lane.status} style={localStyles.lane}>
-            <Text style={localStyles.laneTitle}>{lane.title}</Text>
+            {/* The lane's colour matches its cards' edge, so the eye can tell
+                them apart; a rider's match to accept is flagged as theirs to do. */}
+            <View style={localStyles.laneHeader}>
+              <View style={[localStyles.laneDot, { backgroundColor: laneAccent[lane.status] }]} />
+              <Text style={localStyles.laneTitle}>{lane.title}</Text>
+              {rides.length > 0 && <Text style={localStyles.laneCount}>{rides.length}</Text>}
+              {mode === 'rider' && lane.status === 'awaiting' && rides.length > 0 && (
+                <Text style={localStyles.actionTag}>Action needed</Text>
+              )}
+            </View>
             <Text style={localStyles.laneDescription}>{lane.description}</Text>
             {rides.length === 0 ? (
-              <Text style={localStyles.emptyText}>{lane.emptyText}</Text>
+              <View style={localStyles.emptyLane}>
+                <Ionicons name={laneEmptyIcon[lane.status]} size={20} color={colors.skyBlue} />
+                <Text style={localStyles.emptyText}>{lane.emptyText}</Text>
+              </View>
             ) : (
               <ScrollView
                 horizontal
@@ -184,22 +210,6 @@ export default function DashboardPage({
                   >
                     <RideCard
                       {...ride}
-                      onEdit={() =>
-                        Alert.alert(
-                          mode === 'rider' ? 'Edit ride request' : 'Edit driving offer',
-                          mode === 'rider'
-                            ? 'Editing this request is coming soon.'
-                            : 'Editing this drive offer is coming soon.'
-                        )
-                      }
-                      onCancel={() =>
-                        Alert.alert(
-                          mode === 'rider' ? 'Ride canceled' : 'Drive canceled',
-                          mode === 'rider' ? 'This ride has been canceled.' : 'This drive offer has been canceled.'
-                        )
-                      }
-                      // Writes to Firestore - these used to only show a success alert.
-                      // After onCancel, so a driver's Remove offer really removes it.
                       {...rideActions(ride)}
                       onSeeDetails={() => onSeeRideDetails(ride)}
                       onOpenDriverProfile={() => onOpenDriverProfile(ride)}
@@ -249,13 +259,56 @@ const localStyles = StyleSheet.create({
     lineHeight: 18,
   },
   lane: {
-    marginBottom: 24,
+    marginBottom: 28,
+  },
+  laneHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
+  laneDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   laneTitle: {
     fontFamily: 'Marcellus_400Regular',
     fontSize: 20,
     color: colors.white,
-    marginBottom: 2,
+  },
+  laneCount: {
+    color: colors.darkBlue,
+    backgroundColor: colors.white,
+    fontSize: 12,
+    fontWeight: '700',
+    borderRadius: 10,
+    overflow: 'hidden',
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+  },
+  actionTag: {
+    color: colors.darkBlue,
+    backgroundColor: colors.awaitingLight,
+    fontSize: 11,
+    fontWeight: '700',
+    borderRadius: 10,
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  // An empty lane keeps some room, so the page doesn't collapse into a list
+  // of headings.
+  emptyLane: {
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 22,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.whiteA35,
+    backgroundColor: colors.whiteA08,
   },
   laneDescription: {
     color: colors.white,
@@ -268,9 +321,9 @@ const localStyles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    color: colors.white,
-    opacity: 0.6,
+    color: colors.skyBlue,
     fontSize: 13,
     fontStyle: 'italic',
+    textAlign: 'center',
   },
 });

@@ -100,6 +100,24 @@ describe('groupIntoBatches', () => {
     ]);
   });
 
+  it('holds back bookings past the app\'s booking horizon until they come within it', () => {
+    // NOW is 1 October; 14 days ahead is 15 October.
+    const { batches, skipped } = groupIntoBatches(
+      [reqDoc({ id: 'edge', date: stored(15) }), reqDoc({ id: 'far', date: stored(16) })],
+      [
+        offerDoc({ id: 'far-offer', date: stored(20) }),
+        offerDoc({ id: 'far-done', status: 'confirmed', date: stored(20) }), // past matching: kept
+      ],
+      NOW,
+    );
+    expect(batches.flatMap((b) => b.requests.map((r) => r.id))).toEqual(['edge']);
+    expect(batches.flatMap((b) => b.settledOffers.map((o) => o.id))).toEqual(['far-done']);
+    expect(skipped).toEqual([
+      { kind: 'request', id: 'far', reason: 'TOO_FAR_AHEAD' },
+      { kind: 'offer', id: 'far-offer', reason: 'TOO_FAR_AHEAD' },
+    ]);
+  });
+
   it("keeps done cars apart from the matcher's, locked ones included, so only their timetables are kept up to date", () => {
     const { batches, skipped } = groupIntoBatches(
       [],
