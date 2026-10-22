@@ -51,10 +51,12 @@ const details = (overrides: Partial<RideDetails> = {}): RideDetails => ({
   ...overrides,
 });
 
-/** Render the page and wait for its details to load - shown by `loadedText`. */
-const show = async (r: Ride, d: RideDetails, loadedText: RegExp = /Plate/) => {
+/** Render the page on one of its tabs and wait for its details to load -
+ *  shown by `loadedText`. */
+const show = async (r: Ride, d: RideDetails, loadedText: RegExp = /ABC123/, tab = 'People') => {
   fetchDetails.mockResolvedValue(d);
   await renderWithThemedAlerts(<RideDetailPage ride={r} date={new Date('2026-10-05T00:00:00+11:00')} onBack={() => {}} />);
+  await fireEvent.press(screen.getByRole('tab', { name: tab }));
   await screen.findByText(loadedText);
 };
 
@@ -78,12 +80,12 @@ it("titles a rider's page Ride details, with no car icon", async () => {
   expect(screen.queryByLabelText('Driving')).toBeNull();
 });
 
-it('lists the journey stop by stop under the map, with each stop marked as on the map', async () => {
-  await show(ride, details());
+it('lists the journey stop by stop on the Trip tab, with each stop marked as on the map', async () => {
+  await show(ride, details(), /Monash University Clayton/, 'Trip');
 
   expect(screen.getByText('Your Pickup')).toBeTruthy();
   expect(screen.getByText('2 Ana Rd')).toBeTruthy();
-  expect(screen.getAllByText('~7:41 AM')).toHaveLength(2); // the status row's time, and this stop's
+  expect(screen.getAllByText('~7:41 AM')).toHaveLength(2); // under the date, and this stop's
   expect(screen.getByText('A')).toBeTruthy();
   // Another rider's pickup: a time, but no marker - it isn't on their map.
   expect(screen.getByText('Pickup · Another Passenger')).toBeTruthy();
@@ -99,28 +101,50 @@ it('shows the booking window on a trip not planned yet', async () => {
       { kind: 'start', title: 'Your Pickup', address: '2 Ana Rd', marker: 'A' },
       { kind: 'end', title: 'Drop-off', address: 'Monash University Clayton', marker: 'B' },
     ],
-  }), /A driver will appear here/);
+  }), /Monash University Clayton/, 'Trip');
 
-  // The status row's time, and the journey's first stop.
+  // Under the date, and at the journey's first stop.
   expect(screen.getAllByText('7:00 AM–9:00 AM')).toHaveLength(2);
+});
+
+it('titles the page with the date, and the time beneath it', async () => {
+  await show(ride, details());
+  expect(screen.getByText(/^Monday,? 5 October$/)).toBeTruthy();
+  expect(screen.getByText('~7:41 AM')).toBeTruthy();
 });
 
 it("labels the time at the top: a rider's pick-up, a driver's leave time, or the window booked", async () => {
   await show(ride, details());
-  expect(screen.getByText('pick-up time')).toBeTruthy();
+  expect(screen.getByText('Pick-up time  ·  25 min trip')).toBeTruthy();
 
   await show({ ...ride, kind: 'offer', rideId: 'offer-1', time: '07:20' }, details({ driver: undefined }));
-  expect(screen.getByText('leave time')).toBeTruthy();
+  expect(screen.getByText(/^Leave time/)).toBeTruthy();
 
   await show({ ...ride, status: 'pending', time: '07:00–09:00', duration: undefined }, details({ driver: undefined }), /A driver will appear here/);
-  expect(screen.getByText('travel window')).toBeTruthy();
+  expect(screen.getByText('Travel window')).toBeTruthy();
 });
 
-it('describes the car in full', async () => {
+it('opens on the Trip tab, or on People while a match is waiting for an answer', async () => {
+  fetchDetails.mockResolvedValue(details());
+  await renderWithThemedAlerts(<RideDetailPage ride={ride} date={new Date()} onBack={() => {}} />);
+  expect(await screen.findByText('Your Pickup')).toBeTruthy();
+  expect(screen.queryByText('Your Driver')).toBeNull();
+
+  await renderWithThemedAlerts(<RideDetailPage ride={{ ...ride, status: 'awaiting' }} date={new Date()} onBack={() => {}} />);
+  expect(await screen.findByText('Your Driver')).toBeTruthy();
+});
+
+it('keeps the cost split and CO2 savings on the Cost tab', async () => {
+  await show(ride, details(), /Suggested Cost Split/, 'Cost');
+  expect(screen.getByText('CO2 SAVINGS')).toBeTruthy();
+  expect(screen.queryByText('Your Pickup')).toBeNull();
+});
+
+it('describes the car in full, with its plate', async () => {
   await show(ride, details());
 
   expect(screen.getByText('Blue Toyota Corolla')).toBeTruthy();
-  expect(screen.getByText('Plate  ·  ABC123')).toBeTruthy();
+  expect(screen.getByLabelText('Plate ABC123')).toBeTruthy();
 });
 
 it('uses the themed confirmation before cancelling a ride', async () => {
@@ -134,7 +158,7 @@ it('uses the themed confirmation before cancelling a ride', async () => {
       onCancel={onCancel}
     />,
   );
-  await screen.findByText('Plate  ·  ABC123');
+  await screen.findByText('Your Pickup'); // the journey, loaded
 
   await fireEvent.press(screen.getByText('Cancel Ride'));
   expect(screen.getByText('Cancel this ride?')).toBeTruthy();
@@ -188,6 +212,19 @@ it('shows a driver their passengers and their own car, not a driver', async () =
   expect(screen.getByLabelText('Driving')).toBeTruthy();
   expect(screen.getByText('Your Passengers')).toBeTruthy();
   expect(screen.getByText('Cal  ·  awaiting')).toBeTruthy();
-  expect(screen.getByText('Your Car')).toBeTruthy();
+  expect(screen.getByText('Blue Toyota Corolla')).toBeTruthy();
   expect(screen.queryByText('Your Driver')).toBeNull();
+});
+
+it('keeps Accept and Decline in the footer, whichever tab is open', async () => {
+  fetchDetails.mockResolvedValue(details());
+  await renderWithThemedAlerts(
+    <RideDetailPage ride={{ ...ride, status: 'awaiting' }} date={new Date()} onBack={() => {}} onAccept={jest.fn()} onDecline={jest.fn()} />,
+  );
+  await screen.findByText('Your Driver');
+  expect(screen.getByText('Accept')).toBeTruthy();
+
+  await fireEvent.press(screen.getByRole('tab', { name: 'Trip' }));
+  expect(screen.getByText('Accept')).toBeTruthy();
+  expect(screen.getByText('Decline')).toBeTruthy();
 });

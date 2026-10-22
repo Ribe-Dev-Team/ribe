@@ -1,6 +1,17 @@
 import { RideCardProps, RideStatus } from '../components/RideCard';
+import { startOfDay } from '../utility/dates';
 
 const byDate = (a: RideCardProps, b: RideCardProps) => a.date.getTime() - b.date.getTime();
+
+/**
+ * Rides from today on. The Dashboard is for what's coming up; a past day's
+ * ride is still on the Calendar, on its own day. Today's stay all day, even
+ * once they've happened.
+ */
+export function upcomingRides(rides: RideCardProps[], now: Date = new Date()): RideCardProps[] {
+  const today = startOfDay(now).getTime();
+  return rides.filter((r) => startOfDay(r.date).getTime() >= today);
+}
 
 /**
  * The cards one Dashboard lane shows, in date order.

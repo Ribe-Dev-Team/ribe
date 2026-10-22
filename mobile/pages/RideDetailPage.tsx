@@ -5,7 +5,7 @@ import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
 import RideMap, { markerColor } from '../components/RideMap';
 import CostSplitPanel from '../components/CostSplitPanel';
-import DriveControls from '../components/DriveControls';
+import DriveControls, { canToggleLock, LockToggleButton } from '../components/DriveControls';
 import { fetchRideDetails, JourneyStop, RideCar, RideDetails, RidePerson } from '../services/rideData';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
 import { formatTime12h } from '../utility/times';
@@ -20,8 +20,6 @@ interface RideDetailPageProps {
 	onAccept?: () => Promise<void> | void;
 	onDecline?: () => Promise<void> | void;
 	onCancel?: () => Promise<void> | void;
-	/** A booking still searching: change it. */
-	onEdit?: () => void;
 	/** A driver's own drive: stop (true) or resume (false) taking passengers. */
 	onSetLocked?: (locked: boolean) => void;
 	/** A driver's own drive: change how many passengers it takes. */
@@ -29,16 +27,30 @@ interface RideDetailPageProps {
 }
 
 function formatDate(date: Date) {
-	return date.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+	return date.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' });
 }
+
+type Tab = 'Trip' | 'People' | 'Cost';
+const TABS: Tab[] = ['Trip', 'People', 'Cost'];
 
 function initialsOf(name: string) {
 	return name.split(/\s+/).map((part) => part[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?';
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-	return <View style={styles.detailSection}><Text style={styles.detailSectionTitle}>{title}</Text>{children}</View>;
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+function Section({ title, icon, children }: { title: string; icon: IconName; children: React.ReactNode }) {
+	return (
+		<View style={styles.detailSection}>
+			<View style={styles.detailSectionHeader}>
+				<View style={styles.detailSectionIcon}><Ionicons name={icon} size={15} color={colors.white} /></View>
+				<Text style={styles.detailSectionTitle}>{title}</Text>
+			</View>
+			{children}
+		</View>
+	);
 }
+
 
 /** Their profile photo, or their initials until they've added one. */
 function Avatar({ person }: { person: RidePerson }) {
@@ -74,11 +86,11 @@ function ContactLine({ name, phone, revealed }: { name: string; phone?: string; 
 			{revealed && (
 				<View style={styles.contactActions}>
 					<Pressable accessibilityLabel={`Call ${name}`} onPress={() => Linking.openURL(`tel:${digits}`)} style={styles.contactButton}>
-						<Ionicons name="call-outline" size={13} color={colors.white} />
+						<Ionicons name="call" size={13} color={colors.white} />
 						<Text style={styles.contactButtonText}>Call</Text>
 					</Pressable>
 					<Pressable accessibilityLabel={`Text ${name}`} onPress={() => Linking.openURL(`sms:${digits}`)} style={styles.contactButton}>
-						<Ionicons name="chatbubble-outline" size={13} color={colors.white} />
+						<Ionicons name="chatbubble" size={13} color={colors.white} />
 						<Text style={styles.contactButtonText}>Text</Text>
 					</Pressable>
 				</View>
@@ -97,15 +109,18 @@ function aboutOf(person: RidePerson) {
  *  ends and booking window stand in. */
 function JourneySection({ stops }: { stops: JourneyStop[] }) {
 	return (
-		<Section title="Journey">
+		<Section title="Journey" icon="navigate-outline">
 			{stops.map((stop, index) => (
 				<View key={index}>
-					{index > 0 && <View style={styles.locationLine} />}
 					<View style={styles.locationRow}>
-						{stop.marker
-							? <View style={[styles.journeyMarker, { backgroundColor: markerColor(stop.kind) }]}><Text style={styles.journeyMarkerText}>{stop.marker}</Text></View>
-							: <View style={styles.journeyMarkerHidden} accessibilityLabel="Not shown on the map" />}
-						<View style={styles.personCopy}>
+						{/* The marker, and the line on down to the next stop. */}
+						<View style={styles.journeyRail}>
+							{stop.marker
+								? <View style={[styles.journeyMarker, { backgroundColor: markerColor(stop.kind) }]}><Text style={styles.journeyMarkerText}>{stop.marker}</Text></View>
+								: <View style={styles.journeyMarkerHidden} accessibilityLabel="Not shown on the map" />}
+							{index < stops.length - 1 && <View style={styles.locationLine} />}
+						</View>
+						<View style={[styles.personCopy, index < stops.length - 1 && styles.journeyStopCopy]}>
 							<Text style={styles.locationLabel}>{stop.title}{stop.awaiting ? '  ·  awaiting' : ''}</Text>
 							{stop.address ? <Text style={styles.locationText}>{stop.address}</Text> : null}
 							{stop.time ? <Text style={styles.locationMeta}>{formatTime12h(stop.time)}</Text> : null}
@@ -117,26 +132,25 @@ function JourneySection({ stops }: { stops: JourneyStop[] }) {
 	);
 }
 
-function CarSection({ title, car }: { title: string; car?: RideCar }) {
+/** The car on one line - what it is, and its plate to spot it by. */
+function CarLine({ car }: { car?: RideCar }) {
 	const name = [car?.colour, car?.make, car?.model].filter(Boolean).join(' ');
 	return (
-		<Section title={title}>
-			<View style={styles.carRow}>
-				<Ionicons name="car-outline" size={30} color={colors.white} style={styles.carIcon} />
-				<View>
-					<Text style={styles.personName}>{name || 'Vehicle details not added yet'}</Text>
-					<Text style={styles.infoLine}>Plate  ·  {car?.plate ?? 'Not shared'}</Text>
-				</View>
-			</View>
-		</Section>
+		<View style={styles.carRow}>
+			<Ionicons name="car-sport-outline" size={18} color={colors.white} />
+			<Text style={styles.carName} numberOfLines={1}>{name || 'Vehicle details not added yet'}</Text>
+			{car?.plate ? <Text style={styles.carPlate} accessibilityLabel={`Plate ${car.plate}`}>{car.plate}</Text> : null}
+		</View>
 	);
 }
 
 export default function RideDetailPage({
-	ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel, onEdit, onSetLocked, onChangeSeats,
-} : RideDetailPageProps) {
+	ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel, onSetLocked, onChangeSeats,
+}: RideDetailPageProps) {
 	const [details, setDetails] = useState<RideDetails | null>(null);
 	const showAlert = useThemedAlert();
+	// Who's in the car matters most while someone's deciding on a match.
+	const [tab, setTab] = useState<Tab>(ride.status === 'awaiting' ? 'People' : 'Trip');
 	const isConfirmed = ride.status === 'confirmed';
 	// A match needs both sides to accept; once you have, you're waiting on the other.
 	const isDriver = ride.kind === 'offer';
@@ -150,8 +164,42 @@ export default function RideDetailPage({
 		: 'Pending Ride';
 	// What the time at the top is: once the trip is planned, when the driver
 	// leaves or the rider is collected; until then, the window they booked.
-	const timeLabel = !ride.duration ? 'travel window' : isDriver ? 'leave time' : 'pick-up time';
+	const timeLabel = !ride.duration ? 'Travel window' : isDriver ? 'Leave time' : 'Pick-up time';
 	const statusColor = ride.status === 'confirmed' ? colors.confirmed : ride.status === 'awaiting' ? colors.awaiting : colors.pending;
+	const statusIcon: IconName = ride.status === 'confirmed' ? 'checkmark' : ride.status === 'awaiting' ? 'hourglass' : 'search';
+	// Answering a match, calling off the booking, and a driver stopping new
+	// riders all live in the footer - always in reach, never in the way.
+	const canCancel = (isConfirmed || ride.status === 'pending' || isDriver) && Boolean(onCancel);
+	const canAnswer = ride.status === 'awaiting' && Boolean(onAccept || onDecline);
+	const canLock = isDriver && ride.seats !== undefined && Boolean(onSetLocked) && canToggleLock(ride.seats);
+	const cancelLabel = isDriver ? 'Remove Offer' : ride.status === 'pending' ? 'Cancel Request' : 'Cancel Ride';
+	const confirmCancel = () =>
+		isDriver
+			? showAlert(
+				'Remove this drive offer?',
+				'Any rider matched to it will go back to searching for another driver.',
+				[
+					{ text: 'Keep Offer', style: 'cancel' },
+					{ text: 'Remove Offer', style: 'destructive', onPress: onCancel },
+				],
+			)
+			: ride.status === 'pending'
+			? showAlert(
+				'Cancel this ride request?',
+				'Are you sure you want to cancel this ride request?',
+				[
+					{ text: 'Keep Request', style: 'cancel' },
+					{ text: 'Cancel Request', style: 'destructive', onPress: onCancel },
+				],
+			)
+			: showAlert(
+				'Cancel this ride?',
+				'Are you sure you want to cancel this confirmed ride?',
+				[
+					{ text: 'Keep Ride', style: 'cancel' },
+					{ text: 'Cancel Ride', style: 'destructive', onPress: onCancel },
+				],
+			);
 
 	useEffect(() => {
 		let active = true;
@@ -185,24 +233,55 @@ export default function RideDetailPage({
 		&& details.startsAt.getTime() - Date.now() <= PHONE_REVEAL_WINDOW_MS;
 
 	return (
-	<>
-	<ScrollView contentContainerStyle={styles.detailScreen} showsVerticalScrollIndicator={false}>
-			<Pressable accessibilityLabel={`Back to ${backLabel}`} onPress={onBack} style={styles.backButton}><Text style={styles.backButtonText}>‹</Text><Text style={styles.backButtonLabel}>{backLabel}</Text></Pressable>
-			<View style={styles.detailTitleRow}>
-				{isDriver && <Ionicons name="car-sport" size={28} color={colors.white} accessibilityLabel="Driving" />}
-				<Text style={styles.detailTitle}>{isDriver ? 'Drive Details' : 'Ride Details'}</Text>
-			</View>
-			<Text style={styles.detailDate}>{formatDate(date)}</Text>
+		<View style={styles.detailPage}>
+			<ScrollView contentContainerStyle={styles.detailScreen} showsVerticalScrollIndicator={false}>
+				<Pressable accessibilityLabel={`Back to ${backLabel}`} onPress={onBack} style={styles.backButton}>
+					<Ionicons name="chevron-back" size={22} color={colors.white} />
+					<Text style={styles.backButtonLabel}>{backLabel}</Text>
+				</Pressable>
 
-			<View style={styles.detailStatusRow}><View style={styles.detailTimeRow}><Text style={styles.detailTime}>{formatTime12h(ride.time)}</Text><Text style={styles.detailTimeLabel}>{timeLabel}</Text></View><View style={[styles.statusPill, { backgroundColor: statusColor }]}><Text style={styles.statusPillText}>{status}</Text></View></View>
+				{/* At a glance: what it is, when, and where it's up to. */}
+				<View style={styles.detailHero}>
+					<View style={styles.detailTitleRow}>
+						{isDriver && <Ionicons name="car-sport" size={14} color={colors.white} accessibilityLabel="Driving" />}
+						<Text style={styles.detailKicker}>{isDriver ? 'Drive Details' : 'Ride Details'}</Text>
+					</View>
+					<Text style={styles.detailTitle}>{formatDate(date)}</Text>
+					<View style={styles.detailTimeRow}>
+						<Text style={styles.detailTime}>{formatTime12h(ride.time)}</Text>
+						<Text style={styles.detailTimeLabel}>{timeLabel}{ride.duration ? `  ·  ${ride.duration} trip` : ''}</Text>
+					</View>
+					<View style={styles.detailStatusLine}>
+						<View style={[styles.detailStatusIcon, { backgroundColor: statusColor }]}>
+						<Ionicons name={statusIcon} size={12} color={colors.white} />
+					</View>
+						<Text style={styles.detailStatusText}>{status}</Text>
+					</View>
+				</View>
 
-			<RideMap points={details?.mapPoints ?? []} loading={loading} />
+				<View style={styles.detailTabs} accessibilityRole="tablist">
+					{TABS.map((name) => (
+						<Pressable
+							key={name}
+							accessibilityRole="tab"
+							accessibilityState={{ selected: tab === name }}
+							onPress={() => setTab(name)}
+							style={[styles.detailTab, tab === name && styles.detailTabActive]}
+						>
+							<Text style={[styles.detailTabText, tab === name && styles.detailTabTextActive]}>{name}</Text>
+						</Pressable>
+					))}
+				</View>
 
-			<JourneySection stops={journey} />
+				{tab === 'Trip' && (
+					<>
+						<RideMap points={details?.mapPoints ?? []} loading={loading} />
+						<JourneySection stops={journey} />
+					</>
+				)}
 
-			{isDriver ? (
-				<>
-					<Section title="Your Passengers">
+				{tab === 'People' && (isDriver ? (
+					<Section title="Your Passengers" icon="people-outline">
 						{loading ? <Text style={styles.mutedDetail}>Loading passengers...</Text>
 							: details.passengers.length === 0 ? <Text style={styles.mutedDetail}>Passengers will appear here once riders are matched to your drive.</Text>
 							: details.passengers.map((person, index) => (
@@ -210,109 +289,96 @@ export default function RideDetailPage({
 									{person.phone ? <ContactLine name={person.name} phone={person.phone} revealed={phoneRevealed} /> : null}
 								</PersonRow>
 							))}
-						{/* How many seats it offers, and whether it's still taking riders. */}
+						{/* How full the car is, and whether it's still taking riders. */}
 						{ride.seats && (
 							<DriveControls
 								seats={ride.seats}
 								riderDeciding={ride.status === 'awaiting'}
-								onSetLocked={onSetLocked}
 								onChangeSeats={onChangeSeats}
 							/>
 						)}
+						{!loading && <CarLine car={details.car} />}
 					</Section>
-					{!loading && <CarSection title="Your Car" car={details.car} />}
-				</>
-			) : !isMatched ? (
-				<Section title="Your Driver"><Text style={styles.mutedDetail}>A driver will appear here once you're matched.</Text></Section>
-			) : (
-				<>
-					<Section title="Your Driver">
-						{loading ? <Text style={styles.mutedDetail}>Loading driver details...</Text>
-							: !driver ? <Text style={styles.mutedDetail}>Driver details aren't available right now.</Text>
-							: (
-								<>
-									<PersonRow person={driver} subtitle={driver.bio ?? 'This driver has not added a bio yet.'} />
-									<Text style={styles.infoLine}>Degree  ·  {driver.degree ?? 'Not added'}</Text>
-									{isConfirmed && <ContactLine name={driver.name} phone={driver.phone} revealed={phoneRevealed} />}
-								</>
-							)}
-					</Section>
-					{!loading && driver && <CarSection title="Driver's Car" car={details.car} />}
-					{!loading && (
-						<Section title="Other Riders">
-							{details.passengers.length === 0
-								? <Text style={styles.mutedDetail}>{isConfirmed ? "You're the only rider so far." : 'No other riders are confirmed in this car yet.'}</Text>
-								: details.passengers.map((person, index) => <PersonRow key={index} person={person} subtitle={aboutOf(person)} />)}
+				) : !isMatched ? (
+					<Section title="Your Driver" icon="person-outline"><Text style={styles.mutedDetail}>A driver will appear here once you're matched.</Text></Section>
+				) : (
+					<>
+						<Section title="Your Driver" icon="person-outline">
+							{loading ? <Text style={styles.mutedDetail}>Loading driver details...</Text>
+								: !driver ? <Text style={styles.mutedDetail}>Driver details aren't available right now.</Text>
+								: (
+									<>
+										<PersonRow person={driver} subtitle={driver.bio ?? 'This driver has not added a bio yet.'} />
+										<Text style={styles.infoLine}>Degree  ·  {driver.degree ?? 'Not added'}</Text>
+										{isConfirmed && <ContactLine name={driver.name} phone={driver.phone} revealed={phoneRevealed} />}
+										<CarLine car={details.car} />
+									</>
+								)}
 						</Section>
+						{!loading && (
+							<Section title="Other Riders" icon="people-outline">
+								{details.passengers.length === 0
+									? <Text style={styles.mutedDetail}>{isConfirmed ? "You're the only rider so far." : 'No other riders are confirmed in this car yet.'}</Text>
+									: details.passengers.map((person, index) => <PersonRow key={index} person={person} subtitle={aboutOf(person)} />)}
+							</Section>
+						)}
+					</>
+				))}
+
+				{tab === 'Cost' && (
+					<>
+						<CostSplitPanel costSplit={ride.costSplit} />
+						<View style={{ height: 12 }} />
+						<GreenhouseEmissionCard co2SavedKg={ride.co2SavedKg ?? 0} />
+					</>
+				)}
+
+			</ScrollView>
+
+			{(canAnswer || canLock || canCancel) && (
+				<View style={styles.detailFooter}>
+					{/* Answering a match comes first; managing the booking under it. */}
+					{canAnswer && (
+						<View style={styles.footerRow}>
+							<Pressable
+								onPress={() =>
+									showAlert(
+										isDriver ? 'Decline this rider?' : 'Decline this ride?',
+										isDriver
+											? 'They will go back to being matched with another driver, and your seat opens up again.'
+											: 'Are you sure you want to decline this ride?',
+										[
+											{ text: isDriver ? 'Keep Rider' : 'Keep Ride', style: 'cancel' },
+											{ text: 'Decline', style: 'destructive', onPress: onDecline },
+										],
+									)
+								}
+								style={[styles.footerButton, styles.footerDecline]}
+							>
+								<Ionicons name="close" size={18} color={colors.white} />
+								<Text style={styles.footerButtonText}>Decline</Text>
+							</Pressable>
+							{onAccept && (
+								<Pressable onPress={onAccept} style={[styles.footerButton, styles.footerAccept]}>
+									<Ionicons name="checkmark" size={18} color={colors.white} />
+									<Text style={styles.footerButtonText}>Accept</Text>
+								</Pressable>
+							)}
+						</View>
 					)}
-				</>
-			)}
-
-			<GreenhouseEmissionCard co2SavedKg={ride.co2SavedKg ?? 0} />
-			<CostSplitPanel costSplit={ride.costSplit} />
-
-			{ride.status === 'awaiting' && (onAccept || onDecline) && (
-				<View style={[styles.editActionsRow, { marginTop: 14 }]}>
-					<Pressable
-						onPress={() =>
-							showAlert(
-								isDriver ? 'Decline this rider?' : 'Decline this ride?',
-								isDriver
-									? 'They will go back to being matched with another driver, and your seat opens up again.'
-									: 'Are you sure you want to decline this ride?',
-								[
-									{ text: isDriver ? 'Keep Rider' : 'Keep Ride', style: 'cancel' },
-									{ text: 'Decline', style: 'destructive', onPress: onDecline },
-								],
-							)
-						}
-						style={styles.dangerButton}
-					>
-						<Text style={styles.dangerButtonText}>Decline</Text>
-					</Pressable>
-					{onAccept && (
-						<Pressable onPress={onAccept} style={[styles.successButton, { marginTop: 0 }]}>
-							<Text style={styles.successButtonText}>Accept</Text>
-						</Pressable>
+					{(canLock || canCancel) && (
+						<View style={styles.footerRow}>
+							{canLock && <LockToggleButton seats={ride.seats!} onSetLocked={onSetLocked!} compact={canAnswer} />}
+							{canCancel && (
+								<Pressable onPress={confirmCancel} style={[styles.footerButton, styles.footerCancel, canAnswer && styles.footerButtonCompact]}>
+									<Ionicons name="trash-outline" size={16} color={colors.white} />
+									<Text style={[styles.footerButtonText, canAnswer && styles.footerButtonTextCompact]}>{cancelLabel}</Text>
+								</Pressable>
+							)}
+						</View>
 					)}
 				</View>
 			)}
-
-			{ride.status === 'pending' && onEdit && (
-				<Pressable onPress={onEdit} style={[styles.secondaryButton, { flex: 0, marginTop: 14 }]}>
-					<Text style={styles.secondaryButtonText}>{isDriver ? 'Edit Offer' : 'Edit Request'}</Text>
-				</Pressable>
-			)}
-
-			{(isConfirmed || ride.status === 'pending' || isDriver) && onCancel && (
-				<Pressable
-					onPress={() => showAlert(
-						isDriver
-							? 'Remove this drive offer?'
-							: ride.status === 'pending' ? 'Cancel this ride request?' : 'Cancel this ride?',
-						isDriver
-							? 'Any rider matched to it will go back to searching for another driver.'
-							: ride.status === 'pending'
-								? 'Are you sure you want to cancel this ride request?'
-								: 'Are you sure you want to cancel this confirmed ride?',
-						[
-							{
-								text: isDriver ? 'Keep Offer' : ride.status === 'pending' ? 'Keep Request' : 'Keep Ride',
-								style: 'cancel',
-							},
-							{
-								text: isDriver ? 'Remove Offer' : ride.status === 'pending' ? 'Cancel Request' : 'Cancel Ride',
-								style: 'destructive',
-								onPress: onCancel,
-							},
-						],
-					)}
-					style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
-				>
-					<Text style={styles.dangerButtonText}>{isDriver ? 'Remove Offer' : ride.status === 'pending' ? 'Cancel Pending Ride' : 'Cancel Ride'}</Text>
-				</Pressable>
-			)}
-		</ScrollView>
-		</>
+		</View>
 	);
 }

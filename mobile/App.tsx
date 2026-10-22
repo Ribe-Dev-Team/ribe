@@ -84,7 +84,6 @@ interface RideActions {
   onAccept?: () => void;
   onDecline?: () => void;
   onCancel?: () => void;
-  onEdit?: () => void;
   onSetLocked?: (locked: boolean) => void;
   onChangeSeats?: (seats: number) => void;
 }
@@ -101,14 +100,6 @@ function errorMessage(error: unknown): string {
 // user back to the list AND remounts it. Without the remount the list keeps
 // rendering the status it fetched on mount, so an accepted ride would appear to
 // stay in Awaiting Approval until the app was restarted.
-// Editing a booking isn't built yet; the details page's Edit button says so.
-function editComingSoon(showAlert: ReturnType<typeof useThemedAlert>, kind?: 'request' | 'offer') {
-  showAlert(
-    kind === 'offer' ? 'Edit driving offer' : 'Edit ride request',
-    kind === 'offer' ? 'Editing this drive offer is coming soon.' : 'Editing this request is coming soon.',
-  );
-}
-
 function buildRideActions(
   ride: ActionableRide,
   driverName: string,
@@ -123,7 +114,6 @@ function buildRideActions(
   // in can remove it, lock it, or change its seats.
   if (ride.kind === 'offer') {
     return {
-      onEdit: () => editComingSoon(showAlert, 'offer'),
       ...(answering && !ride.youAccepted ? {
         onAccept: async () => {
           try {
@@ -237,7 +227,6 @@ function buildRideActions(
   // above, which the matcher relies on.
   const confirmed = ride.status === 'confirmed';
   return {
-    onEdit: () => editComingSoon(showAlert, 'request'),
     onCancel: async () => {
       if (!ride.rideId) {
         showAlert('Not available yet', 'Cancelling a ride from this view is not wired up.');
@@ -292,7 +281,6 @@ function AppContent() {
     onAccept?: () => void;
     onDecline?: () => void;
     onCancel?: () => void;
-    onEdit?: () => void;
     onSetLocked?: (locked: boolean) => void;
     onChangeSeats?: (seats: number) => void;
   } | null>(null);
@@ -629,7 +617,6 @@ function AppContent() {
           onAccept={selectedRide.onAccept}
           onDecline={selectedRide.onDecline}
           onCancel={selectedRide.onCancel}
-          onEdit={selectedRide.onEdit}
           onSetLocked={selectedRide.onSetLocked}
           onChangeSeats={selectedRide.onChangeSeats}
         />
