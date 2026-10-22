@@ -57,7 +57,7 @@ interface AuthPageProps {
   submitting: boolean;
   error: string | null;
   clearError: () => void;
-  handleLogin: (credentials: { email: string; password: string }) => Promise<void>;
+  handleLogin: (credentials: { email: string; password: string; }) => Promise<void>;
   handleSignup: (fields: SignupFields, extra?: SignupProfileExtras) => Promise<boolean>;
 }
 
@@ -158,7 +158,11 @@ export default function AuthPage({
   }, []);
   // Year list in the picker starts from 1950 - old enough to cover any real signup, without
   // an unbounded scroll back through every year since 1900.
-  const minDob = useMemo(() => new Date(1950, 0, 1), []);
+  const minDob = useMemo(() => {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() - 120);
+    return date;
+  }, []);
   const defaultDobView = useMemo(() => new Date(2000, 0, 1), []);
 
   const validateAboutStep = (): boolean => {
@@ -277,12 +281,12 @@ export default function AuthPage({
         isDriver: isDriver ?? false,
         ...(isDriver === true
           ? {
-              vehicleMake: vehicleMake.trim(),
-              vehicleModel: vehicleModel.trim(),
-              vehicleColor: vehicleColor.trim(),
-              licensePlate: licensePlate.trim(),
-              seatsAvailable: Number(seatsAvailable),
-            }
+            vehicleMake: vehicleMake.trim(),
+            vehicleModel: vehicleModel.trim(),
+            vehicleColor: vehicleColor.trim(),
+            licensePlate: licensePlate.trim(),
+            seatsAvailable: Number(seatsAvailable),
+          }
           : {}),
       },
     );
@@ -297,7 +301,7 @@ export default function AuthPage({
           style={[
             localStyles.progressSegment,
             (signupStep === 'profile' || signupStep === 'driver' || signupStep === 'confirm') &&
-              localStyles.progressSegmentActive,
+            localStyles.progressSegmentActive,
           ]}
         />
         <View
@@ -317,12 +321,12 @@ export default function AuthPage({
       signupStep === 'about'
         ? toggleMode
         : signupStep === 'account'
-        ? () => setSignupStep('about')
-        : signupStep === 'profile'
-        ? () => setSignupStep('account')
-        : signupStep === 'driver'
-        ? () => setSignupStep('profile')
-        : () => setSignupStep('driver');
+          ? () => setSignupStep('about')
+          : signupStep === 'profile'
+            ? () => setSignupStep('account')
+            : signupStep === 'driver'
+              ? () => setSignupStep('profile')
+              : () => setSignupStep('driver');
     const backLabel = signupStep === 'about' ? 'Log-In' : 'Back';
 
     return (
