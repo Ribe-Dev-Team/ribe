@@ -151,13 +151,13 @@ export default StyleSheet.create({
     alignSelf: 'flex-end',
     backgroundColor: colors.whiteA16,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 22,
+    paddingVertical: 10,
     marginBottom: 12,
   },
   editButtonText: {
     color: colors.white,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
   },
   editInput: {
