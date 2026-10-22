@@ -50,6 +50,7 @@ export default function AddressAutocompleteInput({
   const [inputHeight, setInputHeight] = useState(46);
   const sessionTokenRef = useRef(createSessionToken());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastResolvedDescription = useRef<string | null>(null);
   const inputRef = useRef<TextInput>(null);
   // The text is a picked suggestion, not typed - until the user types again.
@@ -61,6 +62,7 @@ export default function AddressAutocompleteInput({
     return () => {
       dropdownClosers.delete(close);
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (blurCheckRef.current) clearTimeout(blurCheckRef.current);
     };
   }, []);
 
@@ -110,7 +112,9 @@ export default function AddressAutocompleteInput({
     // can still choose a location without reopening the keyboard - but not
     // once they've moved on to another field, or they'd sit over it.
     onBlur?.();
-    setTimeout(() => {
+    if (blurCheckRef.current) clearTimeout(blurCheckRef.current);
+    blurCheckRef.current = setTimeout(() => {
+      blurCheckRef.current = null;
       const focused = TextInput.State.currentlyFocusedInput();
       if (focused && focused !== inputRef.current) setShowDropdown(false);
     }, FOCUS_SETTLE_MS);
