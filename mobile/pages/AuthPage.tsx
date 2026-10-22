@@ -156,8 +156,7 @@ export default function AuthPage({
     date.setFullYear(date.getFullYear() - 18);
     return date;
   }, []);
-  // Year list in the picker starts from 1950 - old enough to cover any real signup, without
-  // an unbounded scroll back through every year since 1900.
+  // Year list in the picker starts from 120 year old.
   const minDob = useMemo(() => {
     const date = new Date();
     date.setFullYear(date.getFullYear() - 120);
