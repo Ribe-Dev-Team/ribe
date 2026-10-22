@@ -35,10 +35,11 @@ interface DetailsStepErrors {
   valid: boolean;
 }
 
-/* The last day a ride can be booked for: BOOKING_HORIZON_DAYS after today, at midnight. */
+// The last day a ride can be booked for: 3*BOOKING_HORIZON_DAYS after today, at midnight.
+// Note: only rides in the BOOKING_HORIZON_DAYS will be eligible for matching.
 function latestBookingDate(now: Date = new Date()): Date {
   const latest = startOfDay(now);
-  latest.setDate(latest.getDate() + BOOKING_HORIZON_DAYS);
+  latest.setDate(latest.getDate() + BOOKING_HORIZON_DAYS * 3);
   return latest;
 }
 
@@ -89,7 +90,7 @@ function validateDetailsStep(input: DetailsStepInput): DetailsStepErrors {
     travelDateErr = `'${travelDate}' must be a future date`;
     valid = false;
   } else if (parsedDate > latestBookingDate()) {
-    travelDateErr = `Rides can be booked up to ${BOOKING_HORIZON_DAYS} days ahead`;
+    travelDateErr = `Rides can be booked up to ${BOOKING_HORIZON_DAYS * 3} days ahead`;
     valid = false;
   }
 
