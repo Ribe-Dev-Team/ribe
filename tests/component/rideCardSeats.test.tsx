@@ -34,12 +34,12 @@ describe('the essentials', () => {
     await render(<RideCard {...base} kind="request" readyBy="~08:35" />);
 
     expect(screen.getByText('Be ready by')).toBeTruthy();
-    expect(screen.getByText('~08:35')).toBeTruthy();
+    expect(screen.getByText('~8:35 AM')).toBeTruthy();
     // On this machine's clock, as the card shows it - CI runs in UTC, where it's still the 4th.
     expect(screen.getByText(formatRideDate(base.date))).toBeTruthy();
     expect(screen.getByText('$8.50')).toBeTruthy();
-    expect(screen.getByText('~08:40')).toBeTruthy();
-    expect(screen.getByText('ETA ~08:50')).toBeTruthy();
+    expect(screen.getByText('~8:40 AM')).toBeTruthy();
+    expect(screen.getByText('ETA ~8:50 AM')).toBeTruthy();
     expect(screen.getByText('Sam')).toBeTruthy();
     expect(screen.getByText('Mazda 3')).toBeTruthy();
     expect(screen.getByText('ABC123')).toBeTruthy();
@@ -48,7 +48,7 @@ describe('the essentials', () => {
   it('falls back to the pickup time to be ready by before a buffer is planned', async () => {
     await render(<RideCard {...base} kind="request" />);
     expect(screen.getByText('Be ready by')).toBeTruthy();
-    expect(screen.getAllByText('~08:40')).toHaveLength(2); // the headline, and the pickup row
+    expect(screen.getAllByText('~8:40 AM')).toHaveLength(2); // the headline, and the pickup row
   });
 
   it('leaves CO2, the trip length and the stops on the way to the details page', async () => {
@@ -105,7 +105,7 @@ describe('driver view', () => {
     await render(<RideCard {...base} kind="offer" pickup={{ address: 'Box Hill', time: '08:10' }} seats={{ filled: 2, total: 4, open: true, locked: false }} />);
 
     expect(screen.getByText('Leave at')).toBeTruthy();
-    expect(screen.getAllByText('08:10')).toHaveLength(2);
+    expect(screen.getAllByText('8:10 AM')).toHaveLength(2);
     expect(screen.getAllByTestId('rider-icon')).toHaveLength(2); // 2 riders, whatever the 4 seats
     expect(screen.getByText('2 riders')).toBeTruthy();
     expect(screen.getByText('Still looking')).toBeTruthy();
@@ -154,9 +154,9 @@ describe('times', () => {
     );
 
     expect(screen.getByText('Your window')).toBeTruthy();
-    expect(screen.getByText('07:30–09:00')).toBeTruthy();
-    expect(screen.getByText('from 07:30')).toBeTruthy();
-    expect(screen.getByText('by 09:00')).toBeTruthy();
+    expect(screen.getByText('7:30 AM–9:00 AM')).toBeTruthy();
+    expect(screen.getByText('from 7:30 AM')).toBeTruthy();
+    expect(screen.getByText('by 9:00 AM')).toBeTruthy();
   });
 });
 

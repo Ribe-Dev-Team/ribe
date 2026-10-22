@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import sharedStyles, { colors } from '../styles';
 import { RideCostSplit } from '../utility/costDisplay';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
+import { formatTime12h } from '../utility/times';
 
 const APPROVAL_WINDOW_MS = 12 * 60 * 60 * 1000;
 
@@ -218,10 +219,10 @@ export default function RideCard({
   // door. A rider's is when to be ready for pickup, a driver's when to leave.
   // Still searching there's no planned time, just the window they booked.
   const hero = timeWindow
-    ? { label: 'Your window', value: `${timeWindow.from}–${timeWindow.to}` }
+    ? { label: 'Your window', value: `${formatTime12h(timeWindow.from)}–${formatTime12h(timeWindow.to)}` }
     : isDriver
-      ? { label: 'Leave at', value: pickup.time }
-      : { label: 'Be ready by', value: readyBy ?? pickup.time };
+      ? { label: 'Leave at', value: formatTime12h(pickup.time) }
+      : { label: 'Be ready by', value: formatTime12h(readyBy ?? pickup.time) };
   const riders = seats?.filled ?? 0;
 
   return (
@@ -251,13 +252,13 @@ export default function RideCard({
         <View style={styles.stopRow}>
           <Ionicons name="ellipse" size={10} color={colors.white} style={styles.stopIcon} />
           <Text style={styles.stopAddress} numberOfLines={1}>{shortAddress(pickup.address)}</Text>
-          <Text style={styles.stopTime}>{timeWindow ? `from ${timeWindow.from}` : pickup.time}</Text>
+          <Text style={styles.stopTime}>{timeWindow ? `from ${formatTime12h(timeWindow.from)}` : formatTime12h(pickup.time)}</Text>
         </View>
         <View style={styles.stopConnector} />
         <View style={styles.stopRow}>
           <Ionicons name="location" size={13} color={colors.white} style={styles.stopIcon} />
           <Text style={styles.stopAddress} numberOfLines={1}>{shortAddress(destination.address)}</Text>
-          <Text style={styles.stopTime}>{timeWindow ? `by ${timeWindow.to}` : `ETA ${destination.eta}`}</Text>
+          <Text style={styles.stopTime}>{timeWindow ? `by ${formatTime12h(timeWindow.to)}` : `ETA ${formatTime12h(destination.eta)}`}</Text>
         </View>
       </View>
 

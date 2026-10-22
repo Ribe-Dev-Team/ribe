@@ -235,7 +235,7 @@ const localStyles = StyleSheet.create({
     flexGrow: 1,
     paddingTop: 40,
     paddingHorizontal: 24,
-    paddingBottom: 120,
+    paddingBottom: 160,
   },
   header: {
     flexDirection: 'row',

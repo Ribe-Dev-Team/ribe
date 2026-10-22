@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
@@ -8,7 +8,9 @@ import CostSplitPanel from '../components/CostSplitPanel';
 import DriveControls, { canToggleLock, LockToggleButton } from '../components/DriveControls';
 import { fetchRideDetails, JourneyStop, RideCar, RideDetails, RidePerson } from '../services/rideData';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
+import { formatTime12h } from '../utility/times';
 import GreenhouseEmissionCard from '../components/GreenhouseEmissionCard';
+import { useThemedAlert } from '../components/ThemedDialog';
 
 interface RideDetailPageProps {
 	ride: Ride;
@@ -121,7 +123,7 @@ function JourneySection({ stops }: { stops: JourneyStop[] }) {
 						<View style={[styles.personCopy, index < stops.length - 1 && styles.journeyStopCopy]}>
 							<Text style={styles.locationLabel}>{stop.title}{stop.awaiting ? '  ·  awaiting' : ''}</Text>
 							{stop.address ? <Text style={styles.locationText}>{stop.address}</Text> : null}
-							{stop.time ? <Text style={styles.locationMeta}>{stop.time}</Text> : null}
+							{stop.time ? <Text style={styles.locationMeta}>{formatTime12h(stop.time)}</Text> : null}
 						</View>
 					</View>
 				</View>
@@ -146,6 +148,7 @@ export default function RideDetailPage({
 	ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel, onSetLocked, onChangeSeats,
 }: RideDetailPageProps) {
 	const [details, setDetails] = useState<RideDetails | null>(null);
+	const showAlert = useThemedAlert();
 	// Who's in the car matters most while someone's deciding on a match.
 	const [tab, setTab] = useState<Tab>(ride.status === 'awaiting' ? 'People' : 'Trip');
 	const isConfirmed = ride.status === 'confirmed';
@@ -172,7 +175,7 @@ export default function RideDetailPage({
 	const cancelLabel = isDriver ? 'Remove Offer' : ride.status === 'pending' ? 'Cancel Request' : 'Cancel Ride';
 	const confirmCancel = () =>
 		isDriver
-			? Alert.alert(
+			? showAlert(
 				'Remove this drive offer?',
 				'Any rider matched to it will go back to searching for another driver.',
 				[
@@ -181,7 +184,7 @@ export default function RideDetailPage({
 				],
 			)
 			: ride.status === 'pending'
-			? Alert.alert(
+			? showAlert(
 				'Cancel this ride request?',
 				'Are you sure you want to cancel this ride request?',
 				[
@@ -189,7 +192,7 @@ export default function RideDetailPage({
 					{ text: 'Cancel Request', style: 'destructive', onPress: onCancel },
 				],
 			)
-			: Alert.alert(
+			: showAlert(
 				'Cancel this ride?',
 				'Are you sure you want to cancel this confirmed ride?',
 				[
@@ -245,7 +248,7 @@ export default function RideDetailPage({
 					</View>
 					<Text style={styles.detailTitle}>{formatDate(date)}</Text>
 					<View style={styles.detailTimeRow}>
-						<Text style={styles.detailTime}>{ride.time}</Text>
+						<Text style={styles.detailTime}>{formatTime12h(ride.time)}</Text>
 						<Text style={styles.detailTimeLabel}>{timeLabel}{ride.duration ? `  ·  ${ride.duration} trip` : ''}</Text>
 					</View>
 					<View style={styles.detailStatusLine}>
@@ -339,7 +342,7 @@ export default function RideDetailPage({
 						<View style={styles.footerRow}>
 							<Pressable
 								onPress={() =>
-									Alert.alert(
+									showAlert(
 										isDriver ? 'Decline this rider?' : 'Decline this ride?',
 										isDriver
 											? 'They will go back to being matched with another driver, and your seat opens up again.'

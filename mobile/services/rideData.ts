@@ -1,5 +1,16 @@
 import {
-  collection, doc, DocumentData, getDoc, getDocs, onSnapshot, query, serverTimestamp, Timestamp, updateDoc, where, writeBatch,
+  collection,
+  doc,
+  DocumentData,
+  getDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  Timestamp,
+  updateDoc,
+  where,
+  writeBatch,
+  onSnapshot,
 } from 'firebase/firestore';
 import { RideCardProps, RideStatus, RideStop } from '../components/RideCard';
 import { db } from '../firebaseConfig';
@@ -882,13 +893,6 @@ export async function fetchRideDetails(rideId: string, kind: 'request' | 'offer'
   };
 }
 
-// ==========================================
-// CANCELLATION FUNCTIONS
-// ==========================================
-
-/**
- * Cancels an unmatched pending ride request.
- */
 export async function cancelRideRequest(requestId: string, userId: string, reason?: string): Promise<void> {
   const requestRef = doc(db, 'rideRequests', requestId);
   await updateDoc(requestRef, {

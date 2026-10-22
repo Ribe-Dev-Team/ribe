@@ -2,9 +2,9 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
-  sendEmailVerification,
   updateProfile,
   type User,
 } from 'firebase/auth';
@@ -122,8 +122,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser && !currentUser.emailVerified) {
-        // If they just signed up or haven't verified yet, ignore them in React state.
-        // We handle signing them out in handleSignup/handleLogin.
         setUser(null);
         setProfileData(null);
         setLoading(false);
@@ -145,6 +143,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ]);
         if (profileDoc.exists()) {
           const data = profileDoc.data() as UserProfileData;
+          if (data.name && data.name !== currentUser.displayName) {
+            updateProfile(currentUser, { displayName: data.name })
+              .catch((err) => console.warn('Failed to sync display name:', err));
+          }
           const isComplete = data.onboardingComplete ?? false;
           // A driver registration counts even if users/{uid} says otherwise:
           // an older profile save could reset isDriver and the car details
@@ -334,11 +336,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       await sendEmailVerification(currentUser);
       await firebaseSignOut(auth);
-      setError('Account created. Please check your email to verify your account before logging in.');
       return true;
     } catch (err) {
       setError(getAuthErrorMessage(err));
-      return false;
       return false;
     } finally {
       setSubmitting(false);

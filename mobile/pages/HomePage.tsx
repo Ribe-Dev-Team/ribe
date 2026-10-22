@@ -18,6 +18,8 @@ import { NotificationItem } from '../App';
 
 interface HomePageProps {
   notificationsList: NotificationItem[];
+  readNotificationIds?: string[];
+  onMarkNotificationsRead?: () => void;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onOpenProfile: () => void;
   onNewRide: () => void;
@@ -35,6 +37,8 @@ function ridesDescription(count: number, noun: 'ride' | 'drive') {
 
 export default function HomePage({
   notificationsList,
+  readNotificationIds = [],
+  onMarkNotificationsRead,
   onScroll,
   onOpenProfile,
   onNewRide,
@@ -42,12 +46,27 @@ export default function HomePage({
   onOpenDriverProfile,
   rideActions,
 }: HomePageProps) {
-  const { user } = useAuth();
-  const firstName = user?.displayName?.split(' ')[0] || 'there';
+  const { user, profileData } = useAuth();
+  const firstName = (profileData?.name || user?.displayName || '').trim().split(/\s+/)[0] || 'there';
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [localReadIds, setLocalReadIds] = useState<string[]>([]);
   const [todaysRides, setTodaysRides] = useState<RideCardProps[]>([]);
   const [todaysDrives, setTodaysDrives] = useState<RideCardProps[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const effectiveReadIds = new Set([...readNotificationIds, ...localReadIds]);
+  const hasUnread = notificationsList.some((item) => !effectiveReadIds.has(item.id));
+
+  const handleToggleNotifications = () => {
+    setNotificationsOpen((prev) => {
+      const willOpen = !prev;
+      if (willOpen && notificationsList.length > 0) {
+        setLocalReadIds((current) => [...current, ...notificationsList.map((n) => n.id)]);
+        onMarkNotificationsRead?.();
+      }
+      return willOpen;
+    });
+  };
 
   useEffect(() => {
     if (!user?.uid) {
@@ -107,10 +126,10 @@ export default function HomePage({
             <TouchableOpacity
               accessibilityLabel="Notifications"
               style={localStyles.iconButton}
-              onPress={() => setNotificationsOpen((v) => !v)}
+              onPress={handleToggleNotifications}
             >
               <Ionicons name="notifications-outline" size={22} color={colors.white} />
-              {notificationsList.length > 0 && <View style={localStyles.badgeDot} />}
+              {hasUnread && <View style={localStyles.badgeDot} testID="notification-badge-dot" />}
             </TouchableOpacity>
             {notificationsOpen && (
               <View style={localStyles.notificationsDropdown}>
@@ -120,10 +139,10 @@ export default function HomePage({
                   notificationsList.map((item) => (
                     <View key={item.id} style={localStyles.notificationRow}>
                       <Ionicons
-                        name={item.type === 'cancellation' ? 'alert-circle' : 'ellipse'}
-                        size={item.type === 'cancellation' ? 12 : 6}
+                        name={item.type === 'cancellation' ? 'alert-circle' : item.type === 'passenger' ? 'person-add-outline' : 'ellipse'}
+                        size={item.type === 'upcoming' ? 6 : 12}
                         color={item.type === 'cancellation' ? '#E53E3E' : colors.mediumBlue}
-                        style={{ marginTop: item.type === 'cancellation' ? 2 : 5 }}
+                        style={{ marginTop: item.type === 'upcoming' ? 5 : 2 }}
                       />
                       <Text style={localStyles.notificationText}>{item.text}</Text>
                     </View>
@@ -204,7 +223,7 @@ const localStyles = StyleSheet.create({
     flexGrow: 1,
     paddingTop: 40,
     paddingHorizontal: 24,
-    paddingBottom: 120,
+    paddingBottom: 160,
   },
   header: {
     flexDirection: 'row',

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -8,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
@@ -21,8 +21,9 @@ import { formatDateToStr, formatWeekdayDate, parseDateAsStr } from '../utility/d
 import { validateTripStep as validateTripStepFields, validateDetailsStep as validateDetailsStepFields, getTimeOrderWarning, getDetourWarning, isBookableDate, latestBookingDate } from './validation/bookingValidation';
 import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
+import { useThemedAlert } from '../components/ThemedDialog';
 import NumberStepper from '../components/NumberStepper';
-import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
+import AddressAutocompleteInput, { closeAddressSuggestions } from '../components/AddressAutocompleteInput';
 import RouteMapPreview from '../components/RouteMapPreview';
 import { geocodeAddress, ResolvedPlace } from '../services/googlePlaces';
 import { useAuth } from '../auth/useAuth';
@@ -60,6 +61,7 @@ function toTitleCase(value: string): string {
 
 export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   const { user, profileData } = useAuth();
+  const showAlert = useThemedAlert();
   // Passenger seats in the user's registered car - null when they have no car
   // registered, and so can't offer a ride (addRideOffer checks this too).
   const carSeats = profileData?.isDriver && profileData.licensePlate
@@ -123,14 +125,12 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
         return;
       }
       const saved = draft;
-      Alert.alert(
+      showAlert(
         'Continue where you left off?',
         'You have a ride you started but didn\'t submit.',
         [
-          // Start again: the blank form, with the calendar day if they came
-          // from one. The old draft is saved over once they start.
-          { text: 'No', style: 'cancel', onPress: finish },
-          { text: 'Yes', onPress: () => { if (isMounted) restore(saved); finish(); } },
+          { text: 'Start Fresh', style: 'cancel', onPress: finish },
+          { text: 'Continue', onPress: () => { if (isMounted) restore(saved); finish(); } },
         ],
         { cancelable: false },
       );
@@ -138,7 +138,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [showAlert]);
 
   // Keep the draft up to date as the user fills in the form.
   useEffect(() => {
@@ -193,6 +193,14 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     return result.valid;
   };
 
+  // A tap on the form's background first just lowers the keyboard, leaving
+  // any address suggestions to pick from; a second one closes them too.
+  const dismissKeyboardOrSuggestions = () => {
+    const typing = Boolean(TextInput.State.currentlyFocusedInput());
+    Keyboard.dismiss();
+    if (!typing) closeAddressSuggestions();
+  };
+
   const goToDetails = () => {
     if (!validateTripStep()) return;
     setStep('details');
@@ -243,18 +251,26 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       if (isDriving) {
         const newOfferId = await addRideOffer(bookingData);
         console.log('Ride offer created with ID:', newOfferId);
-        alert('Ride offer successfully created!');
+        await AsyncStorage.removeItem(BOOKING_DRAFT_KEY).catch((error) => {
+          console.warn('Failed to clear submitted booking draft:', error);
+        });
+        showAlert('Ride offer created', 'Your drive is posted and ready for matching.', [
+          { text: 'Done', onPress: onDone },
+        ]);
       } else {
         const newRequestId = await addRideRequest(bookingData);
         console.log('Ride request created with ID:', newRequestId);
-        alert('Ride request successfully created!');
+        await AsyncStorage.removeItem(BOOKING_DRAFT_KEY).catch((error) => {
+          console.warn('Failed to clear submitted booking draft:', error);
+        });
+        showAlert('Ride request created', 'Your request is posted and ready for matching.', [
+          { text: 'Done', onPress: onDone },
+        ]);
       }
-      await AsyncStorage.removeItem(BOOKING_DRAFT_KEY).catch(() => { });
-      onDone();
     } catch (error) {
       console.error('Failed to create ride request/offer:', error);
       const msg = error instanceof Error ? error.message : JSON.stringify(error);
-      alert(`Error submitting booking: ${msg}`);
+      showAlert('Could not create ride', msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -280,6 +296,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
   if (step === 'confirm') {
     const travelDay = parseDateAsStr(travelDate);
     return (
+      <>
       <View style={localStyles.pageContainer}>
         <View style={localStyles.fixedHeader}>
           <Pressable style={localStyles.backButton} onPress={() => setStep('details')}>
@@ -369,11 +386,14 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
               style={[localStyles.actionButton, isSubmitting && localStyles.actionButtonDisabled]}
               disabled={isSubmitting}
             >
-              <Text style={styles.primaryButtonText}>{isSubmitting ? 'Submitting...' : isDriving ? 'Submit Offer' : 'Submit Request'}</Text>
+              <Text style={styles.primaryButtonText}>
+                {isSubmitting ? 'Submitting...' : isDriving ? 'Submit Offer' : 'Submit Request'}
+              </Text>
             </Pressable>
           </View>
         </ScrollView>
       </View>
+      </>
     );
   }
 
@@ -385,14 +405,15 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
             <Ionicons name="chevron-back" size={24} color={colors.white} />
             <Text style={localStyles.backButtonLabel}>Back</Text>
           </Pressable>
-          <Text style={localStyles.headerTitle}>Request a Ride</Text>
+          <Text style={localStyles.headerTitle}>{isDriving ? 'Offer a Ride' : 'Request a Ride'}</Text>
           {progressIndicator}
         </View>
 
-        <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <TouchableWithoutFeedback onPress={dismissKeyboardOrSuggestions}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
             <ScrollView
               contentContainerStyle={localStyles.scrollContent}
+              keyboardDismissMode="on-drag"
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
@@ -476,7 +497,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
       </View>
 
       <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
           <ScrollView
             contentContainerStyle={localStyles.scrollContent}
             keyboardShouldPersistTaps="handled"

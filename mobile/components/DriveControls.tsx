@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
+import { useThemedAlert } from './ThemedDialog';
 import NumberStepper from './NumberStepper';
 import { MAX_CAR_SEATS } from '../pages/schema/user.validation';
 import { RideCardProps } from './RideCard';
@@ -32,11 +33,12 @@ export function LockToggleButton({ seats, onSetLocked, compact = false }: {
   /** Smaller, for under Accept/Decline. */
   compact?: boolean;
 }) {
+  const showAlert = useThemedAlert();
   if (!canToggleLock(seats)) return null;
 
   const confirmLockToggle = () => {
     if (seats.open) {
-      Alert.alert(
+      showAlert(
         'Stop taking passengers?',
         `You keep the ${seats.filled} rider${seats.filled === 1 ? '' : 's'} already confirmed. No new riders will be matched to this drive.`,
         [
@@ -45,7 +47,7 @@ export function LockToggleButton({ seats, onSetLocked, compact = false }: {
         ],
       );
     } else {
-      Alert.alert(
+      showAlert(
         'Take more passengers?',
         'This drive goes back into matching for its free seats. New riders still have to fit your route and everyone\'s arrival time.',
         [

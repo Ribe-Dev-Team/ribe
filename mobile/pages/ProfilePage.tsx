@@ -20,6 +20,7 @@ import styles, { colors } from '../styles';
 import PressableScale from '../components/PressableScale';
 import { isValidPhoneNumber } from './schema/user.validation';
 import { formatPhone } from '../utility/phone';
+import { useThemedAlert } from '../components/ThemedDialog';
 
 interface ProfilePageProps {
   onLogout: () => void;
@@ -27,6 +28,7 @@ interface ProfilePageProps {
 }
 
 export default function ProfilePage({ onLogout, onOpenDriverRegistration }: ProfilePageProps) {
+  const showAlert = useThemedAlert();
   const { user, profileData, submitting, updateProfileDetails } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [degree, setDegree] = useState(profileData?.degree || '');
@@ -41,6 +43,15 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
   const profileName = profileData?.name || user?.displayName || 'Your name';
   const profileEmail = profileData?.email || user?.email || 'No email added';
   const profileDob = profileData?.dob || 'Not added';
+
+  const confirmLogout = () => showAlert(
+    'Sign out?',
+    'Are you sure you want to sign out of Ribe?',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: onLogout },
+    ],
+  );
 
   const openImagePicker = async () => {
     try {
@@ -119,8 +130,8 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
             <View style={styles.profileCard}>
               {!isEditing && (
                 <View style={localStyles.topActionsRow}>
-                  <PressableScale onPress={onLogout} style={localStyles.signOutButton}>
-                    <Ionicons name="log-out-outline" size={14} color={colors.white} />
+                  <PressableScale onPress={confirmLogout} style={localStyles.signOutButton}>
+                    <Ionicons name="log-out-outline" size={16} color={colors.white} />
                     <Text style={localStyles.signOutText}>Sign Out</Text>
                   </PressableScale>
 
@@ -144,7 +155,7 @@ export default function ProfilePage({ onLogout, onOpenDriverRegistration }: Prof
                     onPress={openImagePicker}
                     style={localStyles.editPhotoBadge}
                   >
-                    <Ionicons name="pencil" size={14} color={colors.darkBlue} />
+                    <Ionicons name="pencil" size={20} color={colors.darkBlue} />
                   </PressableScale>
                 )}
               </View>
@@ -291,16 +302,21 @@ const localStyles = StyleSheet.create({
   },
   editPhotoBadge: {
     position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    top: 0,
+    right: 0,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.white,
     borderWidth: 2,
     borderColor: colors.mediumBlue,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
   },
   driverModeRow: {
     flexDirection: 'row',
@@ -383,16 +399,16 @@ const localStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    gap: 4,
+    gap: 6,
     backgroundColor: colors.pending,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     marginBottom: 12,
   },
   signOutText: {
     color: colors.white,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
   },
 });

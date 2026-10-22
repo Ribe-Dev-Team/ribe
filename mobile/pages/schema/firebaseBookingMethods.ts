@@ -18,6 +18,7 @@ import { BOOKING_STATUSES, BookingStatus, isBookingStatus } from './matchStatus'
 import { timePattern, toMinutes } from '../../utility/times';
 import { MAX_CAR_SEATS } from './user.validation';
 import { parseDateAsStr, isFutureDate } from '../../utility/dates';
+import { estimateEmissionsSaved } from '../../utility/emissions';
 
 // convert DD-MM-YYYY string to Firestore Timestamp
 const parseDateToTimestamp = (dateStr: string): Timestamp => {
@@ -137,6 +138,15 @@ export const addRideRequest = async (booking: Booking): Promise<string> => {
     throw new Error('arrivalTime must be later than departureTime');
   }
 
+  try {
+    const emissions = await estimateEmissionsSaved(req.address, 1, coord, req.toUni);
+    if (emissions !== null) {
+      req.emissionsSavedKg = emissions;
+    }
+  } catch (e) {
+    console.warn('Failed to estimate emissions:', e);
+  }
+
   const docRef = await addDoc(collectionRef, req);
   await updateDoc(doc(db, 'rideRequests', docRef.id), { requestID: docRef.id });
 
@@ -232,6 +242,16 @@ export const addRideOffer = async (booking: Booking): Promise<string> => {
   }
   if (offer.seatCapacity > carSeats) {
     throw new Error(`Your car has ${carSeats} passenger seat${carSeats === 1 ? '' : 's'}, so offer ${carSeats} or fewer.`);
+  }
+
+  try {
+    const driverEmission = await estimateEmissionsSaved(offer.address, 1, coord, offer.toUni);
+    if (driverEmission !== null) {
+      offer.driverEmissionsKg = driverEmission;
+      offer.emissionsSavedKg = 0;
+    }
+  } catch (e) {
+    console.warn('Failed to estimate emissions:', e);
   }
 
   const docRef = await addDoc(collectionRef, offer);
@@ -372,7 +392,6 @@ export async function acceptMatch(requestID: string): Promise<MatchAnswer> {
     if (offer.status !== 'awaiting' || offer.pendingRequestId !== requestID) {
       throw new Error('The driver has removed this offer. Your request will be matched again.');
     }
-
     if (!offer.driverAccepted) {
       // Allowed by the Firestore rules only because the runner set
       // `matchedRiderId` to this rider's uid.
@@ -732,4 +751,3 @@ export async function deleteRideOffer(offerID: string): Promise<void> {
     console.warn('deleteRideOffer: failed to read after-delete state', err);
   }
 }
-

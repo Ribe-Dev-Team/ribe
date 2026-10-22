@@ -6,10 +6,11 @@
 // driver.
 
 import * as React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
 import RideDetailPage from '../../mobile/pages/RideDetailPage';
 import { Ride } from '../../mobile/pages/CalendarPage';
 import { fetchRideDetails, RideDetails } from '../../mobile/services/rideData';
+import { renderWithThemedAlerts } from '../themedRender';
 
 jest.mock('../../mobile/services/rideData', () => ({
   ...jest.requireActual('../../mobile/services/rideData'),
@@ -54,7 +55,7 @@ const details = (overrides: Partial<RideDetails> = {}): RideDetails => ({
  *  shown by `loadedText`. */
 const show = async (r: Ride, d: RideDetails, loadedText: RegExp = /ABC123/, tab = 'People') => {
   fetchDetails.mockResolvedValue(d);
-  await render(<RideDetailPage ride={r} date={new Date('2026-10-05T00:00:00+11:00')} onBack={() => {}} />);
+  await renderWithThemedAlerts(<RideDetailPage ride={r} date={new Date('2026-10-05T00:00:00+11:00')} onBack={() => {}} />);
   await fireEvent.press(screen.getByRole('tab', { name: tab }));
   await screen.findByText(loadedText);
 };
@@ -84,7 +85,7 @@ it('lists the journey stop by stop on the Trip tab, with each stop marked as on 
 
   expect(screen.getByText('Your Pickup')).toBeTruthy();
   expect(screen.getByText('2 Ana Rd')).toBeTruthy();
-  expect(screen.getAllByText('~07:41')).toHaveLength(2); // under the date, and this stop's
+  expect(screen.getAllByText('~7:41 AM')).toHaveLength(2); // under the date, and this stop's
   expect(screen.getByText('A')).toBeTruthy();
   // Another rider's pickup: a time, but no marker - it isn't on their map.
   expect(screen.getByText('Pickup · Another Passenger')).toBeTruthy();
@@ -103,13 +104,13 @@ it('shows the booking window on a trip not planned yet', async () => {
   }), /Monash University Clayton/, 'Trip');
 
   // Under the date, and at the journey's first stop.
-  expect(screen.getAllByText('07:00–09:00')).toHaveLength(2);
+  expect(screen.getAllByText('7:00 AM–9:00 AM')).toHaveLength(2);
 });
 
 it('titles the page with the date, and the time beneath it', async () => {
   await show(ride, details());
   expect(screen.getByText(/^Monday,? 5 October$/)).toBeTruthy();
-  expect(screen.getByText('~07:41')).toBeTruthy();
+  expect(screen.getByText('~7:41 AM')).toBeTruthy();
 });
 
 it("labels the time at the top: a rider's pick-up, a driver's leave time, or the window booked", async () => {
@@ -125,11 +126,11 @@ it("labels the time at the top: a rider's pick-up, a driver's leave time, or the
 
 it('opens on the Trip tab, or on People while a match is waiting for an answer', async () => {
   fetchDetails.mockResolvedValue(details());
-  await render(<RideDetailPage ride={ride} date={new Date()} onBack={() => {}} />);
+  await renderWithThemedAlerts(<RideDetailPage ride={ride} date={new Date()} onBack={() => {}} />);
   expect(await screen.findByText('Your Pickup')).toBeTruthy();
   expect(screen.queryByText('Your Driver')).toBeNull();
 
-  await render(<RideDetailPage ride={{ ...ride, status: 'awaiting' }} date={new Date()} onBack={() => {}} />);
+  await renderWithThemedAlerts(<RideDetailPage ride={{ ...ride, status: 'awaiting' }} date={new Date()} onBack={() => {}} />);
   expect(await screen.findByText('Your Driver')).toBeTruthy();
 });
 
@@ -144,6 +145,31 @@ it('describes the car in full, with its plate', async () => {
 
   expect(screen.getByText('Blue Toyota Corolla')).toBeTruthy();
   expect(screen.getByLabelText('Plate ABC123')).toBeTruthy();
+});
+
+it('uses the themed confirmation before cancelling a ride', async () => {
+  const onCancel = jest.fn();
+  fetchDetails.mockResolvedValue(details());
+  await renderWithThemedAlerts(
+    <RideDetailPage
+      ride={ride}
+      date={new Date('2026-10-05T00:00:00+11:00')}
+      onBack={() => {}}
+      onCancel={onCancel}
+    />,
+  );
+  await screen.findByText('Your Pickup'); // the journey, loaded
+
+  await fireEvent.press(screen.getByText('Cancel Ride'));
+  expect(screen.getByText('Cancel this ride?')).toBeTruthy();
+  expect(onCancel).not.toHaveBeenCalled();
+
+  await fireEvent.press(screen.getByText('Keep Ride'));
+  expect(onCancel).not.toHaveBeenCalled();
+
+  await fireEvent.press(screen.getByText('Cancel Ride'));
+  await fireEvent.press(screen.getAllByText('Cancel Ride')[1]);
+  expect(onCancel).toHaveBeenCalledTimes(1);
 });
 
 it("masks the driver's number until 12 hours before pickup, as the ride card does", async () => {
@@ -192,7 +218,7 @@ it('shows a driver their passengers and their own car, not a driver', async () =
 
 it('keeps Accept and Decline in the footer, whichever tab is open', async () => {
   fetchDetails.mockResolvedValue(details());
-  await render(
+  await renderWithThemedAlerts(
     <RideDetailPage ride={{ ...ride, status: 'awaiting' }} date={new Date()} onBack={() => {}} onAccept={jest.fn()} onDecline={jest.fn()} />,
   );
   await screen.findByText('Your Driver');

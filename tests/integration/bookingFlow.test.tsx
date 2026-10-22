@@ -4,13 +4,13 @@
 // suite never makes a real (billed) network call to the Google Maps API.
 
 import * as React from 'react';
-import { Alert, AlertButton } from 'react-native';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, doc, getDocs, query, setDoc } from 'firebase/firestore';
 import * as firestoreMock from 'firebase/firestore';
 import { db } from '../../mobile/firebaseConfig';
 import BookingPage, { draftHasProgress } from '../../mobile/pages/BookingPage';
+import { renderWithThemedAlerts as render } from '../themedRender';
 
 // Ionicons tries to load real font assets on mount, which isn't available
 // under Jest and isn't relevant to the booking flow being tested here.
@@ -35,10 +35,12 @@ jest.mock('../../mobile/services/googlePlaces', () => ({
   geocodeAddress: async () => null,
 }));
 
+jest.mock('../../mobile/utility/emissions', () => ({
+  estimateEmissionsSaved: async () => 2.4,
+}));
 // BookingPage reads the signed-in user's uid from useAuth to stamp bookings, and the real hook
 // throws outside an AuthProvider. Stub it with a fixed signed-in user instead of standing up
 // Firebase Auth. A plain function (not jest.fn()) so resetMocks doesn't wipe the return value.
-const TEST_USER_ID = 'test-user-123';
 // The profile is a registered driver with a 4-seat car unless a test sets
 // mockProfile - jest.mock factories may only use variables named mock*.
 const DRIVER_PROFILE = {
@@ -56,6 +58,7 @@ jest.mock('../../mobile/auth/useAuth', () => {
 // hang these awaits forever.
 jest.useRealTimers();
 
+const TEST_USER_ID = 'test-user-123';
 const BOOKING_DRAFT_KEY = 'ribe:bookingDraftV1';
 
 function futureDateStr(daysFromNow: number): string {
@@ -84,9 +87,9 @@ async function flushHydration() {
 // setTimeout). fireEvent only wraps the synchronous part of the press handler in act(), so the
 // handler's final state update (setIsSubmitting(false)) lands outside it. Wrap the whole press in
 // an outer act() and keep it open until the submit has settled.
-async function pressSubmit() {
+async function pressSubmit(label = 'Submit request') {
   await act(async () => {
-    await fireEvent.press(screen.getByText(/^Submit (Request|Offer)$/));
+    await fireEvent.press(screen.getByText(new RegExp(`^${label}$`, 'i')));
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
 }
@@ -96,21 +99,21 @@ beforeEach(async () => {
   mockProfile = DRIVER_PROFILE;
   // addRideOffer checks the driver's registered car in Firestore, too.
   await setDoc(doc(db, 'users', TEST_USER_ID), DRIVER_PROFILE);
-  (global as any).alert = jest.fn();
   answerDraftPrompt('Yes');
   // BookingPage logs each booking it creates; not something to print here.
   jest.spyOn(console, 'log').mockImplementation(() => {});
 });
 
-/** Answer "Continue where you left off?" with `answer` whenever it's asked,
- *  noting each time it was. */
-let draftPrompts: string[] = [];
+/** Select the response used by the saved-draft dialog. */
+let draftPromptAnswer: 'Yes' | 'No' = 'Yes';
 function answerDraftPrompt(answer: 'Yes' | 'No') {
-  draftPrompts = [];
-  jest.spyOn(Alert, 'alert').mockImplementation((title, _message, buttons?: AlertButton[]) => {
-    draftPrompts.push(title);
-    buttons?.find((button) => button.text === answer)?.onPress?.();
-  });
+  draftPromptAnswer = answer;
+}
+
+async function respondToDraftPrompt() {
+  await screen.findByText('Continue where you left off?');
+  await fireEvent.press(screen.getByText(draftPromptAnswer === 'Yes' ? 'Continue' : 'Start Fresh'));
+  await flushHydration();
 }
 
 /** The draft as last saved - the form's state once the user has answered. */
@@ -130,7 +133,7 @@ describe('BookingPage - continuing a saved draft', () => {
     await render(<BookingPage onDone={() => {}} />);
     await flushHydration();
 
-    expect(draftPrompts).toEqual(['Continue where you left off?']);
+    await respondToDraftPrompt();
     await screen.findByDisplayValue('123 Main St');
     expect(await savedDraft()).toMatchObject(draft);
   });
@@ -143,7 +146,7 @@ describe('BookingPage - continuing a saved draft', () => {
     await render(<BookingPage onDone={() => {}} initialDate={calendarDay} />);
     await flushHydration();
 
-    expect(draftPrompts).toEqual(['Continue where you left off?']);
+    await respondToDraftPrompt();
     expect(screen.queryByDisplayValue('123 Main St')).toBeNull();
     // The old draft is saved over with the fresh form.
     expect(await savedDraft()).toEqual({
@@ -157,6 +160,7 @@ describe('BookingPage - continuing a saved draft', () => {
     const calendarDay = new Date();
     calendarDay.setDate(calendarDay.getDate() + 3);
     await render(<BookingPage onDone={() => {}} initialDate={calendarDay} />);
+    await respondToDraftPrompt();
 
     expect(await savedDraft()).toMatchObject({ address: '123 Main St', travelDate: futureDateStr(3) });
   });
@@ -164,13 +168,13 @@ describe('BookingPage - continuing a saved draft', () => {
   test("doesn't ask when there's nothing to continue", async () => {
     await render(<BookingPage onDone={() => {}} />);
     await flushHydration();
-    expect(draftPrompts).toEqual([]);
+    expect(screen.queryByText('Continue where you left off?')).toBeNull();
 
     // The blank form it saved - just a date at most - doesn't bring it up next time.
     await seedDraft({ isDriving: false, toUni: true, address: '', travelDate: futureDateStr(2), detourTime: 0, capacity: 1, depTime: '', arrTime: '' });
     await render(<BookingPage onDone={() => {}} />);
     await flushHydration();
-    expect(draftPrompts).toEqual([]);
+    expect(screen.queryByText('Continue where you left off?')).toBeNull();
   });
 });
 
@@ -209,7 +213,9 @@ describe('BookingPage - rider requesting a ride', () => {
     const onDone = jest.fn();
     await render(<BookingPage onDone={onDone} />);
     await flushHydration();
+    await respondToDraftPrompt();
 
+    await screen.findByText('Request a Ride');
     // the draft restore effect should have hydrated the address field
     await screen.findByDisplayValue('123 Main St');
 
@@ -218,6 +224,7 @@ describe('BookingPage - rider requesting a ride', () => {
 
     await fireEvent.press(screen.getByText('Next')); // details -> confirm
     await screen.findByText('Confirm Your Request');
+    await screen.findByText('Submit Request');
 
     // A card with what their driver will see of them, in place of a "Role" row.
     expect(screen.getByText("You're Requesting a Ride")).toBeTruthy();
@@ -227,8 +234,10 @@ describe('BookingPage - rider requesting a ride', () => {
 
     await pressSubmit();
 
+    await screen.findByText('Ride request created');
+    expect(onDone).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Done'));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(global.alert).toHaveBeenCalledWith('Ride request successfully created!');
 
     const snapshot = await getDocs(query(collection(db, 'rideRequests')));
     expect(snapshot.size).toBe(1);
@@ -256,7 +265,9 @@ describe('BookingPage - driver offering a ride', () => {
     const onDone = jest.fn();
     await render(<BookingPage onDone={onDone} />);
     await flushHydration();
+    await respondToDraftPrompt();
 
+    await screen.findByText('Offer a Ride');
     await screen.findByDisplayValue('456 Example Ave');
 
     await fireEvent.press(screen.getByText('Next')); // trip -> details
@@ -264,6 +275,7 @@ describe('BookingPage - driver offering a ride', () => {
 
     await fireEvent.press(screen.getByText('Next')); // details -> confirm
     await screen.findByText('Confirm Your Offer');
+    await screen.findByText('Submit Offer');
 
     // A card for the car they're offering, in place of a "Role" row.
     expect(screen.getByText("You're Offering a Ride")).toBeTruthy();
@@ -272,17 +284,18 @@ describe('BookingPage - driver offering a ride', () => {
     expect(screen.getByText('Dana Driver  ·  0412 345 678')).toBeTruthy(); // shared with riders too
     expect(screen.getByText(/Riders matched to you will see your car and plate/)).toBeTruthy();
     expect(screen.queryByText('Role')).toBeNull();
-    expect(screen.getByText('Submit Offer')).toBeTruthy();
     // The travel date with its day of the week.
     const day = new Date();
     day.setDate(day.getDate() + 7);
     const weekday = day.toLocaleDateString('en-AU', { weekday: 'long' });
     expect(screen.getByText(`${weekday} ${futureDateStr(7).replace(/-/g, '/')}`)).toBeTruthy();
 
-    await pressSubmit();
+    await pressSubmit('Submit Offer');
 
+    await screen.findByText('Ride offer created');
+    expect(onDone).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Done'));
     await waitFor(() => expect(onDone).toHaveBeenCalled());
-    expect(global.alert).toHaveBeenCalledWith('Ride offer successfully created!');
 
     const snapshot = await getDocs(query(collection(db, 'rideOffers')));
     expect(snapshot.size).toBe(1);
@@ -312,6 +325,7 @@ describe('BookingPage - offering a ride needs a registered car', () => {
     });
     await render(<BookingPage onDone={() => {}} />);
     await flushHydration();
+    await respondToDraftPrompt();
     await screen.findByDisplayValue('456 Example Ave');
 
     await fireEvent.press(screen.getByText('Next'));
@@ -328,6 +342,7 @@ describe('BookingPage - offering a ride needs a registered car', () => {
     });
     await render(<BookingPage onDone={() => {}} />);
     await flushHydration();
+    await respondToDraftPrompt();
     await screen.findByDisplayValue('456 Example Ave');
     await fireEvent.press(screen.getByText('Next'));
     await screen.findByText('Trip Details');
@@ -371,6 +386,7 @@ describe('BookingPage - Firestore write failure', () => {
     const onDone = jest.fn();
     await render(<BookingPage onDone={onDone} />);
     await flushHydration();
+    await respondToDraftPrompt();
 
     await screen.findByDisplayValue('123 Main St');
     await fireEvent.press(screen.getByText('Next'));
@@ -379,9 +395,8 @@ describe('BookingPage - Firestore write failure', () => {
     await screen.findByText('Confirm Your Request');
     await pressSubmit();
 
-    await waitFor(() =>
-      expect(global.alert).toHaveBeenCalledWith(expect.stringContaining('Error submitting booking')),
-    );
+    await screen.findByText('Could not create ride');
+    expect(screen.getByText('network down')).toBeTruthy();
     expect(onDone).not.toHaveBeenCalled();
     // the draft survives so the user doesn't lose their in-progress booking
     expect(await AsyncStorage.getItem(BOOKING_DRAFT_KEY)).not.toBeNull();

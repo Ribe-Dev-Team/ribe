@@ -1,6 +1,6 @@
 // Component tests for the New Ride button on mobile/pages/CalendarPage.tsx:
-// shown from today to the booking horizon, gone on a past day (greyed out)
-// and past the horizon - a ride can't be booked for either.
+// shown only for future dates within the booking horizon; hidden for today,
+// past days, and dates beyond the horizon.
 
 import * as React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
@@ -27,10 +27,10 @@ const { default: CalendarPage } = require('../../mobile/pages/CalendarPage') as 
 
 const selectOctober = (day: number) => fireEvent.press(screen.getByLabelText(`Select October ${day}`));
 
-it('offers New Ride today, not on a past day, and again on a later one', async () => {
+it('hides New Ride for today and past days, and offers it for future dates', async () => {
   const onNewRide = jest.fn();
   await render(<CalendarPage onOpenRide={() => {}} onNewRide={onNewRide} />);
-  expect(screen.getByText('New Ride')).toBeTruthy(); // today, 15 October
+  expect(screen.queryByText('New Ride')).toBeNull(); // today, 15 October
 
   await selectOctober(14);
   expect(screen.queryByText('New Ride')).toBeNull();

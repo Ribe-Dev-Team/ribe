@@ -91,7 +91,7 @@ export default StyleSheet.create({
   },
   calendarScreen: {
     padding: 20,
-    paddingBottom: 28,
+    paddingBottom: 160,
     backgroundColor: colors.darkBlue,
   },
   calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
@@ -153,13 +153,13 @@ export default StyleSheet.create({
     alignSelf: 'flex-end',
     backgroundColor: colors.whiteA16,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 22,
+    paddingVertical: 10,
     marginBottom: 12,
   },
   editButtonText: {
     color: colors.white,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
   },
   editInput: {
@@ -232,7 +232,7 @@ export default StyleSheet.create({
     flexGrow: 1,
     padding: 20,
     paddingTop: 40,
-    paddingBottom: 100,
+    paddingBottom: 160,
     backgroundColor: colors.darkBlue,
   },
   profileCard: {
