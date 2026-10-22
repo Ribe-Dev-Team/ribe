@@ -4,9 +4,11 @@ import HomePage from '../../mobile/pages/HomePage';
 import { NotificationItem } from '../../mobile/App';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+// Plain functions, not jest.fn(impl): resetMocks (jest.config.js) would strip
+// those implementations, and HomePage needs watchUserRides to return its stop.
 jest.mock('../../mobile/services/rideData', () => ({
-  fetchUserRides: jest.fn(async () => ({ requests: [], offers: [] })),
-  watchUserRides: jest.fn(() => () => {}),
+  fetchUserRides: async () => ({ requests: [], offers: [] }),
+  watchUserRides: () => () => {},
 }));
 
 jest.mock('../../mobile/auth/useAuth', () => ({
@@ -22,7 +24,7 @@ describe('HomePage notifications badge dot', () => {
   it('shows the badge dot when there are unread notifications, and hides it when clicked', async () => {
     const onMarkNotificationsRead = jest.fn();
 
-    render(
+    await render(
       <HomePage
         notificationsList={sampleNotifications}
         onMarkNotificationsRead={onMarkNotificationsRead}
@@ -38,18 +40,18 @@ describe('HomePage notifications badge dot', () => {
     expect(screen.getByTestId('notification-badge-dot')).toBeTruthy();
 
     // Clicking the notifications bell opens the dropdown and marks them read
-    fireEvent.press(screen.getByLabelText('Notifications'));
+    await fireEvent.press(screen.getByLabelText('Notifications'));
 
     expect(onMarkNotificationsRead).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('notification-badge-dot')).toBeNull();
 
     // Closing the dropdown should keep the badge dot hidden
-    fireEvent.press(screen.getByLabelText('Notifications'));
+    await fireEvent.press(screen.getByLabelText('Notifications'));
     expect(screen.queryByTestId('notification-badge-dot')).toBeNull();
   });
 
   it('does not show the badge dot if all notifications are already read', async () => {
-    render(
+    await render(
       <HomePage
         notificationsList={sampleNotifications}
         readNotificationIds={['notif-1', 'notif-2']}

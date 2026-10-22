@@ -8,8 +8,8 @@ import HomePage from '../../mobile/pages/HomePage';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('../../mobile/services/rideData', () => ({
-  fetchUserRides: jest.fn(async () => ({ requests: [], offers: [] })),
-  watchUserRides: jest.fn(() => () => {}),
+  fetchUserRides: async () => ({ requests: [], offers: [] }),
+  watchUserRides: () => () => {},
 }));
 
 let mockAuth: { user: unknown; profileData: unknown } = { user: null, profileData: null };
