@@ -46,6 +46,17 @@ export function getOfferNotificationEvents(
   return events;
 }
 
+/** A rider's events about other passengers only. Their own request being
+ *  matched, confirmed or cancelled shows up in the offer too, but it isn't
+ *  another passenger - and their request's own notifications cover it. */
+export function excludeOwnRequests(
+  events: OfferNotificationEvent[],
+  ownRequestIds: Iterable<string>,
+): OfferNotificationEvent[] {
+  const own = new Set(ownRequestIds);
+  return events.filter((event) => !('requestId' in event) || !own.has(event.requestId));
+}
+
 export function getOfferNotificationText(
   event: OfferNotificationEvent,
   audience: OfferNotificationAudience,

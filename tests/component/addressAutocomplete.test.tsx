@@ -5,7 +5,7 @@
 import * as React from 'react';
 import { TextInput } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import AddressAutocompleteInput from '../../mobile/components/AddressAutocompleteInput';
+import AddressAutocompleteInput, { closeAddressSuggestions } from '../../mobile/components/AddressAutocompleteInput';
 
 const PICKED = { address: '12 Example St, Clayton VIC', lat: -37.9, lng: 145.1 };
 let mockGeocodeCalls: string[] = [];
@@ -73,4 +73,36 @@ it('keeps location suggestions visible after the keyboard is dismissed', async (
   await fireEvent(input, 'blur');
 
   expect(screen.getByText('12 Example St, Clayton VIC')).toBeTruthy();
+});
+
+/** Type into the field and wait out the debounce, so its suggestion shows. */
+async function typeForSuggestions() {
+  const input = screen.getByPlaceholderText('Address');
+  await fireEvent(input, 'focus');
+  await fireEvent.changeText(input, '12 Exam');
+  await act(() => new Promise((resolve) => setTimeout(resolve, 350)));
+  return input;
+}
+
+it('closes the suggestions once another field takes focus, so they never sit over it', async () => {
+  await render(<Field onResolved={() => {}} />);
+  const input = await typeForSuggestions();
+
+  const otherField = {} as ReturnType<typeof TextInput.State.currentlyFocusedInput>;
+  const focused = jest.spyOn(TextInput.State, 'currentlyFocusedInput').mockReturnValue(otherField);
+  await fireEvent(input, 'blur');
+  await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  focused.mockRestore();
+
+  expect(screen.queryByText('12 Example St, Clayton VIC')).toBeNull();
+});
+
+it('closes the suggestions on a tap outside once the keyboard is down', async () => {
+  await render(<Field onResolved={() => {}} />);
+  const input = await typeForSuggestions();
+  await fireEvent(input, 'blur');
+  expect(screen.getByText('12 Example St, Clayton VIC')).toBeTruthy();
+
+  await act(() => { closeAddressSuggestions(); });
+  expect(screen.queryByText('12 Example St, Clayton VIC')).toBeNull();
 });

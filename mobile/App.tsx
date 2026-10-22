@@ -33,6 +33,7 @@ import {
 } from './pages/schema/firebaseBookingMethods';
 import { db } from './firebaseConfig';
 import {
+  excludeOwnRequests,
   getOfferNotificationEvents,
   getOfferNotificationText,
   getRiderMatchNotificationText,
@@ -437,9 +438,11 @@ function AppContent() {
       };
       offerStates.set(stateKey, current);
 
-      for (const event of getOfferNotificationEvents(previous, current)) {
-        if (audience === 'rider' && event.type === 'new-match'
-          && currentReqDocs.some((requestDoc) => requestDoc.id === event.requestId)) continue;
+      const events = getOfferNotificationEvents(previous, current);
+      const relevant = audience === 'rider'
+        ? excludeOwnRequests(events, currentReqDocs.map((requestDoc) => requestDoc.id))
+        : events;
+      for (const event of relevant) {
         const eventId = 'requestId' in event ? event.requestId : Date.now();
         const text = getOfferNotificationText(event, audience, {
           destination: getDestination(data),

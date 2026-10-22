@@ -22,6 +22,18 @@ interface AddressAutocompleteInputProps {
 }
 
 const DEBOUNCE_MS = 300;
+// Long enough for the next field's focus to land after this one's blur.
+const FOCUS_SETTLE_MS = 100;
+
+// Each mounted field's way to close its suggestions, for closeAddressSuggestions.
+const dropdownClosers = new Set<() => void>();
+
+/** Close every address field's suggestions - for a tap outside the field once
+ *  the keyboard is already down (the first tap only dismisses the keyboard,
+ *  leaving the suggestions to pick from). */
+export function closeAddressSuggestions() {
+  dropdownClosers.forEach((close) => close());
+}
 
 export default function AddressAutocompleteInput({
   value,
@@ -44,7 +56,10 @@ export default function AddressAutocompleteInput({
   const picked = useRef(false);
 
   useEffect(() => {
+    const close = () => setShowDropdown(false);
+    dropdownClosers.add(close);
     return () => {
+      dropdownClosers.delete(close);
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
@@ -92,8 +107,13 @@ export default function AddressAutocompleteInput({
 
   const handleBlur = () => {
     // Keep suggestions available after the keyboard is dismissed so the user
-    // can still choose a location without reopening the keyboard.
+    // can still choose a location without reopening the keyboard - but not
+    // once they've moved on to another field, or they'd sit over it.
     onBlur?.();
+    setTimeout(() => {
+      const focused = TextInput.State.currentlyFocusedInput();
+      if (focused && focused !== inputRef.current) setShowDropdown(false);
+    }, FOCUS_SETTLE_MS);
 
     // Not when a suggestion was picked: the blur can still see the half-typed
     // text, and geocoding that could land after the picked place, replacing it.
