@@ -42,8 +42,8 @@ export default function HomePage({
   onOpenDriverProfile,
   rideActions,
 }: HomePageProps) {
-  const { user } = useAuth();
-  const firstName = user?.displayName?.split(' ')[0] || 'there';
+  const { user, profileData } = useAuth();
+  const firstName = (profileData?.name || user?.displayName || '').trim().split(/\s+/)[0] || 'there';
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [todaysRides, setTodaysRides] = useState<RideCardProps[]>([]);
   const [todaysDrives, setTodaysDrives] = useState<RideCardProps[]>([]);
