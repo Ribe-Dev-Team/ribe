@@ -1,7 +1,8 @@
 // Unit tests for mobile/services/dashboardLanes.ts: which Dashboard lane each
-// ride card appears in, and the copy of a still-open drive in Open Driving Offers.
+// ride card appears in, the copy of a still-open drive in Open Driving Offers,
+// and past rides being left to the Calendar.
 
-import { ridesForLane } from '../../mobile/services/dashboardLanes';
+import { ridesForLane, upcomingRides } from '../../mobile/services/dashboardLanes';
 import { RideCardProps } from '../../mobile/components/RideCard';
 
 const window = { from: '07:00', to: '09:00' };
@@ -61,5 +62,25 @@ describe('rider lanes', () => {
 
     expect(ridesForLane([rider], 'confirmed', 'rider')).toEqual([rider]);
     expect(ridesForLane([rider], 'pending', 'rider')).toEqual([]);
+  });
+});
+
+describe('upcoming rides only', () => {
+  const now = new Date(2026, 9, 5, 14, 30); // Mon 5 Oct, 2:30pm
+  const on = (rideId: string, day: number) => card({ rideId, status: 'confirmed', date: new Date(2026, 9, day) });
+
+  it("leaves past days' rides to the Calendar", () => {
+    const rides = [on('last-week', 1), on('yesterday', 4), on('tomorrow', 6), on('next-week', 12)];
+
+    expect(upcomingRides(rides, now).map((r) => r.rideId)).toEqual(['tomorrow', 'next-week']);
+  });
+
+  it("keeps all of today's rides, even ones that have already happened", () => {
+    const today = (rideId: string, eta: string) => card({
+      rideId, status: 'confirmed', date: new Date(2026, 9, 5), destination: { address: 'Monash University', eta },
+    });
+    const rides = [today('this-morning', '~08:50'), today('this-evening', '~18:10')];
+
+    expect(upcomingRides(rides, now).map((r) => r.rideId)).toEqual(['this-morning', 'this-evening']);
   });
 });

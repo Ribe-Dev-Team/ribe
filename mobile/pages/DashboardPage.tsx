@@ -14,7 +14,7 @@ import { colors } from '../styles';
 import RideCard, { RideCardProps, RideStatus } from '../components/RideCard';
 import { useAuth } from '../auth/useAuth';
 import { fetchUserRides, watchUserRides } from '../services/rideData';
-import { ridesForLane } from '../services/dashboardLanes';
+import { ridesForLane, upcomingRides } from '../services/dashboardLanes';
 
 interface DashboardPageProps {
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
@@ -145,7 +145,8 @@ export default function DashboardPage({
     };
   }, [user?.uid]);
 
-  const dataset = mode === 'rider' ? riderRides : driverDrives;
+  // Past rides live on the Calendar only, on their own day.
+  const dataset = upcomingRides(mode === 'rider' ? riderRides : driverDrives);
   const currentLanes = mode === 'rider' ? RIDER_LANES : DRIVER_LANES;
 
   return (
