@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   NativeScrollEvent,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { useFonts, Marcellus_400Regular } from '@expo-google-fonts/marcellus';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuthProvider, useAuth } from './auth/useAuth';
 import styles, { colors } from './styles';
@@ -33,6 +34,7 @@ import {
 } from './pages/schema/firebaseBookingMethods';
 import { db } from './firebaseConfig';
 import {
+  excludeOwnRequests,
   getOfferNotificationEvents,
   getOfferNotificationText,
   getRiderMatchNotificationText,
@@ -82,7 +84,6 @@ interface RideActions {
   onAccept?: () => void;
   onDecline?: () => void;
   onCancel?: () => void;
-  onEdit?: () => void;
   onSetLocked?: (locked: boolean) => void;
   onChangeSeats?: (seats: number) => void;
 }
@@ -99,14 +100,6 @@ function errorMessage(error: unknown): string {
 // user back to the list AND remounts it. Without the remount the list keeps
 // rendering the status it fetched on mount, so an accepted ride would appear to
 // stay in Awaiting Approval until the app was restarted.
-// Editing a booking isn't built yet; the details page's Edit button says so.
-function editComingSoon(showAlert: ReturnType<typeof useThemedAlert>, kind?: 'request' | 'offer') {
-  showAlert(
-    kind === 'offer' ? 'Edit driving offer' : 'Edit ride request',
-    kind === 'offer' ? 'Editing this drive offer is coming soon.' : 'Editing this request is coming soon.',
-  );
-}
-
 function buildRideActions(
   ride: ActionableRide,
   driverName: string,
@@ -121,7 +114,6 @@ function buildRideActions(
   // in can remove it, lock it, or change its seats.
   if (ride.kind === 'offer') {
     return {
-      onEdit: () => editComingSoon(showAlert, 'offer'),
       ...(answering && !ride.youAccepted ? {
         onAccept: async () => {
           try {
@@ -235,7 +227,6 @@ function buildRideActions(
   // above, which the matcher relies on.
   const confirmed = ride.status === 'confirmed';
   return {
-    onEdit: () => editComingSoon(showAlert, 'request'),
     onCancel: async () => {
       if (!ride.rideId) {
         showAlert('Not available yet', 'Cancelling a ride from this view is not wired up.');
@@ -275,11 +266,14 @@ export default function App() {
   );
 }
 
+const READ_NOTIFICATIONS_KEY = 'ribe:readNotifications';
+
 function AppContent() {
   const showAlert = useThemedAlert();
   const [activeTab, setActiveTab] = useState<NavigationTab>('home');
   const [navHidden, setNavHidden] = useState(false);
   const [notificationsList, setNotificationsList] = useState<NotificationItem[]>([]);
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
   const [selectedRide, setSelectedRide] = useState<{
     ride: Ride;
     date: Date;
@@ -287,7 +281,6 @@ function AppContent() {
     onAccept?: () => void;
     onDecline?: () => void;
     onCancel?: () => void;
-    onEdit?: () => void;
     onSetLocked?: (locked: boolean) => void;
     onChangeSeats?: (seats: number) => void;
   } | null>(null);
@@ -315,6 +308,32 @@ function AppContent() {
     handleSignup,
     handleLogout,
   } = useAuth();
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setReadNotificationIds([]);
+      return;
+    }
+    AsyncStorage.getItem(`${READ_NOTIFICATIONS_KEY}:${user.uid}`)
+      .then((raw) => {
+        if (raw) {
+          try {
+            setReadNotificationIds(JSON.parse(raw));
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, [user?.uid]);
+
+  const handleMarkNotificationsRead = useCallback(() => {
+    if (!user?.uid) return;
+    setReadNotificationIds((prev) => {
+      const allIds = notificationsList.map((n) => n.id);
+      const updated = Array.from(new Set([...prev, ...allIds]));
+      AsyncStorage.setItem(`${READ_NOTIFICATIONS_KEY}:${user.uid}`, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, [user?.uid, notificationsList]);
 
   // My Drives is its own tab for drivers - registered ones, and anyone with a
   // drive posted. Everyone else gets no tab for it, and is moved off it if it
@@ -437,9 +456,11 @@ function AppContent() {
       };
       offerStates.set(stateKey, current);
 
-      for (const event of getOfferNotificationEvents(previous, current)) {
-        if (audience === 'rider' && event.type === 'new-match'
-          && currentReqDocs.some((requestDoc) => requestDoc.id === event.requestId)) continue;
+      const events = getOfferNotificationEvents(previous, current);
+      const relevant = audience === 'rider'
+        ? excludeOwnRequests(events, currentReqDocs.map((requestDoc) => requestDoc.id))
+        : events;
+      for (const event of relevant) {
         const eventId = 'requestId' in event ? event.requestId : Date.now();
         const text = getOfferNotificationText(event, audience, {
           destination: getDestination(data),
@@ -596,7 +617,6 @@ function AppContent() {
           onAccept={selectedRide.onAccept}
           onDecline={selectedRide.onDecline}
           onCancel={selectedRide.onCancel}
-          onEdit={selectedRide.onEdit}
           onSetLocked={selectedRide.onSetLocked}
           onChangeSeats={selectedRide.onChangeSeats}
         />
@@ -640,6 +660,8 @@ function AppContent() {
           <HomePage
             key={dataVersion}
             notificationsList={notificationsList}
+            readNotificationIds={readNotificationIds}
+            onMarkNotificationsRead={handleMarkNotificationsRead}
             onScroll={handleScroll}
             onOpenProfile={() => changeTab('profile')}
             onNewRide={() => setShowBooking(true)}

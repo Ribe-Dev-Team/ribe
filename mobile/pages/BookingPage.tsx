@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
@@ -22,7 +23,7 @@ import DatePickerModal from '../components/DatePickerModal';
 import TimePickerModal from '../components/TimePickerModal';
 import { useThemedAlert } from '../components/ThemedDialog';
 import NumberStepper from '../components/NumberStepper';
-import AddressAutocompleteInput from '../components/AddressAutocompleteInput';
+import AddressAutocompleteInput, { closeAddressSuggestions } from '../components/AddressAutocompleteInput';
 import RouteMapPreview from '../components/RouteMapPreview';
 import { geocodeAddress, ResolvedPlace } from '../services/googlePlaces';
 import { useAuth } from '../auth/useAuth';
@@ -190,6 +191,14 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
     setDepTimeErr(result.depTimeErr);
     setArrTimeErr(result.arrTimeErr);
     return result.valid;
+  };
+
+  // A tap on the form's background first just lowers the keyboard, leaving
+  // any address suggestions to pick from; a second one closes them too.
+  const dismissKeyboardOrSuggestions = () => {
+    const typing = Boolean(TextInput.State.currentlyFocusedInput());
+    Keyboard.dismiss();
+    if (!typing) closeAddressSuggestions();
   };
 
   const goToDetails = () => {
@@ -400,7 +409,7 @@ export default function BookingPage({ onDone, initialDate }: BookingPageProps) {
           {progressIndicator}
         </View>
 
-        <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+        <TouchableWithoutFeedback onPress={dismissKeyboardOrSuggestions}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }} keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}>
             <ScrollView
               contentContainerStyle={localStyles.scrollContent}

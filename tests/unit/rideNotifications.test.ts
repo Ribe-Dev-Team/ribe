@@ -1,4 +1,5 @@
 import {
+  excludeOwnRequests,
   getOfferNotificationEvents,
   getOfferNotificationText,
   getRiderMatchNotificationText,
@@ -29,6 +30,31 @@ describe('offer notification events', () => {
       { status: 'confirmed', confirmedRequestIds: ['r1'] },
       { status: 'cancelled', confirmedRequestIds: ['r1'] },
     )).toEqual([{ type: 'drive-cancelled' }]);
+  });
+
+  it("never tells a rider about their own seat as if it were another passenger's", () => {
+    const joined = getOfferNotificationEvents(
+      { status: 'awaiting', pendingRequestId: 'mine', confirmedRequestIds: ['r2'] },
+      { status: 'confirmed', pendingRequestId: null, confirmedRequestIds: ['r2', 'mine'] },
+    );
+    expect(excludeOwnRequests(joined, ['mine'])).toEqual([]);
+
+    const left = getOfferNotificationEvents(
+      { status: 'confirmed', confirmedRequestIds: ['r2', 'mine'] },
+      { status: 'pending', confirmedRequestIds: ['r2'] },
+    );
+    expect(excludeOwnRequests(left, ['mine'])).toEqual([]);
+
+    // Other passengers, and the drive itself, still come through.
+    const others = getOfferNotificationEvents(
+      { status: 'confirmed', confirmedRequestIds: ['mine', 'r2'] },
+      { status: 'cancelled', pendingRequestId: 'r3', confirmedRequestIds: ['mine'] },
+    );
+    expect(excludeOwnRequests(others, ['mine'])).toEqual([
+      { type: 'drive-cancelled' },
+      { type: 'new-match', requestId: 'r3' },
+      { type: 'passenger-cancelled', requestId: 'r2' },
+    ]);
   });
 
   it('uses different copy for drivers and riders', () => {

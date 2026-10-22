@@ -143,6 +143,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ]);
         if (profileDoc.exists()) {
           const data = profileDoc.data() as UserProfileData;
+          if (data.name && data.name !== currentUser.displayName) {
+            updateProfile(currentUser, { displayName: data.name })
+              .catch((err) => console.warn('Failed to sync display name:', err));
+          }
           const isComplete = data.onboardingComplete ?? false;
           // A driver registration counts even if users/{uid} says otherwise:
           // an older profile save could reset isDriver and the car details

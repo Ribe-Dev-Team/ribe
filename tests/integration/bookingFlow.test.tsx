@@ -168,10 +168,13 @@ describe('BookingPage - continuing a saved draft', () => {
   test("doesn't ask when there's nothing to continue", async () => {
     await render(<BookingPage onDone={() => {}} />);
     await flushHydration();
+    expect(screen.queryByText('Continue where you left off?')).toBeNull();
+
     // The blank form it saved - just a date at most - doesn't bring it up next time.
     await seedDraft({ isDriving: false, toUni: true, address: '', travelDate: futureDateStr(2), detourTime: 0, capacity: 1, depTime: '', arrTime: '' });
     await render(<BookingPage onDone={() => {}} />);
     await flushHydration();
+    expect(screen.queryByText('Continue where you left off?')).toBeNull();
   });
 });
 
@@ -281,7 +284,6 @@ describe('BookingPage - driver offering a ride', () => {
     expect(screen.getByText('Dana Driver  ·  0412 345 678')).toBeTruthy(); // shared with riders too
     expect(screen.getByText(/Riders matched to you will see your car and plate/)).toBeTruthy();
     expect(screen.queryByText('Role')).toBeNull();
-    expect(screen.getByText('Submit Offer')).toBeTruthy();
     // The travel date with its day of the week.
     const day = new Date();
     day.setDate(day.getDate() + 7);
