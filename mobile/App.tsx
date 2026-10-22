@@ -1,7 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   NativeScrollEvent,
   NativeSyntheticEvent,
   SafeAreaView,
@@ -9,8 +8,9 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, doc, query, where, onSnapshot } from 'firebase/firestore';
 import { useFonts, Marcellus_400Regular } from '@expo-google-fonts/marcellus';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuthProvider, useAuth } from './auth/useAuth';
 import styles, { colors } from './styles';
@@ -23,19 +23,29 @@ import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import RideDetailPage from './pages/RideDetailPage';
 import { rideTimeSummary } from './services/rideData';
+import { formatTime12h } from './utility/times';
 import DriverProfilePage from './pages/DriverProfilePage';
 import DriverRegistrationPage from './pages/DriverRegistrationPage';
 import BookingPage from './pages/BookingPage';
+import { ThemedAlertProvider, useThemedAlert } from './components/ThemedDialog';
 import {
   acceptMatch, cancelConfirmedRequest, cancelOffer, declineMatch, deleteRideRequest, driverAcceptMatch,
   driverDeclineMatch, setOfferLocked, updateOfferSeats,
 } from './pages/schema/firebaseBookingMethods';
 import { db } from './firebaseConfig';
+import {
+  excludeOwnRequests,
+  getOfferNotificationEvents,
+  getOfferNotificationText,
+  getRiderMatchNotificationText,
+  OfferNotificationAudience,
+  OfferNotificationState,
+} from './services/rideNotifications';
 
 export interface NotificationItem {
   id: string;
   text: string;
-  type: 'upcoming' | 'cancellation';
+  type: 'upcoming' | 'passenger' | 'cancellation';
 }
 
 function toDetailRide(ride: RideCardProps): Ride {
@@ -92,8 +102,8 @@ function errorMessage(error: unknown): string {
 // rendering the status it fetched on mount, so an accepted ride would appear to
 // stay in Awaiting Approval until the app was restarted.
 // Editing a booking isn't built yet; the details page's Edit button says so.
-function editComingSoon(kind?: 'request' | 'offer') {
-  Alert.alert(
+function editComingSoon(showAlert: ReturnType<typeof useThemedAlert>, kind?: 'request' | 'offer') {
+  showAlert(
     kind === 'offer' ? 'Edit driving offer' : 'Edit ride request',
     kind === 'offer' ? 'Editing this drive offer is coming soon.' : 'Editing this request is coming soon.',
   );
@@ -103,6 +113,7 @@ function buildRideActions(
   ride: ActionableRide,
   driverName: string,
   onChanged: () => void,
+  showAlert: ReturnType<typeof useThemedAlert>,
 ): RideActions {
   // A match needs both sides to accept. Accept is offered until you have;
   // Decline until the match is confirmed.
@@ -112,12 +123,12 @@ function buildRideActions(
   // in can remove it, lock it, or change its seats.
   if (ride.kind === 'offer') {
     return {
-      onEdit: () => editComingSoon('offer'),
+      onEdit: () => editComingSoon(showAlert, 'offer'),
       ...(answering && !ride.youAccepted ? {
         onAccept: async () => {
           try {
             const answer = await driverAcceptMatch(ride.rideId!);
-            Alert.alert(
+            showAlert(
               answer === 'confirmed' ? 'Rider confirmed' : 'Rider accepted',
               answer === 'confirmed'
                 ? 'They have accepted too, so they are now confirmed on this drive.'
@@ -125,7 +136,7 @@ function buildRideActions(
             );
             onChanged();
           } catch (error) {
-            Alert.alert('Could not accept rider', errorMessage(error));
+            showAlert('Could not accept rider', errorMessage(error));
           }
         },
       } : {}),
@@ -133,31 +144,31 @@ function buildRideActions(
         onDecline: async () => {
           try {
             await driverDeclineMatch(ride.rideId!);
-            Alert.alert('Rider declined', 'They will be matched with another driver, and your seat is open again.');
+            showAlert('Rider declined', 'They will be matched with another driver, and your seat is open again.');
             onChanged();
           } catch (error) {
-            Alert.alert('Could not decline rider', errorMessage(error));
+            showAlert('Could not decline rider', errorMessage(error));
           }
         },
       } : {}),
       onCancel: async () => {
         if (!ride.rideId) {
-          Alert.alert('Not available yet', 'Removing an offer from this view is not wired up.');
+          showAlert('Not available yet', 'Removing an offer from this view is not wired up.');
           return;
         }
         try {
           await cancelOffer(ride.rideId);
-          Alert.alert('Offer removed', 'Any rider matched to this drive will be found another driver.');
+          showAlert('Offer removed', 'Any rider matched to this drive will be found another driver.');
           onChanged();
         } catch (error) {
-          Alert.alert('Could not remove offer', errorMessage(error));
+          showAlert('Could not remove offer', errorMessage(error));
         }
       },
       onSetLocked: async (locked: boolean) => {
         if (!ride.rideId) return;
         try {
           await setOfferLocked(ride.rideId, locked);
-          Alert.alert(
+          showAlert(
             locked ? 'Drive locked' : 'Drive unlocked',
             locked
               ? 'No more passengers will be matched to this drive.'
@@ -165,17 +176,17 @@ function buildRideActions(
           );
           onChanged();
         } catch (error) {
-          Alert.alert(locked ? 'Could not lock drive' : 'Could not unlock drive', errorMessage(error));
+          showAlert(locked ? 'Could not lock drive' : 'Could not unlock drive', errorMessage(error));
         }
       },
       onChangeSeats: async (seats: number) => {
         if (!ride.rideId) return;
         try {
           await updateOfferSeats(ride.rideId, seats);
-          Alert.alert('Seats updated', `This drive now takes ${seats} passenger${seats === 1 ? '' : 's'}.`);
+          showAlert('Seats updated', `This drive now takes ${seats} passenger${seats === 1 ? '' : 's'}.`);
           onChanged();
         } catch (error) {
-          Alert.alert('Could not change seats', errorMessage(error));
+          showAlert('Could not change seats', errorMessage(error));
         }
       },
     };
@@ -187,12 +198,12 @@ function buildRideActions(
       ...(ride.youAccepted ? {} : {
         onAccept: async () => {
           if (!approvable) {
-            Alert.alert('Not available yet', 'Approving a ride from this view is not wired up.');
+            showAlert('Not available yet', 'Approving a ride from this view is not wired up.');
             return;
           }
           try {
             const answer = await acceptMatch(ride.rideId!);
-            Alert.alert(
+            showAlert(
               'Ride accepted',
               answer === 'confirmed'
                 ? `Trip with ${driverName} confirmed.`
@@ -200,22 +211,22 @@ function buildRideActions(
             );
             onChanged();
           } catch (error) {
-            Alert.alert('Could not accept ride', errorMessage(error));
+            showAlert('Could not accept ride', errorMessage(error));
           }
         },
       }),
       onDecline: async () => {
         if (!approvable) {
-          Alert.alert('Not available yet', 'Declining a ride from this view is not wired up.');
+          showAlert('Not available yet', 'Declining a ride from this view is not wired up.');
           return;
         }
         try {
           await declineMatch(ride.rideId!);
           // Declining cancels the request; the rider books again to be rematched.
-          Alert.alert('Ride declined', 'Your request has been cancelled. Book again to find another driver.');
+          showAlert('Ride declined', 'Your request has been cancelled. Book again to find another driver.');
           onChanged();
         } catch (error) {
-          Alert.alert('Could not decline ride', errorMessage(error));
+          showAlert('Could not decline ride', errorMessage(error));
         }
       },
     };
@@ -226,21 +237,21 @@ function buildRideActions(
   // above, which the matcher relies on.
   const confirmed = ride.status === 'confirmed';
   return {
-    onEdit: () => editComingSoon('request'),
+    onEdit: () => editComingSoon(showAlert, 'request'),
     onCancel: async () => {
       if (!ride.rideId) {
-        Alert.alert('Not available yet', 'Cancelling a ride from this view is not wired up.');
+        showAlert('Not available yet', 'Cancelling a ride from this view is not wired up.');
         return;
       }
       try {
         await (confirmed ? cancelConfirmedRequest(ride.rideId) : deleteRideRequest(ride.rideId));
-        Alert.alert(
+        showAlert(
           confirmed ? 'Ride canceled' : 'Ride request canceled',
           confirmed ? 'This ride has been canceled.' : 'This ride request has been canceled.',
         );
         onChanged();
       } catch (error) {
-        Alert.alert('Could not cancel ride', errorMessage(error));
+        showAlert('Could not cancel ride', errorMessage(error));
       }
     },
   };
@@ -258,16 +269,22 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemedAlertProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemedAlertProvider>
   );
 }
 
+const READ_NOTIFICATIONS_KEY = 'ribe:readNotifications';
+
 function AppContent() {
+  const showAlert = useThemedAlert();
   const [activeTab, setActiveTab] = useState<NavigationTab>('home');
   const [navHidden, setNavHidden] = useState(false);
   const [notificationsList, setNotificationsList] = useState<NotificationItem[]>([]);
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
   const [selectedRide, setSelectedRide] = useState<{
     ride: Ride;
     date: Date;
@@ -303,6 +320,32 @@ function AppContent() {
     handleSignup,
     handleLogout,
   } = useAuth();
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setReadNotificationIds([]);
+      return;
+    }
+    AsyncStorage.getItem(`${READ_NOTIFICATIONS_KEY}:${user.uid}`)
+      .then((raw) => {
+        if (raw) {
+          try {
+            setReadNotificationIds(JSON.parse(raw));
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, [user?.uid]);
+
+  const handleMarkNotificationsRead = useCallback(() => {
+    if (!user?.uid) return;
+    setReadNotificationIds((prev) => {
+      const allIds = notificationsList.map((n) => n.id);
+      const updated = Array.from(new Set([...prev, ...allIds]));
+      AsyncStorage.setItem(`${READ_NOTIFICATIONS_KEY}:${user.uid}`, JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+  }, [user?.uid, notificationsList]);
 
   // My Drives is its own tab for drivers - registered ones, and anyone with a
   // drive posted. Everyone else gets no tab for it, and is moved off it if it
@@ -365,71 +408,136 @@ function AppContent() {
       );
     };
 
-    // Sync helper to combine active day-of reminders with existing cancellations
-    const syncNotifications = (
-      reqDocs: any[],
-      offerDocs: any[],
-      cancellations: NotificationItem[]
-    ) => {
+    let currentReqDocs: any[] = [];
+    let currentOfferDocs: any[] = [];
+    const sessionNotifications: NotificationItem[] = [];
+    const offerStates = new Map<string, OfferNotificationState>();
+    const offerUnsubscribers = new Map<string, () => void>();
+
+    const syncNotifications = () => {
       const upcomingNotifs: NotificationItem[] = [];
 
       // Check active requests scheduled for today
-      reqDocs.forEach((doc) => {
+      currentReqDocs.forEach((doc) => {
         const data = doc.data();
         if (data.status !== 'cancelled' && isToday(data.date)) {
           upcomingNotifs.push({
             id: `upcoming-req-${doc.id}`,
-            text: `Upcoming ride to ${getDestination(data)} today at ${data.departureTime || 'scheduled time'}.`,
+            text: `Upcoming ride to ${getDestination(data)} today at ${data.departureTime ? formatTime12h(data.departureTime) : 'scheduled time'}.`,
             type: 'upcoming',
           });
         }
       });
 
       // Check active offers scheduled for today
-      offerDocs.forEach((doc) => {
+      currentOfferDocs.forEach((doc) => {
         const data = doc.data();
         if (data.status !== 'cancelled' && isToday(data.date)) {
           upcomingNotifs.push({
             id: `upcoming-offer-${doc.id}`,
-            text: `Upcoming drive to ${getDestination(data)} today at ${data.departureTime || 'scheduled time'}.`,
+            text: `Upcoming drive to ${getDestination(data)} today at ${data.departureTime ? formatTime12h(data.departureTime) : 'scheduled time'}.`,
             type: 'upcoming',
           });
         }
       });
 
-      // Combine upcoming day-of reminders with accumulated cancellations (deduplicated)
+      // Keep event notifications while refreshing today's upcoming reminders.
       setNotificationsList((prev) => {
-        const existingCancels = prev.filter((n) => n.type === 'cancellation');
-        const allCancels = [...cancellations, ...existingCancels].filter(
-          (item, index, self) => index === self.findIndex((t) => t.id === item.id)
+        const existingEvents = prev.filter((item) => item.type !== 'upcoming');
+        const events = [...sessionNotifications, ...existingEvents].filter(
+          (item, index, self) => index === self.findIndex((other) => other.id === item.id)
         );
-        return [...upcomingNotifs, ...allCancels];
+        return [...upcomingNotifs, ...events];
       });
     };
 
-    let currentReqDocs: any[] = [];
-    let currentOfferDocs: any[] = [];
-    let pendingCancellations: NotificationItem[] = [];
+    const appendNotification = (item: NotificationItem) => {
+      if (!sessionNotifications.some((existing) => existing.id === item.id)) {
+        sessionNotifications.push(item);
+      }
+      syncNotifications();
+    };
+
+    const processOfferState = (offerId: string, data: any, audience: OfferNotificationAudience) => {
+      const stateKey = `${audience}:${offerId}`;
+      const previous = offerStates.get(stateKey);
+      const current: OfferNotificationState = {
+        status: data.status,
+        pendingRequestId: data.pendingRequestId,
+        confirmedRequestIds: data.confirmedRequestIds ?? [],
+      };
+      offerStates.set(stateKey, current);
+
+      const events = getOfferNotificationEvents(previous, current);
+      const relevant = audience === 'rider'
+        ? excludeOwnRequests(events, currentReqDocs.map((requestDoc) => requestDoc.id))
+        : events;
+      for (const event of relevant) {
+        const eventId = 'requestId' in event ? event.requestId : Date.now();
+        const text = getOfferNotificationText(event, audience, {
+          destination: getDestination(data),
+          date: formatDate(data.date),
+          time: data.departureTime ? formatTime12h(data.departureTime) : 'scheduled time',
+        });
+        appendNotification({
+          id: `offer-event-${audience}-${offerId}-${event.type}-${eventId}`,
+          text,
+          type: event.type === 'drive-cancelled' || event.type === 'passenger-cancelled'
+            ? 'cancellation'
+            : 'passenger',
+        });
+      }
+    };
+
+    const subscribeToOffer = (offerId: string, audience: OfferNotificationAudience) => {
+      const listenerKey = `${audience}:${offerId}`;
+      if (offerUnsubscribers.has(listenerKey)) return;
+      const unsubscribe = onSnapshot(
+        doc(db, 'rideOffers', offerId),
+        (snapshot) => {
+          if (snapshot.exists()) processOfferState(snapshot.id, snapshot.data(), audience);
+        },
+        (err) => console.warn('Offer notification listener failed:', err),
+      );
+      offerUnsubscribers.set(listenerKey, unsubscribe);
+    };
 
     // Listener for Ride Requests
+    const requestOfferIds = new Map<string, string | null>();
     const unsubRequests = onSnapshot(requestsQuery, (snapshot) => {
       currentReqDocs = snapshot.docs;
 
+      snapshot.docs.forEach((requestDoc) => {
+        const offerId = requestDoc.data()['matchedOfferId'];
+        if (typeof offerId === 'string' && offerId) subscribeToOffer(offerId, 'rider');
+      });
+
       snapshot.docChanges().forEach((change) => {
+        const data = change.doc.data();
+        const matchedOfferId = typeof data['matchedOfferId'] === 'string' ? data['matchedOfferId'] : null;
+        const previousOfferId = requestOfferIds.get(change.doc.id);
+        if (matchedOfferId && matchedOfferId !== previousOfferId && data['status'] === 'awaiting') {
+          appendNotification({
+            id: `request-match-${change.doc.id}-${matchedOfferId}`,
+            text: getRiderMatchNotificationText(getDestination(data), formatDate(data['date'])),
+            type: 'passenger',
+          });
+        }
+        requestOfferIds.set(change.doc.id, matchedOfferId);
+
         if (
           change.type === 'removed' ||
-          (change.type === 'modified' && change.doc.data()['status'] === 'cancelled')
+          (change.type === 'modified' && data['status'] === 'cancelled')
         ) {
-          const data = change.doc.data();
-          pendingCancellations.push({
-            id: `cancel-req-${change.doc.id}-${Date.now()}`,
-            text: `Ride request to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] || 'scheduled time'} was cancelled.`,
+          appendNotification({
+            id: `cancel-req-${change.doc.id}`,
+            text: `Ride request to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] ? formatTime12h(data['departureTime']) : 'scheduled time'} was cancelled.`,
             type: 'cancellation',
           });
         }
       });
 
-      syncNotifications(currentReqDocs, currentOfferDocs, pendingCancellations);
+      syncNotifications();
     });
 
     // Listener for Ride Offers
@@ -438,25 +546,16 @@ function AppContent() {
       setHasDrives(snapshot.docs.some((d) => d.data()['status'] !== 'cancelled'));
 
       snapshot.docChanges().forEach((change) => {
-        if (
-          change.type === 'removed' ||
-          (change.type === 'modified' && change.doc.data()['status'] === 'cancelled')
-        ) {
-          const data = change.doc.data();
-          pendingCancellations.push({
-            id: `cancel-offer-${change.doc.id}-${Date.now()}`,
-            text: `Drive offer to ${getDestination(data)} on ${formatDate(data['date'])} at ${data['departureTime'] || 'scheduled time'} was cancelled.`,
-            type: 'cancellation',
-          });
-        }
+        if (change.type !== 'removed') processOfferState(change.doc.id, change.doc.data(), 'driver');
       });
 
-      syncNotifications(currentReqDocs, currentOfferDocs, pendingCancellations);
+      syncNotifications();
     });
 
     return () => {
       unsubRequests();
       unsubOffers();
+      offerUnsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [user?.uid]);
   const changeTab = (tab: NavigationTab) => {
@@ -474,7 +573,7 @@ function AppContent() {
 
   // The same handlers for a card's own Accept button as for its details page, so
   // accepting from a Home or Dashboard card really writes, not just confirms on screen.
-  const rideActionsFor = (ride: RideCardProps) => buildRideActions(ride, ride.driver.name, afterRideChange);
+  const rideActionsFor = (ride: RideCardProps) => buildRideActions(ride, ride.driver.name, afterRideChange, showAlert);
 
   const openRideDetails = (rideCard: RideCardProps, backLabel: string) => {
     const detailRide = toDetailRide(rideCard);
@@ -542,7 +641,7 @@ function AppContent() {
           <CalendarPage
             key={dataVersion}
             onOpenRide={(ride, date) =>
-              setSelectedRide({ ride, date, backLabel: 'Calendar', ...buildRideActions(ride, ride.driver, afterRideChange) })
+              setSelectedRide({ ride, date, backLabel: 'Calendar', ...buildRideActions(ride, ride.driver, afterRideChange, showAlert) })
             }
             onNewRide={(date) => {
               setBookingDate(date);
@@ -574,6 +673,8 @@ function AppContent() {
           <HomePage
             key={dataVersion}
             notificationsList={notificationsList}
+            readNotificationIds={readNotificationIds}
+            onMarkNotificationsRead={handleMarkNotificationsRead}
             onScroll={handleScroll}
             onOpenProfile={() => changeTab('profile')}
             onNewRide={() => setShowBooking(true)}

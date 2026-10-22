@@ -68,9 +68,20 @@ function decomposeTime12h(time: string): sepTime12h {
 
 /* convert a 24-hr time (as string) into a 12-hr time (string) */
 function formatTime12h(time: string): string {
-  if (!timePattern.test(time.trim())) return time;
-  const t12 = decomposeTime12h(time);
-  return `${t12.hrs}:${String(t12.mins).padStart(2, '0')} ${t12.period}`;
+  if (!time) return time;
+  const trimmed = time.trim();
+  const hasTilde = trimmed.startsWith('~');
+  const clean = hasTilde ? trimmed.slice(1).trim() : trimmed;
+
+  // Handle ranges like "07:30–09:00" or "07:30-09:00"
+  const rangeMatch = clean.match(/^((?:[01]\d|2[0-3]):(?:[0-5]\d))\s*[–-]\s*((?:[01]\d|2[0-3]):(?:[0-5]\d))$/);
+  if (rangeMatch) {
+    return `${hasTilde ? '~' : ''}${formatTime12h(rangeMatch[1])}–${formatTime12h(rangeMatch[2])}`;
+  }
+
+  if (!timePattern.test(clean)) return time;
+  const t12 = decomposeTime12h(clean);
+  return `${hasTilde ? '~' : ''}${t12.hrs}:${String(t12.mins).padStart(2, '0')} ${t12.period}`;
 }
 
 function convert12hTo24h(t12: sepTime12h): string {

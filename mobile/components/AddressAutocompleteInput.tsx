@@ -22,6 +22,18 @@ interface AddressAutocompleteInputProps {
 }
 
 const DEBOUNCE_MS = 300;
+// Long enough for the next field's focus to land after this one's blur.
+const FOCUS_SETTLE_MS = 100;
+
+// Each mounted field's way to close its suggestions, for closeAddressSuggestions.
+const dropdownClosers = new Set<() => void>();
+
+/** Close every address field's suggestions - for a tap outside the field once
+ *  the keyboard is already down (the first tap only dismisses the keyboard,
+ *  leaving the suggestions to pick from). */
+export function closeAddressSuggestions() {
+  dropdownClosers.forEach((close) => close());
+}
 
 export default function AddressAutocompleteInput({
   value,
@@ -38,14 +50,19 @@ export default function AddressAutocompleteInput({
   const [inputHeight, setInputHeight] = useState(46);
   const sessionTokenRef = useRef(createSessionToken());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurCheckRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastResolvedDescription = useRef<string | null>(null);
   const inputRef = useRef<TextInput>(null);
   // The text is a picked suggestion, not typed - until the user types again.
   const picked = useRef(false);
 
   useEffect(() => {
+    const close = () => setShowDropdown(false);
+    dropdownClosers.add(close);
     return () => {
+      dropdownClosers.delete(close);
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (blurCheckRef.current) clearTimeout(blurCheckRef.current);
     };
   }, []);
 
@@ -91,10 +108,16 @@ export default function AddressAutocompleteInput({
   };
 
   const handleBlur = () => {
-    // Delay hiding: blur fires as soon as a dropdown item is touched, before its onPress
-    // resolves, so hiding immediately would unmount the row mid-tap and swallow the selection.
-    setTimeout(() => setShowDropdown(false), 150);
+    // Keep suggestions available after the keyboard is dismissed so the user
+    // can still choose a location without reopening the keyboard - but not
+    // once they've moved on to another field, or they'd sit over it.
     onBlur?.();
+    if (blurCheckRef.current) clearTimeout(blurCheckRef.current);
+    blurCheckRef.current = setTimeout(() => {
+      blurCheckRef.current = null;
+      const focused = TextInput.State.currentlyFocusedInput();
+      if (focused && focused !== inputRef.current) setShowDropdown(false);
+    }, FOCUS_SETTLE_MS);
 
     // Not when a suggestion was picked: the blur can still see the half-typed
     // text, and geocoding that could land after the picked place, replacing it.
@@ -150,6 +173,7 @@ export default function AddressAutocompleteInput({
 
 const localStyles = StyleSheet.create({
   wrapper: {
+    position: 'relative',
     zIndex: 20,
   },
   spinner: {

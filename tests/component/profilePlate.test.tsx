@@ -3,8 +3,9 @@
 // like a button but did nothing.
 
 import * as React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { screen } from '@testing-library/react-native';
 import ProfilePage from '../../mobile/pages/ProfilePage';
+import { renderWithThemedAlerts } from '../themedRender';
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 
@@ -13,7 +14,7 @@ jest.mock('../../mobile/auth/useAuth', () => ({
   useAuth: () => ({ user: { uid: 'u1' }, profileData: mockProfile, submitting: false, updateProfileDetails: async () => {} }),
 }));
 
-const show = () => render(<ProfilePage onLogout={() => {}} onOpenDriverRegistration={() => {}} />);
+const show = () => renderWithThemedAlerts(<ProfilePage onLogout={() => {}} onOpenDriverRegistration={() => {}} />);
 
 it("shows a driver's number plate next to their car, and no Driver pill", async () => {
   mockProfile = { name: 'Dana', isDriver: true, vehicleColor: 'Blue', vehicleMake: 'Toyota', vehicleModel: 'Corolla', licensePlate: 'abc123' };

@@ -11,7 +11,6 @@ import { RideCardProps } from '../components/RideCard';
 import { fetchUserRides, rideTimeSummary, watchUserRides } from '../services/rideData';
 import { RideCostSplit } from '../utility/costDisplay';
 import { isBookableDate } from './validation/bookingValidation';
-import { isToday } from '../utility/dates';
 
 export type RideStatus = 'pending' | 'awaiting' | 'confirmed' | 'cancelled';
 
@@ -195,10 +194,7 @@ export default function CalendarPage({ onOpenRide, onNewRide }: CalendarPageProp
 
       <View style={styles.ridesHeadingRow}>
         <Text style={styles.ridesHeading}>Rides on {monthNames[selectedDate.getMonth()]} {selectedDate.getDate()}</Text>
-        {/* Only on a day a ride can be booked for: not one that's gone (greyed
-            out above), nor past BOOKING_HORIZON_DAYS. Today too - the form
-            opens with no date, for them to pick one. */}
-        {(isToday(selectedDate) || isBookableDate(selectedDate)) && <NewRideButton onPress={() => onNewRide(selectedDate)} />}
+        {isBookableDate(selectedDate) && <NewRideButton onPress={() => onNewRide(selectedDate)} />}
       </View>
       {loading ? (
         <View style={{ paddingVertical: 18, alignItems: 'center' }}>

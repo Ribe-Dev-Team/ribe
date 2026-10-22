@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Image, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles, { colors } from '../styles';
 import { Ride } from './CalendarPage';
@@ -8,7 +8,9 @@ import CostSplitPanel from '../components/CostSplitPanel';
 import DriveControls from '../components/DriveControls';
 import { fetchRideDetails, JourneyStop, RideCar, RideDetails, RidePerson } from '../services/rideData';
 import { formatPhone, maskPhone, PHONE_REVEAL_WINDOW_MS } from '../utility/phone';
+import { formatTime12h } from '../utility/times';
 import GreenhouseEmissionCard from '../components/GreenhouseEmissionCard';
+import { useThemedAlert } from '../components/ThemedDialog';
 
 interface RideDetailPageProps {
 	ride: Ride;
@@ -106,7 +108,7 @@ function JourneySection({ stops }: { stops: JourneyStop[] }) {
 						<View style={styles.personCopy}>
 							<Text style={styles.locationLabel}>{stop.title}{stop.awaiting ? '  ·  awaiting' : ''}</Text>
 							{stop.address ? <Text style={styles.locationText}>{stop.address}</Text> : null}
-							{stop.time ? <Text style={styles.locationMeta}>{stop.time}</Text> : null}
+							{stop.time ? <Text style={styles.locationMeta}>{formatTime12h(stop.time)}</Text> : null}
 						</View>
 					</View>
 				</View>
@@ -132,8 +134,9 @@ function CarSection({ title, car }: { title: string; car?: RideCar }) {
 
 export default function RideDetailPage({
 	ride, date, backLabel = 'Calendar', onBack, onAccept, onDecline, onCancel, onEdit, onSetLocked, onChangeSeats,
-}: RideDetailPageProps) {
+} : RideDetailPageProps) {
 	const [details, setDetails] = useState<RideDetails | null>(null);
+	const showAlert = useThemedAlert();
 	const isConfirmed = ride.status === 'confirmed';
 	// A match needs both sides to accept; once you have, you're waiting on the other.
 	const isDriver = ride.kind === 'offer';
@@ -182,7 +185,8 @@ export default function RideDetailPage({
 		&& details.startsAt.getTime() - Date.now() <= PHONE_REVEAL_WINDOW_MS;
 
 	return (
-		<ScrollView contentContainerStyle={styles.detailScreen} showsVerticalScrollIndicator={false}>
+	<>
+	<ScrollView contentContainerStyle={styles.detailScreen} showsVerticalScrollIndicator={false}>
 			<Pressable accessibilityLabel={`Back to ${backLabel}`} onPress={onBack} style={styles.backButton}><Text style={styles.backButtonText}>‹</Text><Text style={styles.backButtonLabel}>{backLabel}</Text></Pressable>
 			<View style={styles.detailTitleRow}>
 				{isDriver && <Ionicons name="car-sport" size={28} color={colors.white} accessibilityLabel="Driving" />}
@@ -190,7 +194,7 @@ export default function RideDetailPage({
 			</View>
 			<Text style={styles.detailDate}>{formatDate(date)}</Text>
 
-			<View style={styles.detailStatusRow}><View style={styles.detailTimeRow}><Text style={styles.detailTime}>{ride.time}</Text><Text style={styles.detailTimeLabel}>{timeLabel}</Text></View><View style={[styles.statusPill, { backgroundColor: statusColor }]}><Text style={styles.statusPillText}>{status}</Text></View></View>
+			<View style={styles.detailStatusRow}><View style={styles.detailTimeRow}><Text style={styles.detailTime}>{formatTime12h(ride.time)}</Text><Text style={styles.detailTimeLabel}>{timeLabel}</Text></View><View style={[styles.statusPill, { backgroundColor: statusColor }]}><Text style={styles.statusPillText}>{status}</Text></View></View>
 
 			<RideMap points={details?.mapPoints ?? []} loading={loading} />
 
@@ -251,7 +255,7 @@ export default function RideDetailPage({
 				<View style={[styles.editActionsRow, { marginTop: 14 }]}>
 					<Pressable
 						onPress={() =>
-							Alert.alert(
+							showAlert(
 								isDriver ? 'Decline this rider?' : 'Decline this ride?',
 								isDriver
 									? 'They will go back to being matched with another driver, and your seat opens up again.'
@@ -282,39 +286,33 @@ export default function RideDetailPage({
 
 			{(isConfirmed || ride.status === 'pending' || isDriver) && onCancel && (
 				<Pressable
-					onPress={() =>
+					onPress={() => showAlert(
 						isDriver
-							? Alert.alert(
-								'Remove this drive offer?',
-								'Any rider matched to it will go back to searching for another driver.',
-								[
-									{ text: 'Keep Offer', style: 'cancel' },
-									{ text: 'Remove Offer', style: 'destructive', onPress: onCancel },
-								],
-							)
+							? 'Remove this drive offer?'
+							: ride.status === 'pending' ? 'Cancel this ride request?' : 'Cancel this ride?',
+						isDriver
+							? 'Any rider matched to it will go back to searching for another driver.'
 							: ride.status === 'pending'
-							? Alert.alert(
-								'Cancel this ride request?',
-								'Are you sure you want to cancel this ride request?',
-								[
-									{ text: 'Keep Request', style: 'cancel' },
-									{ text: 'Cancel Request', style: 'destructive', onPress: onCancel },
-								],
-							)
-							: Alert.alert(
-								'Cancel this ride?',
-								'Are you sure you want to cancel this confirmed ride?',
-								[
-									{ text: 'Keep Ride', style: 'cancel' },
-									{ text: 'Cancel Ride', style: 'destructive', onPress: onCancel },
-								],
-							)
-					}
+								? 'Are you sure you want to cancel this ride request?'
+								: 'Are you sure you want to cancel this confirmed ride?',
+						[
+							{
+								text: isDriver ? 'Keep Offer' : ride.status === 'pending' ? 'Keep Request' : 'Keep Ride',
+								style: 'cancel',
+							},
+							{
+								text: isDriver ? 'Remove Offer' : ride.status === 'pending' ? 'Cancel Request' : 'Cancel Ride',
+								style: 'destructive',
+								onPress: onCancel,
+							},
+						],
+					)}
 					style={[styles.dangerButton, { flex: 0, marginTop: 14 }]}
 				>
 					<Text style={styles.dangerButtonText}>{isDriver ? 'Remove Offer' : ride.status === 'pending' ? 'Cancel Pending Ride' : 'Cancel Ride'}</Text>
 				</Pressable>
 			)}
 		</ScrollView>
+		</>
 	);
 }

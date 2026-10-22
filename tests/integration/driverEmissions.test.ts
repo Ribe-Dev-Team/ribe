@@ -1,6 +1,6 @@
 import { acceptMatch } from '../../mobile/pages/schema/firebaseBookingMethods';
 import { db } from '../../mobile/firebaseConfig';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { fetchUserRides } from '../../mobile/services/rideData';
 
 jest.useRealTimers();
@@ -11,7 +11,6 @@ describe('Driver emissions saved when getting riders', () => {
     const req1Id = 'rider-1-req';
     const req2Id = 'rider-2-req';
 
-    // Seed driver offer with driverEmissionsKg = 3.4 and 0 initial saved
     await setDoc(doc(db, 'rideOffers', offerId), {
       status: 'awaiting',
       userId: 'driver-uid',
@@ -20,15 +19,12 @@ describe('Driver emissions saved when getting riders', () => {
       confirmedRequestIds: [],
       pendingRequestId: req1Id,
       matchedRiderId: 'rider-1-uid',
-      // A match needs both sides to accept: the driver already has, so the
-      // rider's acceptMatch below is the one that confirms it.
       driverAccepted: true,
       driverEmissionsKg: 3.4,
       emissionsSavedKg: 0,
       pendingSchedule: { emissionsSavedKg: 2.5 },
     });
 
-    // Seed rider 1 request with emissionsSavedKg = 2.5
     await setDoc(doc(db, 'rideRequests', req1Id), {
       status: 'awaiting',
       userId: 'rider-1-uid',
@@ -39,7 +35,6 @@ describe('Driver emissions saved when getting riders', () => {
       emissionsSavedKg: 2.5,
     });
 
-    // Rider 1 accepts match
     await acceptMatch(req1Id);
 
     const offerSnap1 = await getDoc(doc(db, 'rideOffers', offerId));
@@ -48,7 +43,6 @@ describe('Driver emissions saved when getting riders', () => {
     expect(offerData1.confirmedRequestIds).toEqual([req1Id]);
     expect(offerData1.emissionsSavedKg).toBe(2.5);
 
-    // Now driver gets a second rider (Rider 2)
     await setDoc(doc(db, 'rideOffers', offerId), {
       ...offerData1,
       status: 'awaiting',
@@ -68,7 +62,6 @@ describe('Driver emissions saved when getting riders', () => {
       emissionsSavedKg: 1.8,
     });
 
-    // Rider 2 accepts match
     await acceptMatch(req2Id);
 
     const offerSnap2 = await getDoc(doc(db, 'rideOffers', offerId));
@@ -82,7 +75,6 @@ describe('Driver emissions saved when getting riders', () => {
     const offerId = 'driver-offer-card-test';
     const riderReqId = 'rider-card-test-req';
 
-    // 1. Offer with NO riders yet
     await setDoc(doc(db, 'rideOffers', offerId), {
       status: 'pending',
       userId: driverUid,
@@ -97,11 +89,9 @@ describe('Driver emissions saved when getting riders', () => {
     });
 
     const ridesBefore = await fetchUserRides(driverUid);
-    expect(ridesBefore.offers.length).toBe(1);
-    // With 0 riders, driver co2SavedKg is 0
+    expect(ridesBefore.offers).toHaveLength(1);
     expect(ridesBefore.offers[0].co2SavedKg).toBe(0);
 
-    // 2. Offer with 1 confirmed rider
     await setDoc(doc(db, 'rideRequests', riderReqId), {
       status: 'confirmed',
       userId: 'rider-uid-abc',
@@ -125,8 +115,7 @@ describe('Driver emissions saved when getting riders', () => {
     });
 
     const ridesAfter = await fetchUserRides(driverUid);
-    expect(ridesAfter.offers.length).toBe(1);
+    expect(ridesAfter.offers).toHaveLength(1);
     expect(ridesAfter.offers[0].co2SavedKg).toBe(2.5);
   });
 });
-

@@ -6,10 +6,11 @@
 // driver.
 
 import * as React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { fireEvent, screen } from '@testing-library/react-native';
 import RideDetailPage from '../../mobile/pages/RideDetailPage';
 import { Ride } from '../../mobile/pages/CalendarPage';
 import { fetchRideDetails, RideDetails } from '../../mobile/services/rideData';
+import { renderWithThemedAlerts } from '../themedRender';
 
 jest.mock('../../mobile/services/rideData', () => ({
   ...jest.requireActual('../../mobile/services/rideData'),
@@ -53,7 +54,7 @@ const details = (overrides: Partial<RideDetails> = {}): RideDetails => ({
 /** Render the page and wait for its details to load - shown by `loadedText`. */
 const show = async (r: Ride, d: RideDetails, loadedText: RegExp = /Plate/) => {
   fetchDetails.mockResolvedValue(d);
-  await render(<RideDetailPage ride={r} date={new Date('2026-10-05T00:00:00+11:00')} onBack={() => {}} />);
+  await renderWithThemedAlerts(<RideDetailPage ride={r} date={new Date('2026-10-05T00:00:00+11:00')} onBack={() => {}} />);
   await screen.findByText(loadedText);
 };
 
@@ -82,7 +83,7 @@ it('lists the journey stop by stop under the map, with each stop marked as on th
 
   expect(screen.getByText('Your Pickup')).toBeTruthy();
   expect(screen.getByText('2 Ana Rd')).toBeTruthy();
-  expect(screen.getAllByText('~07:41')).toHaveLength(2); // the status row's time, and this stop's
+  expect(screen.getAllByText('~7:41 AM')).toHaveLength(2); // the status row's time, and this stop's
   expect(screen.getByText('A')).toBeTruthy();
   // Another rider's pickup: a time, but no marker - it isn't on their map.
   expect(screen.getByText('Pickup · Another Passenger')).toBeTruthy();
@@ -101,7 +102,7 @@ it('shows the booking window on a trip not planned yet', async () => {
   }), /A driver will appear here/);
 
   // The status row's time, and the journey's first stop.
-  expect(screen.getAllByText('07:00–09:00')).toHaveLength(2);
+  expect(screen.getAllByText('7:00 AM–9:00 AM')).toHaveLength(2);
 });
 
 it("labels the time at the top: a rider's pick-up, a driver's leave time, or the window booked", async () => {
@@ -120,6 +121,31 @@ it('describes the car in full', async () => {
 
   expect(screen.getByText('Blue Toyota Corolla')).toBeTruthy();
   expect(screen.getByText('Plate  ·  ABC123')).toBeTruthy();
+});
+
+it('uses the themed confirmation before cancelling a ride', async () => {
+  const onCancel = jest.fn();
+  fetchDetails.mockResolvedValue(details());
+  await renderWithThemedAlerts(
+    <RideDetailPage
+      ride={ride}
+      date={new Date('2026-10-05T00:00:00+11:00')}
+      onBack={() => {}}
+      onCancel={onCancel}
+    />,
+  );
+  await screen.findByText('Plate  ·  ABC123');
+
+  await fireEvent.press(screen.getByText('Cancel Ride'));
+  expect(screen.getByText('Cancel this ride?')).toBeTruthy();
+  expect(onCancel).not.toHaveBeenCalled();
+
+  await fireEvent.press(screen.getByText('Keep Ride'));
+  expect(onCancel).not.toHaveBeenCalled();
+
+  await fireEvent.press(screen.getByText('Cancel Ride'));
+  await fireEvent.press(screen.getAllByText('Cancel Ride')[1]);
+  expect(onCancel).toHaveBeenCalledTimes(1);
 });
 
 it("masks the driver's number until 12 hours before pickup, as the ride card does", async () => {

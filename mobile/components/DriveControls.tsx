@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles';
+import { useThemedAlert } from './ThemedDialog';
 import NumberStepper from './NumberStepper';
 import { MAX_CAR_SEATS } from '../pages/schema/user.validation';
 import { RideCardProps } from './RideCard';
@@ -24,6 +25,7 @@ interface DriveControlsProps {
  * has nothing to lock).
  */
 export default function DriveControls({ seats, riderDeciding = false, onSetLocked, onChangeSeats }: DriveControlsProps) {
+  const showAlert = useThemedAlert();
   const [editorVisible, setEditorVisible] = useState(false);
   const [draft, setDraft] = useState(seats.total);
   // Seats can't drop below the riders aboard, or the one deciding.
@@ -36,7 +38,7 @@ export default function DriveControls({ seats, riderDeciding = false, onSetLocke
   const confirmLockToggle = () => {
     if (!onSetLocked) return;
     if (seats.open) {
-      Alert.alert(
+      showAlert(
         'Stop taking passengers?',
         `You keep the ${seats.filled} rider${seats.filled === 1 ? '' : 's'} already confirmed. No new riders will be matched to this drive.`,
         [
@@ -45,7 +47,7 @@ export default function DriveControls({ seats, riderDeciding = false, onSetLocke
         ],
       );
     } else {
-      Alert.alert(
+      showAlert(
         'Take more passengers?',
         'This drive goes back into matching for its free seats. New riders still have to fit your route and everyone\'s arrival time.',
         [
