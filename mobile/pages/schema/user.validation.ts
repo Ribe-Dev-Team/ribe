@@ -1,5 +1,4 @@
 export const emailPattern = /^[^\s@]+@student\.monash\.edu$/i;
-const loginEmailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const namePattern = /^[A-Za-zÀ-ÖØ-öø-ÿ]+(?:[ '-][A-Za-zÀ-ÖØ-öø-ÿ]+)*$/;
 export const phonePattern = /^\+?[0-9()\- ]{10,15}$/;
 export const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
@@ -71,11 +70,7 @@ export const getFormValidationError = ({
     return 'Email is required.';
   }
 
-  if (mode === 'login' && !loginEmailPattern.test(trimmedEmail)) {
-    return 'Please enter a valid email address.';
-  }
-
-  if (mode === 'signup' && !isValidEmail(trimmedEmail)) {
+  if (!isValidEmail(trimmedEmail)) {
     return 'Please enter a valid Monash email address.';
   }
 
