@@ -4,7 +4,7 @@ import {
 } from './types';
 import { Coord } from '../matching.schema';
 import { evaluateRoute } from './route';
-import { deriveRiderMaxDetour } from './riderPolicy';
+// import { deriveRiderMaxDetour } from './riderPolicy';
 import {
   CalendarDate, CAMPUS_TIME_ZONE, calendarDateIn, dateKey, isHhMm, zonedDateTime,
 } from './melbourneTime';
@@ -260,7 +260,7 @@ function toMatchRequest(
     end,
     travelWindow: { start: earliest, end: latest },
     arriveBy,
-    maxDetour: deriveRiderMaxDetour(direct, cfg),
+    maxDetour: 120,
     status: 'unassigned',
   };
 }
@@ -305,7 +305,7 @@ function toMatchOffer(
   const windowMinutes = (driverArriveBy.getTime() - departAt.getTime()) / 60_000;
   const maxDetour = Math.max(0, Math.min(doc.maxDetourTime, windowMinutes - direct));
 
-  const onBoard = rebuildOnBoard(doc.confirmedRequestIds ?? [], confirmedById, campus, t, cfg, timeZone);
+  const onBoard = rebuildOnBoard(doc.confirmedRequestIds ?? [], confirmedById, cfg, timeZone);
   if (!onBoard) return null;
 
   let currTripDuration = 0;
@@ -348,8 +348,8 @@ function plannedArrival(stated: Date, cfg: MatchingConfig): Date {
 function rebuildOnBoard(
   ids: string[],
   confirmedById: Map<string, RequestDoc>,
-  campus: Coord,
-  t: TravelTimeMatrix,
+  // campus: Coord,
+  // t: TravelTimeMatrix,
   cfg: MatchingConfig,
   timeZone: string,
 ): OnBoardRider[] | null {
@@ -357,14 +357,14 @@ function rebuildOnBoard(
   for (const id of ids) {
     const r = confirmedById.get(id);
     if (!r || !r.coord || !hasValidTimes(r)) return null;
-    const [start, end] = endpoints(r as RequestDoc & { coord: Coord; }, campus);
+    // const [start, end] = endpoints(r as RequestDoc & { coord: Coord; }, campus);
     const date = calendarDateIn(r.date, timeZone);
     onBoard.push({
       reqId: r.id,
       riderId: r.userId,
       waypoint: r.coord,
       arriveBy: plannedArrival(zonedDateTime(date, r.arrivalTime, timeZone), cfg),
-      maxDetour: deriveRiderMaxDetour(t.minutes(start, end), cfg),
+      maxDetour: 120,
       currentDetour: 0, // restated from the evaluated route by the caller
       earliest: zonedDateTime(date, r.departureTime, timeZone),
     });
